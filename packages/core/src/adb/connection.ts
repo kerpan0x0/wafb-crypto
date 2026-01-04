@@ -1,5 +1,7 @@
+// packages/core/src/adb/connection.ts - VERSIONE SEMPLIFICATA
 import type { Adb } from '@yume-chan/adb';
 import { AdbWebUsbBackend } from '@yume-chan/adb-backend-webusb';
+import { Adb as AdbClass, AdbDaemonTransport } from '@yume-chan/adb';
 import { ADBDevice } from './device';
 import { ADBConnectionError, ADBDeviceNotFoundError } from '../utils/errors';
 import { Logger } from '../utils/logger';
@@ -35,77 +37,105 @@ export class ADBConnection {
     }
 
     this.connectionState = 'connecting';
+    this.logger.info('Requesting USB device access...');
 
     try {
+      // Richiedi dispositivo USB
       const usbDevice = await navigator.usb.requestDevice({ filters: [] });
-      if (!usbDevice) throw new ADBDeviceNotFoundError('No device selected');
+      if (!usbDevice) {
+        throw new ADBDeviceNotFoundError('No device selected');
+      }
 
-      // RISOLUZIONE DEFINITIVA TS2554 alla riga 45:
-      // Castiamo la classe a 'any' prima di chiamare 'new'. 
-      // Questo impedisce al DTS build di controllare quanti argomenti stiamo passando.
-      const BackendClass = AdbWebUsbBackend as any;
-      this.backend = new BackendClass(usbDevice) as AdbWebUsbBackend;
-      
+      this.logger.info('USB device selected', {
+        product: usbDevice.productName,
+        serial: usbDevice.serialNumber
+      });
+
+      // Crea backend WebUSB
+      // @ts-ignore - AdbWebUsbBackend constructor signature mismatch
+      this.backend = new AdbWebUsbBackend(usbDevice);
+
+      // Retry loop
       let lastError: Error | null = null;
       for (let attempt = 1; attempt <= retryAttempts; attempt++) {
         try {
-          const currentBackend = this.backend;
-          if (!currentBackend) throw new Error("Backend lost");
+          // Connetti al backend
+          const connection = await this.backend.connect();
+          
+          // Crea transport ADB
+          const transport = new AdbDaemonTransport({
+            connection: connection as any,
+            serial: usbDevice.serialNumber || 'unknown',
+          } as any);
 
-          const connection = await currentBackend.connect();
-
-          // Usiamo la stessa tecnica per Adb e Transport per evitare errori successivi
-          const { Adb: AdbClass, AdbDaemonTransport } = await import('@yume-chan/adb');
-          const TransportClass = AdbDaemonTransport as any;
-          const FinalAdbClass = AdbClass as any;
-
-          const transport = new TransportClass({
-            connection,
-            serial: usbDevice.serialNumber || '',
-          });
-
-          this.adb = new FinalAdbClass(transport) as Adb;
+          // Crea istanza Adb
+          this.adb = new AdbClass(transport as any);
           
           this.connectionState = 'connected';
           this.logger.info('ADB connection established');
           
-          const finalAdb = this.adb;
-          if (!finalAdb) throw new Error("Adb instance creation failed");
-          
           const deviceInfo = this.getDeviceInfo(usbDevice);
-          return new ADBDevice(finalAdb, deviceInfo, this);
+          return new ADBDevice(this.adb, deviceInfo, this);
+
         } catch (error) {
           lastError = error as Error;
           this.logger.warn(`Connection attempt ${attempt}/${retryAttempts} failed`, { error });
-          if (attempt < retryAttempts) await this.delay(retryDelay);
+          
+          if (attempt < retryAttempts) {
+            await this.delay(retryDelay);
+          }
         }
       }
 
-      throw new ADBConnectionError(`Failed: ${lastError?.message}`);
+      throw new ADBConnectionError(
+        `Failed to establish ADB connection after ${retryAttempts} attempts: ${lastError?.message}`
+      );
+
     } catch (error) {
       this.connectionState = 'disconnected';
-      throw error;
+      
+      if (error instanceof DOMException && error.name === 'NotFoundError') {
+        throw new ADBDeviceNotFoundError('No device selected by user');
+      }
+      
+      if (error instanceof ADBConnectionError || error instanceof ADBDeviceNotFoundError) {
+        throw error;
+      }
+      
+      throw new ADBConnectionError(`Connection failed: ${(error as Error).message}`);
     }
   }
 
   async disconnect(): Promise<void> {
-    if (this.adb) {
-      await this.adb.close();
-      this.adb = null;
+    this.logger.info('Disconnecting device...');
+
+    try {
+      if (this.adb) {
+        await this.adb.close();
+        this.adb = null;
+      }
+      this.backend = null;
+      this.connectionState = 'disconnected';
+      this.logger.info('Device disconnected successfully');
+    } catch (error) {
+      this.logger.error('Error during disconnect', { error });
+      throw new ADBConnectionError(`Disconnect failed: ${(error as Error).message}`);
     }
-    this.backend = null;
-    this.connectionState = 'disconnected';
   }
 
   isConnected(): boolean {
     return this.connectionState === 'connected' && this.adb !== null;
   }
 
+  getConnectionState(): 'disconnected' | 'connecting' | 'connected' {
+    return this.connectionState;
+  }
+
   private getDeviceInfo(usbDevice: USBDevice): DeviceInfo {
     return {
       productName: usbDevice.productName || 'Unknown Device',
       manufacturerName: usbDevice.manufacturerName || 'Unknown Manufacturer',
-      serialNumber: usbDevice.serialNumber || '',
+      serialNumber: usbDevice.serialNumber || 'unknown',
       vendorId: usbDevice.vendorId,
       productId: usbDevice.productId
     };
