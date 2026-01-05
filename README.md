@@ -1,16 +1,16 @@
 
-# WABF - The WebADB Forensics Bridge
+# wafb - The WebADB Forensics Bridge
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 
 **An androidqf-compatible triage tool** for browser-based Android forensic acquisition using WebADB technology.
 
-Repository: https://git.lattuga.net/garrett/WABF.git
+Repository: https://git.lattuga.net/garrett/wafb.git
 
 ## 🎯 Project Overview
 
-WABF (The WebADB Forensics Bridge) eliminates the need for local driver installation and provides a cross-platform solution for mobile forensics, bringing forensic capabilities directly to the browser.
+wafb (The WebADB Forensics Bridge) eliminates the need for local driver installation and provides a cross-platform solution for mobile forensics, bringing forensic capabilities directly to the browser.
 
 ### Key Features
 
@@ -35,12 +35,12 @@ WABF (The WebADB Forensics Bridge) eliminates the need for local driver installa
 
 ```bash
 # Clone repository
-git clone https://git.lattuga.net/garrett/WABF.git
-cd WABF
+git clone https://git.lattuga.net/garrett/wafb.git
+cd wafb
 
 # Run setup script
-chmod +x scripts/setup-wabf.sh
-./scripts/setup-wabf.sh
+chmod +x scripts/setup.sh
+./scripts/setup.sh
 ```
 
 ### Usage
@@ -62,9 +62,9 @@ pnpm test
 ## 📦 Project Structure
 
 ```
-WABF/
+wafb/
 ├── packages/
-│   ├── core/          # Core library (@wabf/core)
+│   ├── core/          # Core library (@wafb/core)
 │   ├── cli/           # CLI tool (coming soon)
 │   └── web/           # Web UI (coming soon)
 ├── docs/              # Documentation
@@ -136,11 +136,11 @@ The authors are not responsible for misuse or any legal consequences arising fro
 
 ## 📞 Support
 
-- 🐛 [Issue Tracker](https://git.lattuga.net/garrett/WABF/-/issues)
-- 📖 [Documentation](https://git.lattuga.net/garrett/WABF/-/tree/main/docs)
-- 💬 [Discussions](https://git.lattuga.net/garrett/WABF/-/discussions)
+- 🐛 [Issue Tracker](https://git.lattuga.net/garrett/wafb/-/issues)
+- 📖 [Documentation](https://git.lattuga.net/garrett/wafb/-/tree/main/docs)
+- 💬 [Discussions](https://git.lattuga.net/garrett/wafb/-/discussions)
 
 ---
 
-**WABF** - Making browser-based mobile forensics accessible
-Repository: https://git.lattuga.net/garrett/WABF.git
+**wafb** - Making browser-based mobile forensics accessible
+Repository: https://git.lattuga.net/garrett/wafb.git

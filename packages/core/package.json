@@ -1,7 +1,7 @@
 {
-  "name": "@wabf/core",
+  "name": "@wafb/core",
   "version": "0.1.0",
-  "description": "Core library for WABF - The WebADB Forensics Bridge",
+  "description": "Core library for wafb - The WebADB Forensics Bridge",
   "keywords": [
     "adb",
     "android",
@@ -16,7 +16,7 @@
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
-    "url": "https://git.lattuga.net/garrett/WABF.git",
+    "url": "https://git.lattuga.net/garrett/wafb.git",
     "directory": "packages/core"
   },
   "type": "module",
@@ -49,7 +49,8 @@
   },
   "dependencies": {
     "@yume-chan/adb": "^2.5.1",
-    "@yume-chan/adb-backend-webusb": "^0.0.19",
+    "@yume-chan/adb-daemon-webusb": "^2.1.0",
+    "@yume-chan/adb-credential-web": "^2.1.0",
     "@yume-chan/stream-extra": "^2.1.0"
   },
   "devDependencies": {

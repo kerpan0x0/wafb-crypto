@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Setting up WABF..."
+echo "🚀 Setting up wafb..."
 
 # Check Node.js
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)

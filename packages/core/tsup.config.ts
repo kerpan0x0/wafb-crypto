@@ -20,7 +20,7 @@ export default defineConfig({
   ],
   esbuildOptions(options) {
     options.banner = {
-      js: '// @wabf/core v0.1.0 | GPL-3.0 License'
+      js: '// @wafb/core v0.1.0 | GPL-3.0 License'
     };
   }
 });

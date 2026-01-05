@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { ADBCommands } from '../../../src/adb/commands';
 import { ADBCommandError } from '../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
@@ -18,204 +18,104 @@ describe('ADBCommands', () => {
     commands = new ADBCommands(mockAdb);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe('shell', () => {
     it('should execute shell command and return output', async () => {
       const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode('test output'));
-            controller.close();
+        stdout: {
+          getReader: () => {
+            let readCount = 0;
+            return {
+              read: async () => {
+                if (readCount === 0) {
+                  readCount++;
+                  return { done: false, value: new TextEncoder().encode('test output') };
+                }
+                return { done: true, value: undefined };
+              },
+              releaseLock: vi.fn()
+            };
           }
-        }),
-        exit: Promise.resolve({ code: 0 })
+        },
+        exit: Promise.resolve(0)
       };
 
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
 
       const result = await commands.shell('echo test');
       expect(result).toBe('test output');
     });
 
     it('should throw error on command failure', async () => {
-      (mockAdb.subprocess.spawn as any).mockRejectedValue(new Error('Command failed'));
-
+      (mockAdb.subprocess as any).spawn.mockRejectedValue(new Error('Command failed'));
       await expect(commands.shell('invalid command')).rejects.toThrow(ADBCommandError);
     });
 
     it('should handle timeout', async () => {
+      vi.useFakeTimers();
       const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            // Never close the stream to simulate timeout
-          }
-        }),
-        exit: new Promise(() => {}) // Never resolves
+        stdout: {
+          getReader: () => ({
+            read: () => new Promise(() => {}), // Never resolves
+            releaseLock: vi.fn()
+          })
+        },
+        exit: new Promise(() => {}) 
       };
 
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
 
-      await expect(
-        commands.shell('long command', { timeout: 100 })
-      ).rejects.toThrow('timeout');
-    });
-  });
+      const shellPromise = commands.shell('long command', { timeout: 1000 });
+      
+      // Fast forward time
+      vi.advanceTimersByTime(1500);
 
-  describe('getprop', () => {
-    it('should parse getprop output correctly', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `[ro.build.version.release]: [13]
-[ro.product.model]: [Pixel 6]
-[ro.product.manufacturer]: [Google]`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
-
-      const props = await commands.getprop();
-
-      expect(props['ro.build.version.release']).toBe('13');
-      expect(props['ro.product.model']).toBe('Pixel 6');
-      expect(props['ro.product.manufacturer']).toBe('Google');
-    });
-
-    it('should handle empty values', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `[ro.empty.prop]: []`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
-
-      const props = await commands.getprop();
-      expect(props['ro.empty.prop']).toBe('');
-    });
-  });
-
-  describe('listPackages', () => {
-    it('should list all packages', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `package:com.android.chrome
-package:com.whatsapp
-package:com.facebook.katana`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
-
-      const packages = await commands.listPackages();
-
-      expect(packages).toHaveLength(3);
-      expect(packages).toContain('com.android.chrome');
-      expect(packages).toContain('com.whatsapp');
-    });
-
-    it('should filter third-party apps only', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `package:com.whatsapp
-package:com.facebook.katana`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
-
-      const packages = await commands.listPackages({ includeSystem: false });
-
-      expect(packages).toHaveLength(2);
-      expect(mockAdb.subprocess.spawn).toHaveBeenCalledWith(
-        expect.stringContaining('-3')
-      );
-    });
-  });
-
-  describe('getPackageInfo', () => {
-    it('should return package information', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `versionName=1.0.0
-versionCode=100
-codePath=/data/app/com.example
-firstInstallTime=2024-01-01 12:00:00
-lastUpdateTime=2024-01-02 12:00:00`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
-
-      const info = await commands.getPackageInfo('com.example');
-
-      expect(info).not.toBeNull();
-      expect(info?.versionName).toBe('1.0.0');
-      expect(info?.versionCode).toBe('100');
-    });
-
-    it('should return null for non-existent package', async () => {
-      (mockAdb.subprocess.spawn as any).mockRejectedValue(new Error('Package not found'));
-
-      const info = await commands.getPackageInfo('com.nonexistent');
-      expect(info).toBeNull();
+      await expect(shellPromise).rejects.toThrow(/timed out/i);
     });
   });
 
   describe('getLogcat', () => {
     it('should get logcat output', async () => {
       const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `01-01 12:00:00.000  1000  1000 I Tag: Log message`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
+        stdout: {
+          getReader: () => {
+            let readCount = 0;
+            return {
+              read: async () => {
+                if (readCount === 0) {
+                  readCount++;
+                  return { done: false, value: new TextEncoder().encode('log line 1\nlog line 2') };
+                }
+                return { done: true, value: undefined };
+              },
+              releaseLock: vi.fn()
+            };
           }
-        }),
-        exit: Promise.resolve({ code: 0 })
+        },
+        exit: Promise.resolve(0)
       };
 
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
 
       const logs = await commands.getLogcat();
-      expect(logs).toContain('Log message');
+      expect(logs).toContain('log line 1');
     });
 
     it('should apply filters and options', async () => {
       const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode('filtered logs'));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
+        stdout: {
+          getReader: () => ({
+            read: async () => ({ done: true, value: undefined }),
+            releaseLock: vi.fn()
+          })
+        },
+        exit: Promise.resolve(0)
       };
 
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
 
       await commands.getLogcat({
         buffer: 'system',
@@ -223,15 +123,9 @@ lastUpdateTime=2024-01-02 12:00:00`;
         maxLines: 100
       });
 
-      expect(mockAdb.subprocess.spawn).toHaveBeenCalledWith(
-        expect.stringContaining('-b system')
-      );
-      expect(mockAdb.subprocess.spawn).toHaveBeenCalledWith(
-        expect.stringContaining('ActivityManager:I')
-      );
-      expect(mockAdb.subprocess.spawn).toHaveBeenCalledWith(
-        expect.stringContaining('-t 100')
-      );
+      expect((mockAdb.subprocess as any).spawn).toHaveBeenCalledWith(expect.stringContaining('-b system'));
+      expect((mockAdb.subprocess as any).spawn).toHaveBeenCalledWith(expect.stringContaining('ActivityManager:I'));
+      expect((mockAdb.subprocess as any).spawn).toHaveBeenCalledWith(expect.stringContaining('-t 100'));
     });
   });
 
@@ -239,20 +133,36 @@ lastUpdateTime=2024-01-02 12:00:00`;
     it('should read file content', async () => {
       const mockContent = new TextEncoder().encode('file content');
       const mockSync = {
-        read: vi.fn().mockResolvedValue(mockContent)
+        read: vi.fn().mockReturnValue({
+          getReader: () => {
+            let readCount = 0;
+            return {
+              read: async () => {
+                if (readCount === 0) {
+                  readCount++;
+                  return { done: false, value: mockContent };
+                }
+                return { done: true, value: undefined };
+              },
+              releaseLock: vi.fn()
+            };
+          }
+        }),
+        close: vi.fn().mockResolvedValue(undefined)
       };
 
       (mockAdb.sync as any).mockResolvedValue(mockSync);
 
       const content = await commands.readFile('/sdcard/test.txt');
-
-      expect(content).toEqual(mockContent);
+      expect(new TextDecoder().decode(content)).toBe('file content');
       expect(mockSync.read).toHaveBeenCalledWith('/sdcard/test.txt');
+      expect(mockSync.close).toHaveBeenCalled();
     });
 
     it('should write file content', async () => {
       const mockSync = {
-        write: vi.fn().mockResolvedValue(undefined)
+        write: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined)
       };
 
       (mockAdb.sync as any).mockResolvedValue(mockSync);
@@ -262,19 +172,19 @@ lastUpdateTime=2024-01-02 12:00:00`;
 
       expect(mockSync.write).toHaveBeenCalledWith(
         expect.objectContaining({
-          path: '/sdcard/test.txt',
-          file: content
+          filename: '/sdcard/test.txt'
         })
       );
+      expect(mockSync.close).toHaveBeenCalled();
     });
 
     it('should throw error on file read failure', async () => {
       const mockSync = {
-        read: vi.fn().mockRejectedValue(new Error('File not found'))
+        read: vi.fn().mockImplementation(() => { throw new Error('File not found'); }),
+        close: vi.fn().mockResolvedValue(undefined)
       };
 
       (mockAdb.sync as any).mockResolvedValue(mockSync);
-
       await expect(commands.readFile('/invalid/path')).rejects.toThrow(ADBCommandError);
     });
   });

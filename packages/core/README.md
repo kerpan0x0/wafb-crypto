@@ -1,10 +1,10 @@
 
-# @wabf/core
+# @wafb/core
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 
-Core library for **WABF** (The WebADB Forensics Bridge) - An androidqf-compatible triage tool for browser-based Android forensic acquisition.
+Core library for **wafb** (The WebADB Forensics Bridge) - An androidqf-compatible triage tool for browser-based Android forensic acquisition.
 
 ## Features
 
@@ -20,13 +20,13 @@ Core library for **WABF** (The WebADB Forensics Bridge) - An androidqf-compatibl
 ## Installation
 
 ```bash
-pnpm add @wabf/core
+pnpm add @wafb/core
 ```
 
 ## Quick Start
 
 ```typescript
-import { ADBConnection, Logger } from '@wabf/core';
+import { ADBConnection, Logger } from '@wafb/core';
 
 // Enable debug logging
 Logger.setLogLevel('debug');
@@ -71,9 +71,9 @@ try {
 
 ## Project Information
 
-**WABF** (The WebADB Forensics Bridge) is an androidqf-compatible triage tool that brings mobile forensic acquisition capabilities directly to the browser, eliminating the need for local driver installations.
+**wafb** (The WebADB Forensics Bridge) is an androidqf-compatible triage tool that brings mobile forensic acquisition capabilities directly to the browser, eliminating the need for local driver installations.
 
-- **Repository**: https://git.lattuga.net/garrett/WABF.git
+- **Repository**: https://git.lattuga.net/garrett/wafb.git
 - **License**: GPL-3.0
 - **Author**: garrett
 

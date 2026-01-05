@@ -1,9 +1,18 @@
+
 import type { Adb } from '@yume-chan/adb';
 import { Logger } from '../utils/logger';
 import { ADBCommandError } from '../utils/errors';
+import { readStreamAsText, readStreamAsBytes } from '../utils/stream-helpers';
 
 export interface ShellOptions {
   timeout?: number;
+}
+
+export interface LogcatOptions {
+  buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'default' | 'all';
+  filter?: string;
+  maxLines?: number;
+  dump?: boolean;
 }
 
 export class ADBCommands {
@@ -14,33 +23,26 @@ export class ADBCommands {
   }
 
   /**
-   * Esegue un comando shell usando spawn
+   * Executes a shell command with optional timeout
    */
-  async shell(command: string, _options: ShellOptions = {}): Promise<string> {
-    this.logger.debug('Executing shell command', { command });
+  async shell(command: string, options: ShellOptions = {}): Promise<string> {
+    const { timeout } = options;
+    this.logger.debug('Executing shell command', { command, timeout });
 
     try {
-      const subprocess = (this.adb.subprocess as any);
-      const process = await subprocess.spawn(command);
-      
-      let stdout = '';
-      const reader = process.stdout.getReader();
-      
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            const data = (value as any).value || value;
-            stdout += new TextDecoder().decode(data);
-          }
-        }
-      } finally {
-        reader.releaseLock();
+      const execute = async (): Promise<string> => {
+        // Casting to any to avoid "spawn does not exist" error during DTS build
+        const process = await (this.adb.subprocess as any).spawn(command);
+        const output = await readStreamAsText(process.stdout);
+        await process.exit;
+        return output;
+      };
+
+      if (timeout) {
+        return await this.withTimeout(execute(), timeout, command);
       }
 
-      await process.exit;
-      return stdout;
+      return await execute();
     } catch (error) {
       this.logger.error('Command execution failed', { command, error });
       throw new ADBCommandError(`Failed to execute command "${command}": ${(error as Error).message}`);
@@ -48,38 +50,48 @@ export class ADBCommands {
   }
 
   /**
-   * Ottiene tutte le proprietà del sistema
+   * Gets system properties
    */
   async getprop(): Promise<Record<string, string>> {
     const output = await this.shell('getprop');
     const props: Record<string, string> = {};
     const regex = /\[([^\]]+)\]:\s*\[([^\]]*)\]/g;
+    
     let match;
     while ((match = regex.exec(output)) !== null) {
-      if (match && match[1] && match[2] !== undefined) props[match[1]] = match[2];
+      if (match[1] && match[2] !== undefined) {
+        props[match[1]] = match[2];
+      }
     }
+    
     return props;
   }
 
   /**
-   * Lista tutti i package installati
+   * Lists installed packages
    */
   async listPackages(options: { includeSystem?: boolean } = {}): Promise<string[]> {
     const { includeSystem = true } = options;
     const command = includeSystem ? 'pm list packages' : 'pm list packages -3';
     const output = await this.shell(command);
-    return output.split('\n')
-      .filter(l => l.startsWith('package:'))
-      .map(l => l.replace('package:', '').trim())
+    
+    return output
+      .split('\n')
+      .filter(line => line.startsWith('package:'))
+      .map(line => line.replace('package:', '').trim())
       .filter(Boolean);
   }
 
   /**
-   * Ottiene informazioni dettagliate su un package
+   * Gets detailed package information
    */
   async getPackageInfo(packageName: string) {
     try {
       const output = await this.shell(`dumpsys package ${packageName}`);
+      if (!output || output.trim().length === 0) {
+        return null;
+      }
+      
       return {
         versionName: this.extractField(output, 'versionName') || 'Unknown',
         versionCode: this.extractField(output, 'versionCode') || 'Unknown',
@@ -87,61 +99,49 @@ export class ADBCommands {
         firstInstallTime: this.extractField(output, 'firstInstallTime') || 'Unknown',
         lastUpdateTime: this.extractField(output, 'lastUpdateTime') || 'Unknown'
       };
-    } catch { return null; }
-  }
-
-  /**
-   * Ottiene il path dell'APK
-   */
-  async getPackagePath(packageName: string): Promise<string | null> {
-    try {
-      const output = await this.shell(`pm path ${packageName}`);
-      const match = output.match(/package:(.+)/);
-      return (match && match[1]) ? match[1].trim() : null;
-    } catch { return null; }
-  }
-
-  /**
-   * Legge un file
-   */
-  async readFile(path: string): Promise<Uint8Array> {
-    const sync = await this.adb.sync();
-    try {
-      const chunks: Uint8Array[] = [];
-      const readable = await (sync.read(path) as any);
-      const reader = readable.getReader();
-      
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            const data = value.value || value;
-            chunks.push(data instanceof Uint8Array ? data : new Uint8Array(data));
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      
-      const totalLength = chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
-      const result = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return result;
-    } finally {
-      await sync.dispose();
+    } catch (error) {
+      this.logger.debug('Failed to get package info', { packageName, error });
+      return null;
     }
   }
 
   /**
-   * Scrive un file
+   * Gets logcat output
+   */
+  async getLogcat(options: LogcatOptions = {}): Promise<string> {
+    const args = ['logcat'];
+    
+    if (options.dump !== false) args.push('-d');
+    if (options.buffer) args.push(`-b ${options.buffer}`);
+    if (options.maxLines) args.push(`-t ${options.maxLines}`);
+    if (options.filter) args.push(options.filter);
+    
+    return this.shell(args.join(' '));
+  }
+
+  /**
+   * Reads a file via Sync service
+   */
+  async readFile(path: string): Promise<Uint8Array> {
+    const sync = await this.adb.sync();
+    
+    try {
+      const readable = await sync.read(path);
+      // Passing as any to resolve stream type mismatch between stream-extra and browser native
+      return await readStreamAsBytes(readable as any);
+    } catch (error) {
+      throw new ADBCommandError(`Failed to read file "${path}": ${(error as Error).message}`);
+    } finally {
+      await this.closeSyncService(sync);
+    }
+  }
+
+  /**
+   * Writes a file via Sync service
    */
   async writeFile(path: string, content: Uint8Array): Promise<void> {
     const sync = await this.adb.sync();
+    
     try {
       await sync.write({
         filename: path,
@@ -152,28 +152,49 @@ export class ADBCommands {
           }
         }) as any
       });
+    } catch (error) {
+      throw new ADBCommandError(`Failed to write file "${path}": ${(error as Error).message}`);
     } finally {
-      await sync.dispose();
+      await this.closeSyncService(sync);
     }
   }
 
   /**
-   * Prende uno screenshot
-   */
-  async screenshot(): Promise<Uint8Array> {
-    const tempPath = '/sdcard/screen.png';
-    await this.shell(`screencap -p ${tempPath}`);
-    const content = await this.readFile(tempPath);
-    await this.shell(`rm ${tempPath}`);
-    return content;
-  }
-
-  /**
-   * Helper per estrarre campi (Ora usato da getPackageInfo)
+   * Helper per estrarre campi da dumpsys output
    */
   private extractField(output: string, field: string): string | null {
     const regex = new RegExp(`${field}=([^\\s]+)`, 'i');
     const match = output.match(regex);
-    return (match && match[1]) ? match[1] : null;
+    return match?.[1] || null;
+  }
+
+  /**
+   * Helper per timeout con messaggio personalizzato
+   */
+  private withTimeout<T>(promise: Promise<T>, ms: number, command: string): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(
+          () => reject(new ADBCommandError(`Command "${command}" timed out after ${ms}ms`)),
+          ms
+        )
+      )
+    ]);
+  }
+
+  /**
+   * Helper per chiudere il sync service in modo sicuro
+   */
+  private async closeSyncService(sync: any): Promise<void> {
+    try {
+      if (typeof sync.dispose === 'function') {
+        await sync.dispose();
+      } else if (typeof sync.close === 'function') {
+        await sync.close();
+      }
+    } catch (error) {
+      this.logger.warn('Failed to close sync service', { error });
+    }
   }
 }

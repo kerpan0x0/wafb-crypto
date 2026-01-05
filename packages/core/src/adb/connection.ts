@@ -1,7 +1,8 @@
-// packages/core/src/adb/connection.ts - VERSIONE SEMPLIFICATA
 import type { Adb } from '@yume-chan/adb';
-import { AdbWebUsbBackend } from '@yume-chan/adb-backend-webusb';
-import { Adb as AdbClass, AdbDaemonTransport } from '@yume-chan/adb';
+import { Adb as AdbClass } from '@yume-chan/adb';
+import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
+import { AdbDaemonTransport } from '@yume-chan/adb';
+import AdbWebCredentialStore from '@yume-chan/adb-credential-web';
 import { ADBDevice } from './device';
 import { ADBConnectionError, ADBDeviceNotFoundError } from '../utils/errors';
 import { Logger } from '../utils/logger';
@@ -20,13 +21,23 @@ export interface DeviceInfo {
 }
 
 export class ADBConnection {
-  private backend: AdbWebUsbBackend | null = null;
+  private credentialStore: AdbWebCredentialStore;
+  private deviceManager: AdbDaemonWebUsbDeviceManager;
+  private device: any = null;
   private adb: Adb | null = null;
   private logger: Logger;
   private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
 
   constructor() {
     this.logger = new Logger('ADBConnection');
+    
+    // Usa il manager browser built-in
+    const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
+    if (!manager) {
+      throw new ADBConnectionError('WebUSB is not supported in this browser');
+    }
+    this.deviceManager = manager;
+    this.credentialStore = new AdbWebCredentialStore('wafb-adb-credentials');
   }
 
   async connect(options: ConnectionOptions = {}): Promise<ADBDevice> {
@@ -40,41 +51,41 @@ export class ADBConnection {
     this.logger.info('Requesting USB device access...');
 
     try {
-      // Richiedi dispositivo USB
-      const usbDevice = await navigator.usb.requestDevice({ filters: [] });
-      if (!usbDevice) {
+      // Step 1: Request device tramite il manager
+      this.device = await this.deviceManager.requestDevice();
+      
+      if (!this.device) {
         throw new ADBDeviceNotFoundError('No device selected');
       }
 
+      // Ottieni informazioni sul dispositivo
+      const deviceInfo = this.getDeviceInfoFromDevice(this.device);
+
       this.logger.info('USB device selected', {
-        product: usbDevice.productName,
-        serial: usbDevice.serialNumber
+        product: deviceInfo.productName,
+        serial: deviceInfo.serialNumber
       });
 
-      // Crea backend WebUSB
-      // @ts-ignore - AdbWebUsbBackend constructor signature mismatch
-      this.backend = new AdbWebUsbBackend(usbDevice);
-
-      // Retry loop
+      // Step 2: Connetti con retry logic
       let lastError: Error | null = null;
       for (let attempt = 1; attempt <= retryAttempts; attempt++) {
         try {
-          // Connetti al backend
-          const connection = await this.backend.connect();
+          // Connetti al device daemon
+          const connection = await this.device.connect();
           
-          // Crea transport ADB
-          const transport = new AdbDaemonTransport({
-            connection: connection as any,
-            serial: usbDevice.serialNumber || 'unknown',
-          } as any);
+          // Crea transport
+          const transport = await AdbDaemonTransport.authenticate({
+            serial: deviceInfo.serialNumber,
+            connection,
+            credentialStore: this.credentialStore,
+          });
 
           // Crea istanza Adb
-          this.adb = new AdbClass(transport as any);
+          this.adb = new AdbClass(transport);
           
           this.connectionState = 'connected';
           this.logger.info('ADB connection established');
           
-          const deviceInfo = this.getDeviceInfo(usbDevice);
           return new ADBDevice(this.adb, deviceInfo, this);
 
         } catch (error) {
@@ -114,7 +125,7 @@ export class ADBConnection {
         await this.adb.close();
         this.adb = null;
       }
-      this.backend = null;
+      this.device = null;
       this.connectionState = 'disconnected';
       this.logger.info('Device disconnected successfully');
     } catch (error) {
@@ -131,13 +142,16 @@ export class ADBConnection {
     return this.connectionState;
   }
 
-  private getDeviceInfo(usbDevice: USBDevice): DeviceInfo {
+  private getDeviceInfoFromDevice(device: any): DeviceInfo {
+    // Il device manager ritorna un oggetto con .raw che contiene USBDevice
+    const raw = device.raw as USBDevice;
+    
     return {
-      productName: usbDevice.productName || 'Unknown Device',
-      manufacturerName: usbDevice.manufacturerName || 'Unknown Manufacturer',
-      serialNumber: usbDevice.serialNumber || 'unknown',
-      vendorId: usbDevice.vendorId,
-      productId: usbDevice.productId
+      productName: raw.productName || 'Unknown Device',
+      manufacturerName: raw.manufacturerName || 'Unknown Manufacturer',
+      serialNumber: raw.serialNumber || 'unknown',
+      vendorId: raw.vendorId,
+      productId: raw.productId
     };
   }
 

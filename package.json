@@ -1,11 +1,11 @@
 {
-  "name": "wabf",
+  "name": "wafb",
   "version": "0.1.0",
   "private": true,
-  "description": "WABF - The WebADB Forensics Bridge. An androidqf-compatible triage tool.",
+  "description": "wafb - The WebADB Forensics Bridge. An androidqf-compatible triage tool.",
   "repository": {
     "type": "git",
-    "url": "https://git.lattuga.net/garrett/WABF.git"
+    "url": "https://git.lattuga.net/garrett/wafb.git"
   },
   "author": "garrett",
   "license": "GPL-3.0",
