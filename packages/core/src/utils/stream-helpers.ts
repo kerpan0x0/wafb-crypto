@@ -9,13 +9,14 @@ export async function readStreamAsText(readable: any): Promise<string> {
   const reader = readable.getReader();
   
   try {
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       
       if (value) {
         // Gestisce sia il caso in cui value sia wrapped che unwrapped
-        const data = (value as any).value || value;
+        const data = (value).value || value;
         chunks.push(data instanceof Uint8Array ? data : new Uint8Array(data));
       }
     }
@@ -34,12 +35,13 @@ export async function readStreamAsBytes(readable: any): Promise<Uint8Array> {
   const reader = readable.getReader();
   
   try {
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       
       if (value) {
-        const data = (value as any).value || value;
+        const data = (value).value || value;
         chunks.push(data instanceof Uint8Array ? data : new Uint8Array(data));
       }
     }
