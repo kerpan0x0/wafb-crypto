@@ -1,28 +1,6 @@
 import { useState, useCallback } from 'react';
 import { ADBConnection, Logger, type DeviceProperties } from '@wafb/core';
-
-export type BugreportStatus = 
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'generating'
-  | 'downloading'
-  | 'success'
-  | 'error';
-
-export interface BugreportProgress {
-  status: BugreportStatus;
-  progress: number;
-  message: string;
-  deviceInfo?: DeviceProperties;
-}
-
-export interface BugreportResult {
-  success: boolean;
-  fileName?: string;
-  fileSize?: number;
-  error?: string;
-}
+import type { BugreportStatus, BugreportProgress, BugreportResult } from '../types';
 
 export function useBugreport() {
   const [progress, setProgress] = useState<BugreportProgress>({
@@ -113,7 +91,7 @@ export function useBugreport() {
 
       // Step 7: Create and trigger download
       const blob = new Blob(
-        [bugreportData],
+        [bugreportData.buffer as ArrayBuffer],
         { type: useZip ? 'application/zip' : 'text/plain' }
       );
       
