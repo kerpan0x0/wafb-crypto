@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "composite": true,
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
@@ -27,6 +28,5 @@
   },
   "include": ["src"],
   "references": [
-    { "path": "../core" }
-  ]
+    { "path": "../core/tsconfig.build.json" }  ]
 }
