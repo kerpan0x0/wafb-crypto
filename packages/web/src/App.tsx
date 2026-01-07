@@ -1,8 +1,9 @@
-import React from 'react';
-import { Download, AlertCircle, CheckCircle, Smartphone } from 'lucide-react';
+import { Download, AlertCircle, CheckCircle } from 'lucide-react';
+import { Layout } from './components/layout/Layout';
 import { useBugreport } from './hooks/useBugreport';
-import { ProgressBar } from './components/ProgressBar';
-import { DeviceInfo } from './components/DeviceInfo';
+import { ProgressBar } from './components/acquisition/ProgressBar';
+import { DeviceInfo } from './components/device/DeviceInfo';
+import { DEVICE_REQUIREMENTS } from './lib/constants';
 
 function App() {
   const { progress, acquireBugreport, reset, isActive } = useBugreport();
@@ -18,24 +19,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
-      {/* Header */}
-      <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-4xl px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-500 text-white">
-              <Smartphone className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">WAFB</h1>
-              <p className="text-xs text-gray-500">WebADB Forensics Bridge</p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="mx-auto max-w-4xl px-6 py-12">
+    <Layout>
+      <div className="mx-auto max-w-4xl px-6 py-12">
         <div className="space-y-8">
           {/* Title Section */}
           <div className="text-center">
@@ -70,14 +55,14 @@ function App() {
               </div>
             )}
 
-            {/* Device Info (shown when connected) */}
+            {/* Device Info */}
             {progress.deviceInfo && (
               <div className="mb-6">
                 <DeviceInfo device={progress.deviceInfo} />
               </div>
             )}
 
-            {/* Progress Bar (shown when active) */}
+            {/* Progress Bar */}
             {isActive && (
               <div className="mb-6">
                 <ProgressBar
@@ -114,22 +99,12 @@ function App() {
           <div className="rounded-lg border border-blue-100 bg-blue-50 p-6">
             <h3 className="mb-3 font-semibold text-blue-900">Requirements</h3>
             <ul className="space-y-2 text-sm text-blue-800">
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5">•</span>
-                <span>Chrome or Edge browser (WebUSB required)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5">•</span>
-                <span>Android device with USB debugging enabled</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5">•</span>
-                <span>USB cable connected to your computer</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5">•</span>
-                <span>Desktop ADB server must be stopped (run: adb kill-server)</span>
-              </li>
+              {DEVICE_REQUIREMENTS.map((req, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-0.5">•</span>
+                  <span>{req}</span>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -155,15 +130,8 @@ function App() {
             </div>
           </details>
         </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="mt-12 border-t border-gray-200 bg-white py-6">
-        <div className="mx-auto max-w-4xl px-6 text-center text-sm text-gray-500">
-          WAFB v0.1.0 - WebADB Forensics Bridge | GPL-3.0 License
-        </div>
-      </footer>
-    </div>
+      </div>
+    </Layout>
   );
 }
 
