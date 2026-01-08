@@ -29,7 +29,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
     "clean": "turbo run clean && rm -rf node_modules",
     "prepare": "husky install",
-    "start": "pnpm build:core && pnpm dev:web"
+    "start": "pnpm build:core && pnpm dev:web",
+    "version:sync": "pnpm -r exec npm version $npm_package_version --no-git-tag-version"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.0.0",
