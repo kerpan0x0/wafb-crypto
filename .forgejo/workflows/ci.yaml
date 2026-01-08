@@ -54,11 +54,10 @@ jobs:
 
       - name: Archive Web Bundle
         run: |
-          cp packages/web/nginx.conf packages/web/dist/
-          
-          cd packages/web/dist
-          
-          tar -czf ../../../wafb-web-${{ github.ref_name }}.tar.gz .
+          cd $GITHUB_WORKSPACE/packages/web
+          cp nginx.conf dist/
+          cd dist
+          tar -czvf $GITHUB_WORKSPACE/wafb-web-${{ github.ref_name }}.tar.gz .
 
       - name: Create and Upload Forgejo Release
         shell: bash
