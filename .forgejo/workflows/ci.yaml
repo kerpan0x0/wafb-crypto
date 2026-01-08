@@ -57,7 +57,7 @@ jobs:
           cd packages/web/dist
           tar -czf ../../../wafb-web-${{ github.ref_name }}.tar.gz .
 
-        - name: Upload Asset to Forgejo Release
+      - name: Upload Asset to Forgejo Release
         shell: bash
         run: |
           echo "Recupero informazioni per il tag: ${{ github.ref_name }}"
