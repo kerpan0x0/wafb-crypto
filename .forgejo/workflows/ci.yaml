@@ -1,0 +1,52 @@
+name: WAFB CI
+on:
+  push:
+    branches: [ develop, main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ develop, main ]
+
+
+jobs:
+  quality:
+    runs-on: docker
+    container:
+      image: node:20-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  release:
+    needs: quality
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: docker
+    container:
+      image: node:20-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@latest --activate
+
+      - name: Sync Versions
+        run: |
+          pnpm version:sync
+          echo "Versions synchronized to ${{ github.ref_name }}"
+
+      # Qui in futuro potremo aggiungere lo step per fare l'upload 
+      # dei file compilati negli "Releases" di Forgejo
