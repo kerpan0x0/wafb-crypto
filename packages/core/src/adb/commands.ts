@@ -1,3 +1,4 @@
+// packages/core/src/adb/commands.ts
 
 import type { Adb } from '@yume-chan/adb';
 import { Logger } from '../utils/logger';
@@ -24,6 +25,7 @@ export class ADBCommands {
 
   /**
    * Executes a shell command with optional timeout
+   * Usa l'API subprocess.shell() che restituisce un socket
    */
   async shell(command: string, options: ShellOptions = {}): Promise<string> {
     const { timeout } = options;
@@ -31,10 +33,11 @@ export class ADBCommands {
 
     try {
       const execute = async (): Promise<string> => {
-        // Casting to any to avoid "spawn does not exist" error during DTS build
-        const process = await (this.adb.subprocess as any).spawn(command);
-        const output = await readStreamAsText(process.stdout);
-        await process.exit;
+        // subprocess.shell() senza argomenti apre una shell interattiva
+        // Dobbiamo invece usare il metodo alternativo
+        // Proviamo ad accedere al servizio raw
+        const shellSocket = await this.adb.subprocess.shellProtocol!.spawn(command);
+        const output = await readStreamAsText(shellSocket.stdout);
         return output;
       };
 
@@ -127,7 +130,6 @@ export class ADBCommands {
     
     try {
       const readable = await sync.read(path);
-      // Passing as any to resolve stream type mismatch between stream-extra and browser native
       return await readStreamAsBytes(readable as any);
     } catch (error) {
       throw new ADBCommandError(`Failed to read file "${path}": ${(error as Error).message}`);
