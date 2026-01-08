@@ -60,13 +60,18 @@ jobs:
       - name: Upload Asset to Forgejo Release
         shell: bash
         run: |
-          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | jq -r .id)
+          RELEASE_JSON=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}")
+          
+          RELEASE_ID=$(echo "$RELEASE_JSON" | grep -m 1 '"id":' | sed 's/[^0-9]//g')
 
-          if [ "$RELEASE_ID" == "null" ]; then
+          if [ -z "$RELEASE_ID" ]; then
             echo "Errore: Release non trovata per il tag ${{ github.ref_name }}"
+            echo "Risposta API: $RELEASE_JSON"
             exit 1
           fi
+
+          echo "Release ID trovato: $RELEASE_ID"
 
           FILE_PATH="./wafb-web-${{ github.ref_name }}.tar.gz"
           
