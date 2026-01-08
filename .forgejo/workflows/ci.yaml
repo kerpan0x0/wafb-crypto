@@ -62,27 +62,28 @@ jobs:
         run: |
           echo "Verifica/Creazione Release per il tag: ${{ github.ref_name }}"
           
-          # 1. Tenta di creare la release (se esiste già darà errore, che ignoriamo con || true)
+          # 1. Creazione release
           curl -s -X POST -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{\"tag_name\":\"${{ github.ref_name }}\",\"title\":\"Release ${{ github.ref_name }}\",\"draft\":false,\"prerelease\":true}" \
             "${{ github.api_url }}/repos/${{ github.repository }}/releases" > /dev/null || true
 
-          # 2. Ora recuperiamo l'ID della release (che adesso deve esserci per forza)
+          # 2. Recupero ID
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}")
           
-          RELEASE_ID=$(echo "$RESPONSE" | grep -m 1 '"id":' | sed 's/[^0-9]//g')
+          # Estraiamo solo il primo valore numerico dopo '"id":'
+          RELEASE_ID=$(echo "$RESPONSE" | sed -n 's/.*"id":\([0-9]*\),.*/\1/p' | head -n 1)
 
           if [ -z "$RELEASE_ID" ]; then
-            echo "ERRORE: Impossibile trovare o creare la release."
+            echo "ERRORE: Impossibile trovare l'ID della release."
             echo "Risposta API: $RESPONSE"
             exit 1
           fi
 
-          echo "Release ID pronto: $RELEASE_ID"
+          echo "Release ID corretto: $RELEASE_ID"
 
-          # 3. Caricamento file
+          # 3. Caricamento asset
           FILE_NAME="wafb-web-${{ github.ref_name }}.tar.gz"
           UPLOAD_URL="${{ github.api_url }}/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${FILE_NAME}"
           
@@ -96,7 +97,7 @@ jobs:
           if [ "$HTTP_CODE" -eq 201 ]; then
             echo "✅ Rilascio completato con successo!"
           elif [ "$HTTP_CODE" -eq 422 ]; then
-            echo "⚠️ L'asset esiste già nella release. Salto l'upload."
+            echo "⚠️ L'asset esiste già. Salto l'upload."
           else
             echo "❌ Errore HTTP: $HTTP_CODE"
             exit 1
