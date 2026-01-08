@@ -1,4 +1,3 @@
-// packages/web/.eslintrc.cjs
 module.exports = {
   root: true,
   env: {

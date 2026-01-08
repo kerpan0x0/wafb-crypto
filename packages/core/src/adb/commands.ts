@@ -33,10 +33,10 @@ export class ADBCommands {
 
     try {
       const execute = async (): Promise<string> => {
-        // subprocess.shell() senza argomenti apre una shell interattiva
-        // Dobbiamo invece usare il metodo alternativo
-        // Proviamo ad accedere al servizio raw
-        const shellSocket = await this.adb.subprocess.shellProtocol!.spawn(command);
+        if (!this.adb.subprocess.shellProtocol) {
+          throw new Error("Shell protocol not available");
+        }
+        const shellSocket = await this.adb.subprocess.shellProtocol.spawn(command);
         const output = await readStreamAsText(shellSocket.stdout);
         return output;
       };
@@ -59,14 +59,14 @@ export class ADBCommands {
     const output = await this.shell('getprop');
     const props: Record<string, string> = {};
     const regex = /\[([^\]]+)\]:\s*\[([^\]]*)\]/g;
-    
+
     let match;
     while ((match = regex.exec(output)) !== null) {
       if (match[1] && match[2] !== undefined) {
         props[match[1]] = match[2];
       }
     }
-    
+
     return props;
   }
 
@@ -77,7 +77,7 @@ export class ADBCommands {
     const { includeSystem = true } = options;
     const command = includeSystem ? 'pm list packages' : 'pm list packages -3';
     const output = await this.shell(command);
-    
+
     return output
       .split('\n')
       .filter(line => line.startsWith('package:'))
@@ -94,7 +94,7 @@ export class ADBCommands {
       if (!output || output.trim().length === 0) {
         return null;
       }
-      
+
       return {
         versionName: this.extractField(output, 'versionName') || 'Unknown',
         versionCode: this.extractField(output, 'versionCode') || 'Unknown',
@@ -113,12 +113,12 @@ export class ADBCommands {
    */
   async getLogcat(options: LogcatOptions = {}): Promise<string> {
     const args = ['logcat'];
-    
+
     if (options.dump !== false) args.push('-d');
     if (options.buffer) args.push(`-b ${options.buffer}`);
     if (options.maxLines) args.push(`-t ${options.maxLines}`);
     if (options.filter) args.push(options.filter);
-    
+
     return this.shell(args.join(' '));
   }
 
@@ -127,7 +127,7 @@ export class ADBCommands {
    */
   async readFile(path: string): Promise<Uint8Array> {
     const sync = await this.adb.sync();
-    
+
     try {
       const readable = await sync.read(path);
       return await readStreamAsBytes(readable as any);
@@ -143,7 +143,7 @@ export class ADBCommands {
    */
   async writeFile(path: string, content: Uint8Array): Promise<void> {
     const sync = await this.adb.sync();
-    
+
     try {
       await sync.write({
         filename: path,

@@ -69,7 +69,7 @@ export class Logger {
     }
 
     // Console output
-    const logMethod = level === 'error' ? console.error :
+    const _logMethod = level === 'error' ? console.error :
       level === 'warn' ? console.warn :
         level === 'debug' ? console.debug :
           console.log;
