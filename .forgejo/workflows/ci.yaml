@@ -45,7 +45,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Sync Versions
-        run: pnpm version:sync
+        run: |
+          # Estrae la versione dal tag (es. v0.1.0-alpha -> 0.1.0-alpha)
+          CLEAN_VERSION=${GITHUB_REF_NAME#v}
+          NEW_VERSION=$CLEAN_VERSION pnpm version:sync
 
       - name: Build Project
         run: pnpm build
