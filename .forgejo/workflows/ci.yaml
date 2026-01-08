@@ -9,7 +9,7 @@ on:
 
 jobs:
   quality:
-    runs-on: docker
+    runs-on: ubuntu-22.04
     container:
       image: node:20-bookworm
     steps:
@@ -28,7 +28,7 @@ jobs:
   release:
     needs: quality
     if: startsWith(github.ref, 'refs/tags/v') && github.event.base_ref == 'refs/heads/main'
-    runs-on: docker
+    runs-on: ubuntu-22.04
     container:
       image: node:20-bookworm
     steps:
