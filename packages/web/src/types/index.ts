@@ -1,29 +1,22 @@
-// packages/web/src/types/index.ts
+// Re-export types from core per comodità
+export type {
+  AcquisitionType,
+  AcquisitionStatus,
+  AcquisitionProgress,
+  AcquisitionResult,
+  AcquisitionMetadata,
+  AcquisitionSession,
+  DeviceProperties
+} from '@wafb/core';
 
-import type { DeviceProperties } from '@wafb/core';
+// Types UI-specific (se necessari in futuro)
+export interface UITheme {
+  mode: 'light' | 'dark';
+}
 
-export type BugreportStatus = 
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'generating'
-  | 'downloading'
-  | 'success'
-  | 'error';
-
-export interface BugreportProgress {
-  status: BugreportStatus;
-  progress: number;
+export interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
   message: string;
-  deviceInfo?: DeviceProperties;
+  duration?: number;
 }
-
-export interface BugreportResult {
-  success: boolean;
-  fileName?: string;
-  fileSize?: number;
-  error?: string;
-}
-
-// Re-export
-export type { DeviceProperties } from '@wafb/core';
