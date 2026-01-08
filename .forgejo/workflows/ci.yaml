@@ -25,11 +25,12 @@ jobs:
       - name: Build
         run: pnpm build
 
-  release:
+release:
     needs: quality
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+      packages: write
     runs-on: ubuntu-22.04
     container:
       image: node:20-bookworm
@@ -54,44 +55,14 @@ jobs:
 
       - name: Archive Web Bundle
         run: |
-          cd $GITHUB_WORKSPACE/packages/web
-          cp nginx.conf dist/
-          cd dist
-          tar -czvf $GITHUB_WORKSPACE/wafb-web-${{ github.ref_name }}.tar.gz .
+          cp packages/web/nginx.conf packages/web/dist/
+          cd packages/web/dist
+          tar -czf ../../../wafb-web-static.tar.gz .
+          cd ../../..
 
-      - name: Create and Upload Forgejo Release
-        shell: bash
+      - name: Upload to Forgejo Packages
         run: |
-          echo "Verifica/Creazione Release per il tag: ${{ github.ref_name }}"
-          
-          # 1. Creazione release (se non esiste)
-          curl -s -X POST -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"${{ github.ref_name }}\",\"title\":\"Release ${{ github.ref_name }}\",\"draft\":false,\"prerelease\":true}" \
-            "${{ github.api_url }}/repos/${{ github.repository }}/releases" > /dev/null || true
-
-          # 2. Caricamento asset usando il TAG NAME nell'URL
-          FILE_NAME="wafb-web-${{ github.ref_name }}.tar.gz"
-          echo "Caricamento asset: $FILE_NAME"
-          
-          # Costruiamo l'URL di upload basato sull'API ufficiale di Forgejo per gli asset
-          UPLOAD_URL="${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}/assets?name=${FILE_NAME}"
-          
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          curl -X PUT \
             -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
-            -H "Content-Type: application/gzip" \
-            --data-binary "@./$FILE_NAME" \
-            "$UPLOAD_URL")
-
-          if [ "$HTTP_CODE" -eq 201 ]; then
-            echo "✅ Rilascio completato con successo!"
-          elif [ "$HTTP_CODE" -eq 404 ]; then
-            echo "❌ Errore 404: L'endpoint di upload non è stato trovato. Provo metodo alternativo..."
-            # Fallback estremo: caricamento tramite ID (che avevamo già, ma ricalcolato per sicurezza)
-            RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | sed -n 's/.*"id":\([0-9]*\),.*/\1/p' | head -n 1)
-            curl -s -X POST -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" -H "Content-Type: application/gzip" --data-binary "@./$FILE_NAME" "${{ github.api_url }}/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets"
-            echo "✅ Tentativo di fallback inviato."
-          else
-            echo "❌ Errore HTTP: $HTTP_CODE"
-            exit 1
-          fi
+            --upload-file ./wafb-web-static.tar.gz \
+            "${{ github.api_url }}/packages/${{ github.repository_owner }}/generic/wafb-web-static/${{ github.ref_name }}/wafb-web-static.tar.gz"
