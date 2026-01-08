@@ -60,9 +60,26 @@ jobs:
           tar -czf ../../../wafb-web-static.tar.gz .
           cd ../../..
 
-      - name: Upload to Forgejo Packages
+      - name: Create and Upload Release Asset
         run: |
-          curl -X PUT \
+          echo "Creo la release..."
+          curl -s -X POST -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${{ github.ref_name }}\",\"title\":\"Release ${{ github.ref_name }}\",\"draft\":false,\"prerelease\":false}" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/releases" || echo "Release already exists"
+
+          sleep 2
+
+          echo "Caricamento asset..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
-            --upload-file ./wafb-web-static.tar.gz \
-            "${{ github.api_url }}/packages/${{ github.repository_owner }}/generic/wafb-web-static/${{ github.ref_name }}/wafb-web-static.tar.gz"
+            -H "Content-Type: application/gzip" \
+            --data-binary "@./wafb-web-static.tar.gz" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}/assets?name=wafb-web-static.tar.gz")
+
+          if [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ Upload completato con successo!"
+          else
+            echo "❌ Errore durante l'upload. Codice HTTP: $HTTP_CODE"
+            exit 1
+          fi
