@@ -11,13 +11,38 @@ const mockDeviceInfo: DeviceInfo = {
   productId: 0x4EE7
 };
 
-const mockAdb = {
+// Helper per creare mock shell socket
+const createMockShellSocket = (output: string) => ({
+  stdout: {
+    getReader: () => {
+      let readCount = 0;
+      return {
+        read: async () => {
+          if (readCount === 0) {
+            readCount++;
+            return { done: false, value: new TextEncoder().encode(output) };
+          }
+          return { done: true, value: undefined };
+        },
+        releaseLock: vi.fn()
+      };
+    }
+  },
+  stderr: new ReadableStream(),
+  stdin: new WritableStream(),
+  exit: Promise.resolve({ code: 0 })
+});
+
+const createMockAdb = () => ({
   subprocess: {
+    shellProtocol: {
+      spawn: vi.fn()
+    },
     spawn: vi.fn()
   },
   sync: vi.fn(),
   close: vi.fn()
-} as unknown as Adb;
+} as unknown as Adb);
 
 const mockConnection = {
   disconnect: vi.fn(),
@@ -26,31 +51,26 @@ const mockConnection = {
 
 describe('ADBDevice', () => {
   let device: ADBDevice;
+  let mockAdb: Adb;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAdb = createMockAdb();
     device = new ADBDevice(mockAdb, mockDeviceInfo, mockConnection);
   });
 
   describe('getProperties', () => {
     it('should return device properties', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `[ro.build.version.release]: [13]
+      const output = `[ro.build.version.release]: [13]
 [ro.build.id]: [TP1A.220905.004]
 [ro.product.model]: [Pixel 6]
 [ro.product.manufacturer]: [Google]
 [ro.product.brand]: [google]
 [ro.build.version.sdk]: [33]`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
 
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(
+        createMockShellSocket(output)
+      );
 
       const props = await device.getProperties();
 
@@ -62,17 +82,9 @@ describe('ADBDevice', () => {
     });
 
     it('should use fallback values for missing properties', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(''));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(
+        createMockShellSocket('')
+      );
 
       const props = await device.getProperties();
 
@@ -84,41 +96,27 @@ describe('ADBDevice', () => {
 
   describe('isRooted', () => {
     it('should return true if device is rooted', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode('uid=0(root) gid=0(root)'));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(
+        createMockShellSocket('uid=0(root) gid=0(root)')
+      );
 
       const isRooted = await device.isRooted();
       expect(isRooted).toBe(true);
     });
 
     it('should return false if device is not rooted', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode('uid=2000(shell)'));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
-
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(
+        createMockShellSocket('uid=2000(shell)')
+      );
 
       const isRooted = await device.isRooted();
       expect(isRooted).toBe(false);
     });
 
     it('should return false if su command fails', async () => {
-      (mockAdb.subprocess.spawn as any).mockRejectedValue(new Error('su not found'));
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockRejectedValue(
+        new Error('su not found')
+      );
 
       const isRooted = await device.isRooted();
       expect(isRooted).toBe(false);
@@ -127,22 +125,15 @@ describe('ADBDevice', () => {
 
   describe('getBatteryInfo', () => {
     it('should return battery information', async () => {
-      const mockProcess = {
-        stdout: new ReadableStream({
-          start(controller) {
-            const output = `Current Battery Service state:
+      const output = `Current Battery Service state:
   level: 85
   temperature: 280
   voltage: 4200
   status: 2`;
-            controller.enqueue(new TextEncoder().encode(output));
-            controller.close();
-          }
-        }),
-        exit: Promise.resolve({ code: 0 })
-      };
 
-      (mockAdb.subprocess.spawn as any).mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(
+        createMockShellSocket(output)
+      );
 
       const batteryInfo = await device.getBatteryInfo();
 
@@ -163,7 +154,7 @@ describe('ADBDevice', () => {
   describe('isConnected', () => {
     it('should return connection status', () => {
       expect(device.isConnected()).toBe(true);
-      
+
       mockConnection.isConnected.mockReturnValue(false);
       expect(device.isConnected()).toBe(false);
     });

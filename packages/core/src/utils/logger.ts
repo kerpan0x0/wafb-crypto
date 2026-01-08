@@ -1,5 +1,3 @@
-// packages/core/src/utils/logger.ts
-
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogEntry {
@@ -68,26 +66,26 @@ export class Logger {
       Logger.logs.shift();
     }
 
-    // Console output
-    const _logMethod = level === 'error' ? console.error :
+    // 1. Selezioniamo il metodo corretto
+    const logFn = level === 'error' ? console.error :
       level === 'warn' ? console.warn :
         level === 'debug' ? console.debug :
-          console.log;
+          console.info; // Usiamo info per i messaggi standard
 
     const timestamp = entry.timestamp.toISOString();
     const prefix = `[${timestamp}] [${level.toUpperCase()}] [${this.context}]`;
 
     const styles = {
       debug: 'color: gray',
-      info: 'color: blue',
-      warn: 'color: orange',
-      error: 'color: red'
+      info: 'color: #2196F3',
+      warn: 'color: #FF9800; font-weight: bold',
+      error: 'color: #F44336; font-weight: bold'
     };
 
     if (data) {
-      console.log(`%c${prefix}`, styles[level], message, data);
+      logFn(`%c${prefix}`, styles[level], message, data);
     } else {
-      console.log(`%c${prefix}`, styles[level], message);
+      logFn(`%c${prefix}`, styles[level], message);
     }
   }
 }

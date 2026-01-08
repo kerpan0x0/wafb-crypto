@@ -3,18 +3,47 @@ import { ADBCommands } from '../../../src/adb/commands';
 import { ADBCommandError } from '../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
 
-const mockAdb = {
-  subprocess: {
-    spawn: vi.fn()
-  },
-  sync: vi.fn()
-} as unknown as Adb;
+// Crea un mock completo per l'oggetto Adb con shellProtocol
+const createMockAdb = () => {
+  const mockShellSocket = {
+    stdout: {
+      getReader: () => {
+        let readCount = 0;
+        return {
+          read: async () => {
+            if (readCount === 0) {
+              readCount++;
+              return { done: false, value: new TextEncoder().encode('test output') };
+            }
+            return { done: true, value: undefined };
+          },
+          releaseLock: vi.fn()
+        };
+      }
+    },
+    stderr: new ReadableStream(),
+    stdin: new WritableStream(),
+    exit: Promise.resolve({ code: 0 })
+  };
+
+  return {
+    subprocess: {
+      shellProtocol: {
+        spawn: vi.fn().mockResolvedValue(mockShellSocket)
+      },
+      spawn: vi.fn()
+    },
+    sync: vi.fn()
+  } as unknown as Adb;
+};
 
 describe('ADBCommands', () => {
   let commands: ADBCommands;
+  let mockAdb: Adb;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAdb = createMockAdb();
     commands = new ADBCommands(mockAdb);
   });
 
@@ -24,7 +53,7 @@ describe('ADBCommands', () => {
 
   describe('shell', () => {
     it('should execute shell command and return output', async () => {
-      const mockProcess = {
+      const mockShellSocket = {
         stdout: {
           getReader: () => {
             let readCount = 0;
@@ -40,46 +69,62 @@ describe('ADBCommands', () => {
             };
           }
         },
-        exit: Promise.resolve(0)
+        stderr: new ReadableStream(),
+        stdin: new WritableStream(),
+        exit: Promise.resolve({ code: 0 })
       };
 
-      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(mockShellSocket);
 
       const result = await commands.shell('echo test');
       expect(result).toBe('test output');
+      expect((mockAdb.subprocess.shellProtocol as any).spawn).toHaveBeenCalledWith('echo test');
     });
 
     it('should throw error on command failure', async () => {
-      (mockAdb.subprocess as any).spawn.mockRejectedValue(new Error('Command failed'));
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockRejectedValue(
+        new Error('Command failed')
+      );
+
       await expect(commands.shell('invalid command')).rejects.toThrow(ADBCommandError);
+      await expect(commands.shell('invalid command')).rejects.toThrow(
+        /Failed to execute command "invalid command"/
+      );
     });
 
     it('should handle timeout', async () => {
       vi.useFakeTimers();
-      const mockProcess = {
+
+      const neverResolvingSocket = {
         stdout: {
           getReader: () => ({
-            read: () => new Promise(() => {}), // Never resolves
+            read: () => new Promise(() => { }),
             releaseLock: vi.fn()
           })
         },
-        exit: new Promise(() => {}) 
+        stderr: new ReadableStream(),
+        stdin: new WritableStream(),
+        exit: new Promise(() => { })
       };
 
-      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(neverResolvingSocket);
 
       const shellPromise = commands.shell('long command', { timeout: 1000 });
-      
-      // Fast forward time
-      vi.advanceTimersByTime(1500);
 
-      await expect(shellPromise).rejects.toThrow(/timed out/i);
+      const rejectionExpectation = expect(shellPromise).rejects.toThrow(/timed out/);
+
+      // Questo triggera il reject() all'interno di shell()
+      await vi.advanceTimersByTimeAsync(1500);
+
+      await rejectionExpectation;
+
+      vi.useRealTimers();
     });
   });
 
   describe('getLogcat', () => {
     it('should get logcat output', async () => {
-      const mockProcess = {
+      const mockShellSocket = {
         stdout: {
           getReader: () => {
             let readCount = 0;
@@ -87,7 +132,10 @@ describe('ADBCommands', () => {
               read: async () => {
                 if (readCount === 0) {
                   readCount++;
-                  return { done: false, value: new TextEncoder().encode('log line 1\nlog line 2') };
+                  return {
+                    done: false,
+                    value: new TextEncoder().encode('log line 1\nlog line 2')
+                  };
                 }
                 return { done: true, value: undefined };
               },
@@ -95,27 +143,32 @@ describe('ADBCommands', () => {
             };
           }
         },
-        exit: Promise.resolve(0)
+        stderr: new ReadableStream(),
+        stdin: new WritableStream(),
+        exit: Promise.resolve({ code: 0 })
       };
 
-      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(mockShellSocket);
 
       const logs = await commands.getLogcat();
       expect(logs).toContain('log line 1');
+      expect((mockAdb.subprocess.shellProtocol as any).spawn).toHaveBeenCalledWith('logcat -d');
     });
 
     it('should apply filters and options', async () => {
-      const mockProcess = {
+      const mockShellSocket = {
         stdout: {
           getReader: () => ({
             read: async () => ({ done: true, value: undefined }),
             releaseLock: vi.fn()
           })
         },
-        exit: Promise.resolve(0)
+        stderr: new ReadableStream(),
+        stdin: new WritableStream(),
+        exit: Promise.resolve({ code: 0 })
       };
 
-      (mockAdb.subprocess as any).spawn.mockResolvedValue(mockProcess);
+      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(mockShellSocket);
 
       await commands.getLogcat({
         buffer: 'system',
@@ -123,9 +176,9 @@ describe('ADBCommands', () => {
         maxLines: 100
       });
 
-      expect((mockAdb.subprocess as any).spawn).toHaveBeenCalledWith(expect.stringContaining('-b system'));
-      expect((mockAdb.subprocess as any).spawn).toHaveBeenCalledWith(expect.stringContaining('ActivityManager:I'));
-      expect((mockAdb.subprocess as any).spawn).toHaveBeenCalledWith(expect.stringContaining('-t 100'));
+      expect((mockAdb.subprocess.shellProtocol as any).spawn).toHaveBeenCalledWith(
+        'logcat -d -b system -t 100 ActivityManager:I'
+      );
     });
   });
 
@@ -148,7 +201,7 @@ describe('ADBCommands', () => {
             };
           }
         }),
-        close: vi.fn().mockResolvedValue(undefined)
+        dispose: vi.fn().mockResolvedValue(undefined)
       };
 
       (mockAdb.sync as any).mockResolvedValue(mockSync);
@@ -156,13 +209,13 @@ describe('ADBCommands', () => {
       const content = await commands.readFile('/sdcard/test.txt');
       expect(new TextDecoder().decode(content)).toBe('file content');
       expect(mockSync.read).toHaveBeenCalledWith('/sdcard/test.txt');
-      expect(mockSync.close).toHaveBeenCalled();
+      expect(mockSync.dispose).toHaveBeenCalled();
     });
 
     it('should write file content', async () => {
       const mockSync = {
         write: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined)
+        dispose: vi.fn().mockResolvedValue(undefined)
       };
 
       (mockAdb.sync as any).mockResolvedValue(mockSync);
@@ -175,13 +228,15 @@ describe('ADBCommands', () => {
           filename: '/sdcard/test.txt'
         })
       );
-      expect(mockSync.close).toHaveBeenCalled();
+      expect(mockSync.dispose).toHaveBeenCalled();
     });
 
     it('should throw error on file read failure', async () => {
       const mockSync = {
-        read: vi.fn().mockImplementation(() => { throw new Error('File not found'); }),
-        close: vi.fn().mockResolvedValue(undefined)
+        read: vi.fn().mockImplementation(() => {
+          throw new Error('File not found');
+        }),
+        dispose: vi.fn().mockResolvedValue(undefined)
       };
 
       (mockAdb.sync as any).mockResolvedValue(mockSync);
