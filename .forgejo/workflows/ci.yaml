@@ -25,7 +25,7 @@ jobs:
       - name: Build
         run: pnpm build
 
-release:
+  release:
     needs: quality
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
