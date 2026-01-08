@@ -14,6 +14,9 @@
 - 🔒 **Browser-based** - No server required, runs entirely client-side
 - 🚀 **Fast** - Optimized for quick triage scenarios
 - 📦 **Modular** - Core library can be used independently
+- 🔍 **Granular Extraction** - Individually extract Packages, Battery info, and System Properties
+- ⚡ **Root Awareness** - Intelligent detection of rooted states to adapt acquisition depth
+- 📋 **Live Logcat** - Real-time system log streaming and capture
 
 ## 🚀 Quick Start
 
@@ -33,8 +36,8 @@ cd wafb
 # Install dependencies
 pnpm install
 
-# Build core package
-pnpm build:core
+# Build package
+pnpm build
 ```
 
 ### Launch Web UI
@@ -148,6 +151,9 @@ import { ADBConnection } from '@wafb/core';
 const connection = new ADBConnection();
 const device = await connection.connect();
 const props = await device.getProperties();
+const isRooted = await device.isRooted();
+const battery = await device.getBatteryInfo();
+const packages = await device.commands.listPackages();
 console.log(`Connected to ${props.model}`);
 ```
 
@@ -236,10 +242,6 @@ pnpm build
 # Kill process on port 3000
 # Linux/Mac:
 lsof -ti:3000 | xargs kill -9
-
-# Windows:
-netstat -ano | findstr :3000
-taskkill /PID <PID> /F
 ```
 
 ## 🗺️ Roadmap
@@ -249,6 +251,10 @@ taskkill /PID <PID> /F
 - [x] Basic command execution
 - [x] Bugreport acquisition
 - [x] Web UI
+- [x] Root detection
+- [x] Package listing
+- [x] Battery status extraction
+- [x] Real-time Logcat
 - [ ] Advanced forensic modules
 - [ ] Database acquisition
 - [ ] Media file extraction
