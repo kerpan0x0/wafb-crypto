@@ -15,7 +15,7 @@ export class Logger {
   private static maxLogs = 1000;
   private static logLevel: LogLevel = 'info';
 
-  constructor(private context: string) {}
+  constructor(private context: string) { }
 
   static setLogLevel(level: LogLevel): void {
     Logger.logLevel = level;
@@ -64,24 +64,30 @@ export class Logger {
 
     Logger.logs.push(entry);
 
-    // Mantieni solo gli ultimi N log
     if (Logger.logs.length > Logger.maxLogs) {
       Logger.logs.shift();
     }
 
     // Console output
     const logMethod = level === 'error' ? console.error :
-                      level === 'warn' ? console.warn :
-                      level === 'debug' ? console.debug :
-                      console.log;
+      level === 'warn' ? console.warn :
+        level === 'debug' ? console.debug :
+          console.log;
 
     const timestamp = entry.timestamp.toISOString();
     const prefix = `[${timestamp}] [${level.toUpperCase()}] [${this.context}]`;
-    
+
+    const styles = {
+      debug: 'color: gray',
+      info: 'color: blue',
+      warn: 'color: orange',
+      error: 'color: red'
+    };
+
     if (data) {
-      logMethod(prefix, message, data);
+      console.log(`%c${prefix}`, styles[level], message, data);
     } else {
-      logMethod(prefix, message);
+      console.log(`%c${prefix}`, styles[level], message);
     }
   }
 }
