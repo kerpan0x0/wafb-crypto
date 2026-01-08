@@ -39,5 +39,26 @@ jobs:
       - name: Install pnpm
         run: corepack enable && corepack prepare pnpm@latest --activate
 
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Sync Versions
         run: pnpm version:sync
+
+      - name: Build Project
+        run: pnpm build
+
+      - name: Archive Web Bundle
+        run: |
+          cd packages/web/dist
+          tar -czf ../../../wafb-web-${{ github.ref_name }}.tar.gz .
+
+      - name: Upload to Forgejo Release
+        uses: https://code.forgejo.org/forgejo/upload-release-asset@v1
+        with:
+          direction: upload
+          base-url: ${{ github.server_url }}
+          repository: ${{ github.repository }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag: ${{ github.ref_name }}
+          file: wafb-web-${{ github.ref_name }}.tar.gz
