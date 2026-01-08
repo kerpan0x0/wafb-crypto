@@ -57,43 +57,47 @@ jobs:
           cd packages/web/dist
           tar -czf ../../../wafb-web-${{ github.ref_name }}.tar.gz .
 
-      - name: Upload Asset to Forgejo Release
+      - name: Create and Upload Forgejo Release
         shell: bash
         run: |
-          echo "Recupero informazioni per il tag: ${{ github.ref_name }}"
+          echo "Verifica/Creazione Release per il tag: ${{ github.ref_name }}"
           
-          # 1. Tenta di recuperare la release. Usiamo -v per il debug in caso di errore 1
+          # 1. Tenta di creare la release (se esiste già darà errore, che ignoriamo con || true)
+          curl -s -X POST -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${{ github.ref_name }}\",\"title\":\"Release ${{ github.ref_name }}\",\"draft\":false,\"prerelease\":true}" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/releases" > /dev/null || true
+
+          # 2. Ora recuperiamo l'ID della release (che adesso deve esserci per forza)
           RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}")
           
-          # Debug: mostriamo cosa ha risposto Forgejo
-          echo "Risposta API: $RESPONSE"
-
-          # 2. Estrazione ID più robusta (cerca l'id numerico dopo la chiave "id")
           RELEASE_ID=$(echo "$RESPONSE" | grep -m 1 '"id":' | sed 's/[^0-9]//g')
 
-          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" == "" ]; then
-            echo "ERRORE: Impossibile trovare l'ID della release."
+          if [ -z "$RELEASE_ID" ]; then
+            echo "ERRORE: Impossibile trovare o creare la release."
+            echo "Risposta API: $RESPONSE"
             exit 1
           fi
 
-          echo "Release ID trovato: $RELEASE_ID"
+          echo "Release ID pronto: $RELEASE_ID"
 
           # 3. Caricamento file
           FILE_NAME="wafb-web-${{ github.ref_name }}.tar.gz"
-          echo "Caricamento file: $FILE_NAME"
-          
           UPLOAD_URL="${{ github.api_url }}/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=${FILE_NAME}"
           
+          echo "Caricamento asset: $FILE_NAME"
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             -H "Content-Type: application/gzip" \
             --data-binary "@./$FILE_NAME" \
             "$UPLOAD_URL")
 
-          if [ "$HTTP_CODE" -ne 201 ]; then
-            echo "ERRORE: Il caricamento è fallito con codice HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ Rilascio completato con successo!"
+          elif [ "$HTTP_CODE" -eq 422 ]; then
+            echo "⚠️ L'asset esiste già nella release. Salto l'upload."
+          else
+            echo "❌ Errore HTTP: $HTTP_CODE"
             exit 1
           fi
-          
-          echo "Caricamento completato con successo!"
