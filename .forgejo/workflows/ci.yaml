@@ -55,12 +55,21 @@ jobs:
           cd packages/web/dist
           tar -czf ../../../wafb-web-${{ github.ref_name }}.tar.gz .
 
-      - name: Upload to Forgejo Release
-        uses: https://code.forgejo.org/forgejo/upload-release-asset@v1
-        with:
-          direction: upload
-          base-url: ${{ github.api_url }}
-          repository: ${{ github.repository }}
-          release-id: ${{ github.ref_name }}
-          image-path: ./wafb-web-${{ github.ref_name }}.tar.gz
-          token: ${{ secrets.RELEASE_TOKEN  }}
+      - name: Upload Asset to Forgejo Release
+        shell: bash
+        run: |
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | jq -r .id)
+
+          if [ "$RELEASE_ID" == "null" ]; then
+            echo "Errore: Release non trovata per il tag ${{ github.ref_name }}"
+            exit 1
+          fi
+
+          FILE_PATH="./wafb-web-${{ github.ref_name }}.tar.gz"
+          
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
+            -H "Content-Type: application/gzip" \
+            --data-binary "@$FILE_PATH" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/releases/${RELEASE_ID}/assets?name=$(basename $FILE_PATH)"
