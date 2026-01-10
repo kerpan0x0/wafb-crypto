@@ -32,11 +32,18 @@ export { BugreportAcquirer } from './forensics/acquisition/bugreport';
 export type { BugreportConfig } from './forensics/acquisition/bugreport';
 
 export { PackagesAcquirer } from './forensics/acquisition/packages';
-export type { 
-  PackagesConfig, 
-  PackageInfo, 
-  PackagesData 
+export type {
+  PackagesConfig,
+  PackageInfo,
+  PackagesData
 } from './forensics/acquisition/packages';
+
+export { LogcatAcquirer } from './forensics/acquisition/logcat';
+export type {
+  LogcatConfig,
+  LogcatStats,
+  LogcatData
+} from './forensics/acquisition/logcat';
 
 // ============================================================================
 // Utilities
