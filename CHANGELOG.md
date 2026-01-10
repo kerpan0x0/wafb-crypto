@@ -7,34 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### 🎉 Android Packages & Architecture Refactor
-This release introduces detailed acquisition support for installed packages and a significant refactoring of the frontend architecture for better scalability.
+### 🎉 Android Packages, Logcat & Architecture Refactor
+This release introduces detailed acquisition support for installed packages and Logcat, along with a significant refactoring of the frontend architecture for better scalability.
 
 ### Added
 
 #### Core Package (@wafb/core)
-- [cite_start]**New PackagesAcquirer Module**: Full acquisition of installed packages list via ADB[cite: 5, 8].
-- [cite_start]**Filtering Support**: Support for filtering between system and user applications[cite: 5].
-- [cite_start]**Detailed Metadata**: Extraction of SDK versions, declared permissions, and package details via `dumpsys`[cite: 5, 6].
-- [cite_start]**Integrity**: SHA-256 hash computation for the generated JSON report[cite: 5, 6].
+- **New PackagesAcquirer Module**: Full acquisition of installed packages list via ADB, including system/user filtering and SHA-256 integrity.
+- **Logcat Acquisition Support**: Exported `LogcatAcquirer` and related types (`LogcatConfig`, `LogcatStats`, `LogcatData`) for system log retrieval.
+- **Detailed Metadata**: Extraction of SDK versions and declared permissions via `dumpsys`.
 
 #### Web Package (@wafb/web)
-- [cite_start]**Dynamic Acquisition Engine**: Implemented a mapping (Factory) pattern for managing acquirers[cite: 5, 8].
-- [cite_start]**Integrated Support**: Added support for `packages` type acquisition within the execution flow[cite: 2, 5].
-- [cite_start]**Centralized Options**: Management of acquisition options like hash, cleanup, and detail inclusion[cite: 5, 6].
+- **Dynamic Acquisition Engine**: Implemented a mapping (Factory) pattern in `AcquisitionPage` for managing acquirers dynamically.
+- **Integrated Support**: Added execution flow for both `packages` and `bugreport` types using the new factory pattern.
 
 ### Changed
 
+#### Core Package
+- **API Exports**: Updated main index to properly export new forensic acquisition modules.
+
 #### Web Package
-- [cite_start]**Acquisition UI Refactor**: Simplified `AcquisitionPage` logic by removing static conditional chains in favor of a config-driven approach[cite: 4, 7, 8].
-- [cite_start]**Error Handling**: Improved error messaging for unimplemented acquisition types[cite: 9, 10].
-- [cite_start]**UI Transitions**: Optimized CSS transitions for progress bar states (running, completed, failed)[cite: 11, 14, 16, 21].
+- **Acquisition Store**: Improved type handling in `acquisitionStore.ts` using explicit casting for session acquisition lookups.
+- **Acquisition UI Refactor**: Simplified logic by removing static conditional chains and optimizing CSS transitions for progress states.
 
 ### Removed
 
 #### Web Package
-- **Obsolete Code Cleanup**: Removed unused hooks including `useADB`, `useBugreport`, `useForensics`, and `useReport`.
-- **Deprecated UI**: Eliminated old common components like `ErrorBoundary` and `Layout`.
+- **Obsolete Code Cleanup**: Removed unused hooks (`useADB`, `useBugreport`, `useForensics`, `useReport`) and deprecated components (`ErrorBoundary`, `Layout`).
 
 ## [0.1.0] - 2025-01-10
 
