@@ -60,12 +60,14 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
 
   initializeAcquisitions: (deviceInfo: DeviceProperties, isRooted: boolean) => {
     // Import ACQUISITION_TYPES dinamicamente per evitare circular deps
-    const types = (window as any).__ACQUISITION_TYPES__ || {};
+    // Usa globalThis invece di window per compatibilità con test environment
+    const types = (globalThis as any).__ACQUISITION_TYPES__ || {};
     
     const acquisitions = new Map<AcquisitionType, AcquisitionState>();
     
-  const metadataList = Object.values(types) as AcquisitionMetadata[];
-  metadataList.forEach((metadata) => {      // Disabilita acquisizioni che richiedono root se device non è rooted
+    const metadataList = Object.values(types) as AcquisitionMetadata[];
+    metadataList.forEach((metadata) => {
+      // Disabilita acquisizioni che richiedono root se device non è rooted
       const canEnable = !metadata.requiresRoot || isRooted;
       
       // Disabilita acquisizioni che richiedono SDK version più alta
@@ -244,8 +246,8 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
   }
 }));
 
-// Helper per inizializzare ACQUISITION_TYPES nel window
+// Helper per inizializzare ACQUISITION_TYPES nel globalThis
 // Questo evita import circolari
 export function initializeAcquisitionTypes(types: typeof ACQUISITION_TYPES) {
-  (window as any).__ACQUISITION_TYPES__ = types;
+  (globalThis as any).__ACQUISITION_TYPES__ = types;
 }
