@@ -63,14 +63,15 @@ export class Logger {
     Logger.logs.push(entry);
 
     if (Logger.logs.length > Logger.maxLogs) {
-      Logger.logs.shift();
+      Logger.logs = Logger.logs.slice(-Logger.maxLogs);
     }
 
-    // 1. Selezioniamo il metodo corretto
+    // Per l'ambiente di test, evitiamo di inquinare l'output se non necessario
+    // o assicuriamoci che gli spy siano attivi
     const logFn = level === 'error' ? console.error :
       level === 'warn' ? console.warn :
         level === 'debug' ? console.debug :
-          console.info; // Usiamo info per i messaggi standard
+          console.log;
 
     const timestamp = entry.timestamp.toISOString();
     const prefix = `[${timestamp}] [${level.toUpperCase()}] [${this.context}]`;
@@ -82,10 +83,14 @@ export class Logger {
       error: 'color: #F44336; font-weight: bold'
     };
 
+    // Vitest/Node non supportano i CSS nelle stringhe console come il browser,
+    // quindi aggiungiamo un controllo per non stampare %c se non siamo in browser
+    const isBrowser = typeof window !== 'undefined';
+
     if (data) {
-      logFn(`%c${prefix}`, styles[level], message, data);
+      isBrowser ? logFn(`%c${prefix}`, styles[level], message, data) : logFn(prefix, message, data);
     } else {
-      logFn(`%c${prefix}`, styles[level], message);
+      isBrowser ? logFn(`%c${prefix}`, styles[level], message) : logFn(prefix, message);
     }
   }
 }
