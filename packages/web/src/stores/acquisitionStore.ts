@@ -28,13 +28,13 @@ interface AcquisitionState {
 interface AcquisitionStore {
   // Sessione corrente
   session: AcquisitionSession | null;
-  
+
   // Acquisizioni disponibili e loro stato
   acquisitions: Map<AcquisitionType, AcquisitionState>;
-  
+
   // Device info
   deviceInfo: DeviceProperties | null;
-  
+
   // Azioni
   initializeAcquisitions: (deviceInfo: DeviceProperties, isRooted: boolean) => void;
   toggleAcquisition: (type: AcquisitionType) => void;
@@ -45,7 +45,7 @@ interface AcquisitionStore {
   completeAcquisition: (type: AcquisitionType, result: AcquisitionResult) => void;
   endSession: () => void;
   reset: () => void;
-  
+
   // Computed
   getSelectedAcquisitions: () => AcquisitionType[];
   getTotalProgress: () => number;
@@ -62,17 +62,17 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     // Import ACQUISITION_TYPES dinamicamente per evitare circular deps
     // Usa globalThis invece di window per compatibilità con test environment
     const types = (globalThis as any).__ACQUISITION_TYPES__ || {};
-    
+
     const acquisitions = new Map<AcquisitionType, AcquisitionState>();
-    
+
     const metadataList = Object.values(types) as AcquisitionMetadata[];
     metadataList.forEach((metadata) => {
       // Disabilita acquisizioni che richiedono root se device non è rooted
       const canEnable = !metadata.requiresRoot || isRooted;
-      
+
       // Disabilita acquisizioni che richiedono SDK version più alta
       const sdkCompatible = deviceInfo.sdkVersion >= metadata.minSdkVersion;
-      
+
       acquisitions.set(metadata.id, {
         type: metadata.id,
         enabled: canEnable && sdkCompatible && metadata.defaultEnabled,
@@ -82,14 +82,14 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
         metadata
       });
     });
-    
+
     set({ acquisitions, deviceInfo });
   },
 
   toggleAcquisition: (type: AcquisitionType) => {
     const { acquisitions } = get();
     const acquisition = acquisitions.get(type);
-    
+
     if (acquisition && acquisition.status === 'pending') {
       acquisition.enabled = !acquisition.enabled;
       set({ acquisitions: new Map(acquisitions) });
@@ -118,11 +118,11 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
 
   startSession: () => {
     const { acquisitions, deviceInfo } = get();
-    
+
     if (!deviceInfo) {
       throw new Error('Device info not available');
     }
-    
+
     const selectedAcquisitions = Array.from(acquisitions.values())
       .filter(acq => acq.enabled)
       .map(acq => ({
@@ -146,7 +146,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
   updateProgress: (type: AcquisitionType, progress: number, message: string, status: AcquisitionStatus) => {
     const { acquisitions, session } = get();
     const acquisition = acquisitions.get(type);
-    
+
     if (acquisition) {
       acquisition.progress = progress;
       acquisition.message = message;
@@ -155,16 +155,16 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     }
 
     if (session) {
-      const acqInSession = session.acquisitions.find(a => a.type === type);
+      const acqInSession = session.acquisitions.find((a: { type: AcquisitionType }) => a.type === type);
       if (acqInSession) {
         acqInSession.status = status;
         acqInSession.progress = progress;
       }
-      
+
       // Update total progress
       const totalProgress = get().getTotalProgress();
       session.totalProgress = totalProgress;
-      
+
       set({ session: { ...session } });
     }
   },
@@ -172,7 +172,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
   completeAcquisition: (type: AcquisitionType, result: AcquisitionResult) => {
     const { acquisitions, session } = get();
     const acquisition = acquisitions.get(type);
-    
+
     if (acquisition) {
       acquisition.result = result;
       acquisition.status = result.success ? 'completed' : 'failed';
@@ -195,15 +195,15 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     const { session } = get();
     if (session) {
       session.endTime = new Date();
-      
+
       // Determina status finale
       const allCompleted = session.acquisitions.every(
         a => a.status === 'completed' || a.status === 'skipped'
       );
       const anyFailed = session.acquisitions.some(a => a.status === 'failed');
-      
+
       session.status = anyFailed ? 'failed' : allCompleted ? 'completed' : 'cancelled';
-      
+
       set({ session: { ...session } });
     }
   },
@@ -227,9 +227,9 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
   getTotalProgress: () => {
     const { acquisitions } = get();
     const enabled = Array.from(acquisitions.values()).filter(acq => acq.enabled);
-    
+
     if (enabled.length === 0) return 0;
-    
+
     const totalProgress = enabled.reduce((sum, acq) => sum + acq.progress, 0);
     return Math.round(totalProgress / enabled.length);
   },

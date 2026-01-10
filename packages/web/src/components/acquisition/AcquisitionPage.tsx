@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger } from '@wafb/core';
 import { BugreportAcquirer } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
-import type { AcquisitionType } from '@wafb/core';
+import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
 
 export function AcquisitionPage() {
   const [device, setDevice] = useState<ADBDevice | null>(null);
@@ -42,13 +42,13 @@ export function AcquisitionPage() {
     try {
       const conn = new ADBConnection();
       const dev = await conn.connect({ retryAttempts: 3, retryDelay: 1000 });
-      
+
       const props = await dev.getProperties();
       const isRooted = await dev.isRooted();
 
       setConnection(conn);
       setDevice(dev);
-      
+
       initializeAcquisitions(props, isRooted);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect');
@@ -93,7 +93,7 @@ export function AcquisitionPage() {
         cleanupAfter: true
       });
 
-      const result = await acquirer.acquire((progress) => {
+      const result = await acquirer.acquire((progress: AcquisitionProgress) => {
         updateProgress(type, progress.progress, progress.message, progress.status);
       });
 
@@ -222,14 +222,14 @@ export function AcquisitionPage() {
                       <input
                         type="checkbox"
                         checked={acq.enabled}
-                        onChange={() => {}}
+                        onChange={() => { }}
                         className="w-5 h-5"
                         disabled={isSessionActive()}
                       />
                     </div>
-                    
+
                     <p className="text-sm text-gray-600 mb-2">{acq.metadata.description}</p>
-                    
+
                     {acq.metadata.requiresRoot && (
                       <span className="inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
                         Requires Root
@@ -245,12 +245,11 @@ export function AcquisitionPage() {
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all ${
-                              acq.status === 'completed' ? 'bg-green-500' :
-                              acq.status === 'failed' ? 'bg-red-500' :
-                              acq.status === 'running' ? 'bg-blue-500' :
-                              'bg-gray-400'
-                            }`}
+                            className={`h-2 rounded-full transition-all ${acq.status === 'completed' ? 'bg-green-500' :
+                                acq.status === 'failed' ? 'bg-red-500' :
+                                  acq.status === 'running' ? 'bg-blue-500' :
+                                    'bg-gray-400'
+                              }`}
                             style={{ width: `${acq.progress}%` }}
                           />
                         </div>
@@ -276,7 +275,7 @@ export function AcquisitionPage() {
             {session && (
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-xl font-semibold mb-4">Acquisition Progress</h2>
-                
+
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
                     <span>Total Progress</span>
@@ -294,16 +293,15 @@ export function AcquisitionPage() {
                   {session.acquisitions.map((acq) => (
                     <div key={acq.type} className="flex items-center justify-between text-sm">
                       <span>{ACQUISITION_TYPES[acq.type].name}</span>
-                      <span className={`font-semibold ${
-                        acq.status === 'completed' ? 'text-green-600' :
-                        acq.status === 'failed' ? 'text-red-600' :
-                        acq.status === 'running' ? 'text-blue-600' :
-                        'text-gray-500'
-                      }`}>
+                      <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :
+                          acq.status === 'failed' ? 'text-red-600' :
+                            acq.status === 'running' ? 'text-blue-600' :
+                              'text-gray-500'
+                        }`}>
                         {acq.status === 'completed' ? '✓ Done' :
-                         acq.status === 'failed' ? '✗ Failed' :
-                         acq.status === 'running' ? `${acq.progress}%` :
-                         'Pending'}
+                          acq.status === 'failed' ? '✗ Failed' :
+                            acq.status === 'running' ? `${acq.progress}%` :
+                              'Pending'}
                       </span>
                     </div>
                   ))}
@@ -313,8 +311,8 @@ export function AcquisitionPage() {
                   <div className="mt-6 text-center">
                     <p className="text-lg font-semibold mb-2">
                       {session.status === 'completed' ? '✓ Acquisition Completed!' :
-                       session.status === 'failed' ? '✗ Acquisition Failed' :
-                       'Acquisition Cancelled'}
+                        session.status === 'failed' ? '✗ Acquisition Failed' :
+                          'Acquisition Cancelled'}
                     </p>
                     <button
                       onClick={() => window.location.reload()}
