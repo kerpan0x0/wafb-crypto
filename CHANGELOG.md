@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎉 Android Packages & Architecture Refactor
+This release introduces detailed acquisition support for installed packages and a significant refactoring of the frontend architecture for better scalability.
+
+### Added
+
+#### Core Package (@wafb/core)
+- [cite_start]**New PackagesAcquirer Module**: Full acquisition of installed packages list via ADB[cite: 5, 8].
+- [cite_start]**Filtering Support**: Support for filtering between system and user applications[cite: 5].
+- [cite_start]**Detailed Metadata**: Extraction of SDK versions, declared permissions, and package details via `dumpsys`[cite: 5, 6].
+- [cite_start]**Integrity**: SHA-256 hash computation for the generated JSON report[cite: 5, 6].
+
+#### Web Package (@wafb/web)
+- [cite_start]**Dynamic Acquisition Engine**: Implemented a mapping (Factory) pattern for managing acquirers[cite: 5, 8].
+- [cite_start]**Integrated Support**: Added support for `packages` type acquisition within the execution flow[cite: 2, 5].
+- [cite_start]**Centralized Options**: Management of acquisition options like hash, cleanup, and detail inclusion[cite: 5, 6].
+
+### Changed
+
+#### Web Package
+- [cite_start]**Acquisition UI Refactor**: Simplified `AcquisitionPage` logic by removing static conditional chains in favor of a config-driven approach[cite: 4, 7, 8].
+- [cite_start]**Error Handling**: Improved error messaging for unimplemented acquisition types[cite: 9, 10].
+- [cite_start]**UI Transitions**: Optimized CSS transitions for progress bar states (running, completed, failed)[cite: 11, 14, 16, 21].
+
+### Removed
+
+#### Web Package
+- **Obsolete Code Cleanup**: Removed unused hooks including `useADB`, `useBugreport`, `useForensics`, and `useReport`.
+- **Deprecated UI**: Eliminated old common components like `ErrorBoundary` and `Layout`.
+
 ## [0.1.0] - 2025-01-10
 
 ### 🎉 First Stable Release
