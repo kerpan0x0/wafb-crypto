@@ -1,6 +1,4 @@
-// packages/core/src/forensics/acquisition/base/types.ts
-
-import type { DeviceProperties } from '../../../adb/device';
+import type { DeviceProperties } from '../../adb/device';
 
 /**
  * Tipi di acquisizione disponibili

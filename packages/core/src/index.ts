@@ -25,13 +25,13 @@ export type {
   AcquisitionResult,
   AcquisitionMetadata,
   AcquisitionSession
-} from './forensics/acquisition/base/types';
+} from './forensics/acquisition/types';
 
-export { ACQUISITION_TYPES } from './forensics/acquisition/base/types';
+export { ACQUISITION_TYPES } from './forensics/acquisition/types';
 
 // Acquisition Modules
-export { BugreportAcquirer } from './forensics/acquisition/bugreport/BugreportAcquirer';
-export type { BugreportConfig } from './forensics/acquisition/bugreport/BugreportAcquirer';
+export { BugreportAcquirer } from './forensics/acquisition/bugreport';
+export type { BugreportConfig } from './forensics/acquisition/bugreport';
 
 // ============================================================================
 // Utilities

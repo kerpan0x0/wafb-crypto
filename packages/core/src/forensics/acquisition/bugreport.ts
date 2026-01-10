@@ -1,10 +1,11 @@
-import type { ADBDevice } from '../../../adb/device';
-import { Logger } from '../../../utils/logger';
+import { DeviceInfo } from '../../adb/connection';
+import type { ADBDevice } from '../../adb/device';
+import { Logger } from '../../utils/logger';
 import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
-} from '../base/types';
+} from './types';
 
 /**
  * Opzioni specifiche per Bugreport
@@ -17,7 +18,7 @@ export interface BugreportConfig extends AcquisitionConfig {
   
   /**
    * Se rimuovere il file dal dispositivo dopo il download
-   */
+  */
   cleanupAfter?: boolean;
 }
 
@@ -26,6 +27,7 @@ export interface BugreportConfig extends AcquisitionConfig {
  */
 export class BugreportAcquirer {
   private logger: Logger;
+  private cleanupPerformed: boolean = false;
   
   constructor(
     private device: ADBDevice,
@@ -41,6 +43,8 @@ export class BugreportAcquirer {
     onProgress?: (progress: AcquisitionProgress) => void
   ): Promise<AcquisitionResult> {
     const startTime = new Date();
+    let bugreportPath: string | null = null;
+    let useZip = false;
     
     try {
       this.logger.info('Starting bugreport acquisition');
@@ -59,7 +63,7 @@ export class BugreportAcquirer {
 
       // Step 2: Check bugreportz availability
       this.notifyProgress(onProgress, 30, 'Checking bugreport support...', 'running');
-      const useZip = await this.checkBugreportzSupport();
+      useZip = await this.checkBugreportzSupport();
       
       if (useZip) {
         this.logger.info('Using bugreportz (zip format)');
@@ -75,7 +79,7 @@ export class BugreportAcquirer {
         'running'
       );
       
-      const bugreportPath = await this.generateBugreport(useZip);
+      bugreportPath = await this.generateBugreport(useZip);
 
       // Step 4: Download file
       this.notifyProgress(
@@ -100,17 +104,8 @@ export class BugreportAcquirer {
       
       this.downloadBlob(blob, fileName);
 
-      // Step 6: Cleanup (optional)
-      if (this.config.cleanupAfter !== false) {
-        try {
-          if (!useZip || bugreportPath.startsWith('/sdcard/')) {
-            await this.device.commands.shell(`rm ${bugreportPath}`);
-            this.logger.info('Cleaned up bugreport file from device');
-          }
-        } catch (err) {
-          this.logger.warn('Failed to cleanup bugreport file', err);
-        }
-      }
+      // Step 6: Cleanup
+      await this.performCleanup(bugreportPath, useZip);
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -128,7 +123,8 @@ export class BugreportAcquirer {
         duration,
         data: {
           format: useZip ? 'zip' : 'text',
-          deviceInfo
+          deviceInfo: deviceInfo,
+          cleanupPerformed: this.cleanupPerformed // Include cleanup status
         }
       };
 
@@ -153,14 +149,57 @@ export class BugreportAcquirer {
       this.logger.error('Bugreport acquisition failed', error);
       this.notifyProgress(onProgress, 0, `Error: ${errorMessage}`, 'failed');
 
+      // CRITICAL: Attempt cleanup even on error
+      if (bugreportPath) {
+        await this.performCleanup(bugreportPath, useZip);
+      }
+
       return {
         success: false,
         type: 'bugreport',
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
+        data: {
+          cleanupPerformed: this.cleanupPerformed
+        }
       };
+    }
+  }
+
+  /**
+   * Performs cleanup of bugreport file from device
+   */
+  private async performCleanup(bugreportPath: string, useZip: boolean): Promise<void> {
+    // Default to cleanup=true for forensic contexts
+    if (this.config.cleanupAfter === false) {
+      this.logger.warn('Cleanup disabled by configuration - file remains on device');
+      this.cleanupPerformed = false;
+      return;
+    }
+
+    try {
+      // Cleanup conditions:
+      // 1. Always cleanup legacy bugreport (they're in /sdcard/)
+      // 2. Cleanup bugreportz only if in /sdcard/ (system files in /data/ are auto-cleaned)
+      if (!useZip || bugreportPath.startsWith('/sdcard/')) {
+        this.logger.info('Attempting cleanup of bugreport file', { path: bugreportPath });
+        
+        await this.device.commands.shell(`rm ${bugreportPath}`);
+        
+        this.cleanupPerformed = true;
+        this.logger.info('Cleaned up bugreport file from device');
+      } else {
+        this.logger.info('Skipping cleanup - bugreportz file will be auto-cleaned by system');
+        this.cleanupPerformed = true; // System will clean it
+      }
+    } catch (err) {
+      this.cleanupPerformed = false;
+      this.logger.error('Failed to cleanup bugreport file from device', {
+        path: bugreportPath,
+        error: err
+      });
     }
   }
 
@@ -231,7 +270,6 @@ export class BugreportAcquirer {
       throw new Error('Web Crypto API not available');
     }
 
-    // Crea una nuova Uint8Array con ArrayBuffer garantito (non SharedArrayBuffer)
     const normalizedData = new Uint8Array(data);
     const hashBuffer = await crypto.subtle.digest('SHA-256', normalizedData);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -256,5 +294,12 @@ export class BugreportAcquirer {
         deviceInfo
       });
     }
+  }
+
+  /**
+   * Espone lo stato del cleanup per testing
+   */
+  public wasCleanupPerformed(): boolean {
+    return this.cleanupPerformed;
   }
 }
