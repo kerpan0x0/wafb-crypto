@@ -1,62 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ADBDevice } from '../../../src/adb/device';
+import {
+  createMockAdb,
+  createMockDeviceInfo,
+  createMockConnection,
+  createMockShellSocket
+} from '../../helpers/test-helpers';
 import type { Adb } from '@yume-chan/adb';
-import type { DeviceInfo } from '../../../src/adb/connection';
 
-const mockDeviceInfo: DeviceInfo = {
-  productName: 'Test Device',
-  manufacturerName: 'Test Manufacturer',
-  serialNumber: 'TEST123',
-  vendorId: 0x18D1,
-  productId: 0x4EE7
-};
-
-// Helper per creare mock shell socket
-const createMockShellSocket = (output: string) => ({
-  stdout: {
-    getReader: () => {
-      let readCount = 0;
-      return {
-        read: async () => {
-          if (readCount === 0) {
-            readCount++;
-            return { done: false, value: new TextEncoder().encode(output) };
-          }
-          return { done: true, value: undefined };
-        },
-        releaseLock: vi.fn()
-      };
-    }
-  },
-  stderr: new ReadableStream(),
-  stdin: new WritableStream(),
-  exit: Promise.resolve({ code: 0 })
-});
-
-const createMockAdb = () => ({
-  subprocess: {
-    shellProtocol: {
-      spawn: vi.fn()
-    },
-    spawn: vi.fn()
-  },
-  sync: vi.fn(),
-  close: vi.fn()
-} as unknown as Adb);
-
-const mockConnection = {
-  disconnect: vi.fn(),
-  isConnected: vi.fn().mockReturnValue(true)
-} as any;
-
-describe('ADBDevice', () => {
+describe('ADBDevice - Refactored', () => {
   let device: ADBDevice;
   let mockAdb: Adb;
+  let mockConnection: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAdb = createMockAdb();
-    device = new ADBDevice(mockAdb, mockDeviceInfo, mockConnection);
+    mockAdb = createMockAdb() as unknown as Adb;
+    mockConnection = createMockConnection();
+    device = new ADBDevice(
+      mockAdb, 
+      createMockDeviceInfo(), 
+      mockConnection
+    );
   });
 
   describe('getProperties', () => {
@@ -89,8 +54,8 @@ describe('ADBDevice', () => {
       const props = await device.getProperties();
 
       expect(props.androidVersion).toBe('Unknown');
-      expect(props.model).toBe(mockDeviceInfo.productName);
-      expect(props.manufacturer).toBe(mockDeviceInfo.manufacturerName);
+      expect(props.model).toBe('Test Device');
+      expect(props.manufacturer).toBe('Test Manufacturer');
     });
   });
 
