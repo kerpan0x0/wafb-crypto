@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger } from '@wafb/core';
-import { BugreportAcquirer, PackagesAcquirer } from '@wafb/core';
+import { BugreportAcquirer, LogcatAcquirer, PackagesAcquirer } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
 
@@ -91,6 +91,14 @@ export function AcquisitionPage() {
       bugreport: {
         Class: BugreportAcquirer,
         options: { computeHash: true, cleanupAfter: true }
+      },
+      logcat: {
+        Class: LogcatAcquirer,
+        options: {
+          buffer: 'all',
+          format: 'threadtime',
+          computeHash: true
+        }
       },
       packages: {
         Class: PackagesAcquirer,
@@ -306,7 +314,7 @@ export function AcquisitionPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {session.acquisitions.map((acq) => (
+                  {session.acquisitions.map((acq: any) => (
                     <div key={acq.type} className="flex items-center justify-between text-sm">
                       <span>{ACQUISITION_TYPES[acq.type].name}</span>
                       <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :

@@ -181,7 +181,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     }
 
     if (session) {
-      const acqInSession = session.acquisitions.find(a => a.type === type);
+      const acqInSession = session.acquisitions.find((a: any) => a.type === type);
       if (acqInSession) {
         acqInSession.result = result;
         acqInSession.status = result.success ? 'completed' : 'failed';
@@ -198,9 +198,9 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
 
       // Determina status finale
       const allCompleted = session.acquisitions.every(
-        a => a.status === 'completed' || a.status === 'skipped'
+        (a: any) => a.status === 'completed' || a.status === 'skipped'
       );
-      const anyFailed = session.acquisitions.some(a => a.status === 'failed');
+      const anyFailed = session.acquisitions.some((a: any) => a.status === 'failed');
 
       session.status = anyFailed ? 'failed' : allCompleted ? 'completed' : 'cancelled';
 
