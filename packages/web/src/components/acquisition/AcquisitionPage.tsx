@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger } from '@wafb/core';
-import { BugreportAcquirer } from '@wafb/core';
+import { BugreportAcquirer, PackagesAcquirer } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
 
@@ -86,12 +86,28 @@ export function AcquisitionPage() {
 
   // Execute single acquisition
   const executeAcquisition = async (type: AcquisitionType, device: ADBDevice) => {
-    // For now, only bugreport is implemented
-    if (type === 'bugreport') {
-      const acquirer = new BugreportAcquirer(device, {
-        computeHash: true,
-        cleanupAfter: true
-      });
+    // Configurazione degli acquirer: associa il tipo alla sua classe e opzioni
+    const acquirerConfig = {
+      bugreport: {
+        Class: BugreportAcquirer,
+        options: { computeHash: true, cleanupAfter: true }
+      },
+      packages: {
+        Class: PackagesAcquirer,
+        options: {
+          includeSystem: true,
+          includeDetails: true,
+          includePermissions: true,
+          computeHash: true
+        }
+      }
+    };
+
+    const config = acquirerConfig[type as keyof typeof acquirerConfig];
+
+    if (config) {
+      // Istanziamo l'acquirer dinamicamente
+      const acquirer = new config.Class(device, config.options);
 
       const result = await acquirer.acquire((progress: AcquisitionProgress) => {
         updateProgress(type, progress.progress, progress.message, progress.status);
@@ -99,7 +115,7 @@ export function AcquisitionPage() {
 
       completeAcquisition(type, result);
     } else {
-      // Placeholder for other types
+      // Gestione tipi non ancora implementati
       updateProgress(type, 0, 'Not implemented yet', 'skipped');
       completeAcquisition(type, {
         success: false,
@@ -107,7 +123,7 @@ export function AcquisitionPage() {
         startTime: new Date(),
         endTime: new Date(),
         duration: 0,
-        error: 'Not implemented yet'
+        error: `Acquirer for ${type} not implemented`
       });
     }
   };
@@ -246,9 +262,9 @@ export function AcquisitionPage() {
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full transition-all ${acq.status === 'completed' ? 'bg-green-500' :
-                                acq.status === 'failed' ? 'bg-red-500' :
-                                  acq.status === 'running' ? 'bg-blue-500' :
-                                    'bg-gray-400'
+                              acq.status === 'failed' ? 'bg-red-500' :
+                                acq.status === 'running' ? 'bg-blue-500' :
+                                  'bg-gray-400'
                               }`}
                             style={{ width: `${acq.progress}%` }}
                           />
@@ -294,9 +310,9 @@ export function AcquisitionPage() {
                     <div key={acq.type} className="flex items-center justify-between text-sm">
                       <span>{ACQUISITION_TYPES[acq.type].name}</span>
                       <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :
-                          acq.status === 'failed' ? 'text-red-600' :
-                            acq.status === 'running' ? 'text-blue-600' :
-                              'text-gray-500'
+                        acq.status === 'failed' ? 'text-red-600' :
+                          acq.status === 'running' ? 'text-blue-600' :
+                            'text-gray-500'
                         }`}>
                         {acq.status === 'completed' ? '✓ Done' :
                           acq.status === 'failed' ? '✗ Failed' :
