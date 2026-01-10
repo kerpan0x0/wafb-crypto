@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'happy-dom',
     setupFiles: ['./tests/setup.ts'],
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**\/*.test.ts'],
     exclude: ['node_modules', 'dist'],
     coverage: {
       provider: 'v8',
@@ -15,16 +15,16 @@ export default defineConfig({
         'node_modules',
         'dist',
         'tests',
-        '**/*.test.ts',
-        '**/*.spec.ts',
-        '**/types',
+        '**\/*.test.ts',
+        '**\/*.spec.ts',
+        '*\/types',
         'src/index.ts'
       ],
       thresholds: {
-        lines: 70,
-        functions: 70,
-        branches: 70,
-        statements: 70
+        lines: 80,
+        functions: 80,
+        branches: 75,
+        statements: 80
       }
     },
     testTimeout: 30000,
