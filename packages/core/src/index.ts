@@ -1,5 +1,3 @@
-// packages/core/src/index.ts
-
 // ============================================================================
 // ADB Core - Connection and Device Management
 // ============================================================================
@@ -32,6 +30,13 @@ export { ACQUISITION_TYPES } from './forensics/acquisition/types';
 // Acquisition Modules
 export { BugreportAcquirer } from './forensics/acquisition/bugreport';
 export type { BugreportConfig } from './forensics/acquisition/bugreport';
+
+export { PackagesAcquirer } from './forensics/acquisition/packages';
+export type { 
+  PackagesConfig, 
+  PackageInfo, 
+  PackagesData 
+} from './forensics/acquisition/packages';
 
 // ============================================================================
 // Utilities
