@@ -1,44 +1,29 @@
-import { DeviceInfo } from '../../adb/connection';
 import type { ADBDevice } from '../../adb/device';
-import { Logger } from '../../utils/logger';
+import { BaseAcquirer } from './base-acquirer';
 import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
 } from './types';
 
-/**
- * Opzioni specifiche per Bugreport
- */
 export interface BugreportConfig extends AcquisitionConfig {
-  /**
-   * Se usare bugreportz (zip) o bugreport legacy (txt)
-   */
   preferZip?: boolean;
-  
-  /**
-   * Se rimuovere il file dal dispositivo dopo il download
-  */
   cleanupAfter?: boolean;
 }
 
 /**
  * Acquirer per Bugreport Android
  */
-export class BugreportAcquirer {
-  private logger: Logger;
+export class BugreportAcquirer extends BaseAcquirer {
   private cleanupPerformed: boolean = false;
   
   constructor(
-    private device: ADBDevice,
-    private config: BugreportConfig = {}
+    device: ADBDevice,
+    private bugreportConfig: BugreportConfig = {}
   ) {
-    this.logger = new Logger('BugreportAcquirer');
+    super(device, bugreportConfig, 'bugreport');
   }
 
-  /**
-   * Esegue l'acquisizione del bugreport
-   */
   async acquire(
     onProgress?: (progress: AcquisitionProgress) => void
   ): Promise<AcquisitionResult> {
@@ -99,8 +84,11 @@ export class BugreportAcquirer {
         { type: useZip ? 'application/zip' : 'text/plain' }
       );
       
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `bugreport-${deviceInfo.model}-${timestamp}.${useZip ? 'zip' : 'txt'}`;
+      const fileName = this.generateFileName(
+        'bugreport',
+        useZip ? 'zip' : 'txt',
+        deviceInfo.model
+      );
       
       this.downloadBlob(blob, fileName);
 
@@ -124,11 +112,10 @@ export class BugreportAcquirer {
         data: {
           format: useZip ? 'zip' : 'text',
           deviceInfo: deviceInfo,
-          cleanupPerformed: this.cleanupPerformed // Include cleanup status
+          cleanupPerformed: this.cleanupPerformed
         }
       };
 
-      // Compute hash if requested
       if (this.config.computeHash) {
         result.hash = await this.computeHash(bugreportData);
       }
@@ -168,31 +155,31 @@ export class BugreportAcquirer {
     }
   }
 
+  // ============================================================================
+  // PRIVATE HELPERS
+  // ============================================================================
+
   /**
    * Performs cleanup of bugreport file from device
    */
   private async performCleanup(bugreportPath: string, useZip: boolean): Promise<void> {
-    // Default to cleanup=true for forensic contexts
-    if (this.config.cleanupAfter === false) {
+    if (this.bugreportConfig.cleanupAfter === false) {
       this.logger.warn('Cleanup disabled by configuration - file remains on device');
       this.cleanupPerformed = false;
       return;
     }
 
     try {
-      // Cleanup conditions:
-      // 1. Always cleanup legacy bugreport (they're in /sdcard/)
-      // 2. Cleanup bugreportz only if in /sdcard/ (system files in /data/ are auto-cleaned)
       if (!useZip || bugreportPath.startsWith('/sdcard/')) {
         this.logger.info('Attempting cleanup of bugreport file', { path: bugreportPath });
         
-        await this.device.commands.shell(`rm ${bugreportPath}`);
+        await this.device.commands.deleteFile(bugreportPath);
         
         this.cleanupPerformed = true;
         this.logger.info('Cleaned up bugreport file from device');
       } else {
         this.logger.info('Skipping cleanup - bugreportz file will be auto-cleaned by system');
-        this.cleanupPerformed = true; // System will clean it
+        this.cleanupPerformed = true;
       }
     } catch (err) {
       this.cleanupPerformed = false;
@@ -204,100 +191,31 @@ export class BugreportAcquirer {
   }
 
   /**
-   * Verifica se bugreportz è disponibile
+   * Check if bugreportz is available
    */
   private async checkBugreportzSupport(): Promise<boolean> {
-    if (this.config.preferZip === false) {
+    if (this.bugreportConfig.preferZip === false) {
       return false;
     }
 
-    try {
-      await this.device.commands.shell('which bugreportz', { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
+    return await this.device.commands.checkCommandExists('bugreportz');
   }
 
   /**
-   * Genera il bugreport sul dispositivo
+   * Generate bugreport on device
    */
   private async generateBugreport(useZip: boolean): Promise<string> {
     if (useZip) {
-      // Try bugreportz (faster, creates zip)
-      const output = await this.device.commands.shell('bugreportz', {
-        timeout: 180000 // 3 minutes
-      });
-
-      const zipMatch = output.match(/OK:(.+\.zip)/);
-      if (zipMatch) {
-        return zipMatch[1].trim();
-      }
-      
-      throw new Error('Could not parse bugreportz output');
+      return await this.device.commands.generateBugreportz(180000);
     } else {
-      // Fallback to regular bugreport
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const bugreportPath = `/sdcard/bugreport-${timestamp}.txt`;
-      
-      await this.device.commands.shell(`bugreport > ${bugreportPath}`, {
-        timeout: 180000
-      });
-      
-      return bugreportPath;
+      return await this.device.commands.generateBugreportLegacy(bugreportPath, 180000);
     }
   }
 
   /**
-   * Download blob come file
-   */
-  private downloadBlob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  /**
-   * Calcola hash SHA-256
-   */
-  private async computeHash(data: Uint8Array): Promise<string> {
-    if (typeof crypto === 'undefined' || !crypto.subtle) {
-      throw new Error('Web Crypto API not available');
-    }
-
-    const normalizedData = new Uint8Array(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', normalizedData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  /**
-   * Helper per notificare progresso
-   */
-  private notifyProgress(
-    onProgress: ((progress: AcquisitionProgress) => void) | undefined,
-    progress: number,
-    message: string,
-    status: AcquisitionProgress['status'],
-    deviceInfo?: AcquisitionProgress['deviceInfo']
-  ): void {
-    if (onProgress) {
-      onProgress({
-        progress: Math.min(100, Math.max(0, progress)),
-        message,
-        status,
-        deviceInfo
-      });
-    }
-  }
-
-  /**
-   * Espone lo stato del cleanup per testing
+   * Expose cleanup status for testing
    */
   public wasCleanupPerformed(): boolean {
     return this.cleanupPerformed;

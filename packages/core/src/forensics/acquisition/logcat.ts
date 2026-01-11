@@ -1,59 +1,19 @@
 import type { ADBDevice } from '../../adb/device';
-import { Logger } from '../../utils/logger';
+import { BaseAcquirer } from './base-acquirer';
 import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
 } from './types';
 
-/**
- * Opzioni specifiche per Logcat
- */
 export interface LogcatConfig extends AcquisitionConfig {
-  /**
-   * Buffer da acquisire (default: 'all')
-   * - main: Main log buffer
-   * - system: System log buffer
-   * - radio: Radio/telephony log buffer
-   * - events: Event log buffer
-   * - crash: Crash log buffer
-   * - all: Tutti i buffer
-   */
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';
-  
-  /**
-   * Numero massimo di righe da acquisire
-   */
   maxLines?: number;
-  
-  /**
-   * Filtro per tag/priorità (es. "ActivityManager:I *:S")
-   */
   filter?: string;
-  
-  /**
-   * Se usare dump mode (-d) invece di streaming
-   * In modalità dump, logcat si ferma dopo aver stampato i log esistenti
-   */
   dumpMode?: boolean;
-  
-  /**
-   * Formato output (default: 'threadtime')
-   * - brief: tag/priority/PID e messaggio
-   * - process: PID e messaggio
-   * - tag: tag e messaggio
-   * - thread: priority, PID, TID e messaggio
-   * - raw: solo messaggio
-   * - time: timestamp + priority/tag + messaggio
-   * - threadtime: timestamp + PID + TID + priority/tag + messaggio (default)
-   * - long: tutte le info su righe separate
-   */
   format?: 'brief' | 'process' | 'tag' | 'thread' | 'raw' | 'time' | 'threadtime' | 'long';
 }
 
-/**
- * Statistiche sui log acquisiti
- */
 export interface LogcatStats {
   totalLines: number;
   errorCount: number;
@@ -67,9 +27,6 @@ export interface LogcatStats {
   };
 }
 
-/**
- * Dati dell'acquisizione logcat
- */
 export interface LogcatData {
   stats: LogcatStats;
   buffer: string;
@@ -81,19 +38,14 @@ export interface LogcatData {
 /**
  * Acquirer per Logcat (system logs)
  */
-export class LogcatAcquirer {
-  private logger: Logger;
-  
+export class LogcatAcquirer extends BaseAcquirer {
   constructor(
-    private device: ADBDevice,
-    private config: LogcatConfig = {}
+    device: ADBDevice,
+    private logcatConfig: LogcatConfig = {}
   ) {
-    this.logger = new Logger('LogcatAcquirer');
+    super(device, logcatConfig, 'logcat');
   }
 
-  /**
-   * Esegue l'acquisizione dei log
-   */
   async acquire(
     onProgress?: (progress: AcquisitionProgress) => void
   ): Promise<AcquisitionResult> {
@@ -114,13 +66,8 @@ export class LogcatAcquirer {
         deviceInfo
       );
 
-      // Step 2: Build logcat command
-      this.notifyProgress(onProgress, 30, 'Preparing logcat command...', 'running');
-      const logcatCommand = this.buildLogcatCommand();
-      
-      this.logger.info('Logcat command', { command: logcatCommand });
-
-      // Step 3: Execute logcat
+      // Step 2: Execute logcat using ADBCommands.getLogcat()
+      // ✅ FIX: Ora usiamo la funzione già esistente invece di duplicare la logica
       this.notifyProgress(
         onProgress,
         40,
@@ -128,13 +75,16 @@ export class LogcatAcquirer {
         'running'
       );
       
-      const logOutput = await this.device.commands.shell(logcatCommand, {
-        timeout: this.config.timeout || 60000 // 60 seconds default
+      const logOutput = await this.device.commands.getLogcat({
+        buffer: this.logcatConfig.buffer,
+        maxLines: this.logcatConfig.maxLines,
+        filter: this.logcatConfig.filter,
+        dump: this.logcatConfig.dumpMode !== false // default true
       });
 
       this.notifyProgress(onProgress, 70, 'Processing log data...', 'running');
 
-      // Step 4: Analyze logs
+      // Step 3: Analyze logs
       const stats = this.analyzeLogcat(logOutput);
       
       this.logger.info('Logcat stats', stats);
@@ -146,44 +96,23 @@ export class LogcatAcquirer {
         'running'
       );
 
-      // Step 5: Create output file
+      // Step 4: Create output file
       this.notifyProgress(onProgress, 90, 'Preparing export...', 'running');
       
       const logcatData: LogcatData = {
         stats,
-        buffer: this.config.buffer || 'all',
-        format: this.config.format || 'threadtime',
+        buffer: this.logcatConfig.buffer || 'all',
+        format: this.logcatConfig.format || 'threadtime',
         deviceInfo,
         acquisitionTime: new Date().toISOString()
       };
 
-      // Create metadata file (JSON)
-      const metadataJson = JSON.stringify(logcatData, null, 2);
-      
       // Create combined output with metadata + logs
-      const combinedOutput = `# Logcat Acquisition Metadata
-# Device: ${deviceInfo.model}
-# Time: ${logcatData.acquisitionTime}
-# Buffer: ${logcatData.buffer}
-# Format: ${logcatData.format}
-# Total Lines: ${stats.totalLines}
-# Errors: ${stats.errorCount} | Warnings: ${stats.warningCount} | Info: ${stats.infoCount}
-#
-# ========================================
-# METADATA (JSON)
-# ========================================
-${metadataJson}
-#
-# ========================================
-# LOGCAT OUTPUT
-# ========================================
-${logOutput}`;
-
+      const combinedOutput = this.formatOutput(logcatData, logOutput);
       const logBytes = new TextEncoder().encode(combinedOutput);
       
       const blob = new Blob([logBytes], { type: 'text/plain' });
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `logcat-${deviceInfo.model}-${timestamp}.txt`;
+      const fileName = this.generateFileName('logcat', 'txt', deviceInfo.model);
       
       this.downloadBlob(blob, fileName);
 
@@ -192,7 +121,7 @@ ${logOutput}`;
 
       this.notifyProgress(onProgress, 100, 'Logcat acquisition completed!', 'completed');
 
-      // Step 6: Build result
+      // Step 5: Build result
       const result: AcquisitionResult = {
         success: true,
         type: 'logcat',
@@ -205,7 +134,7 @@ ${logOutput}`;
           totalLines: stats.totalLines,
           errorCount: stats.errorCount,
           warningCount: stats.warningCount,
-          buffer: this.config.buffer || 'all',
+          buffer: this.logcatConfig.buffer || 'all',
           deviceInfo
         }
       };
@@ -243,37 +172,28 @@ ${logOutput}`;
   }
 
   /**
-   * Costruisce il comando logcat con le opzioni configurate
+   * Formatta l'output con metadata
    */
-  private buildLogcatCommand(): string {
-    const parts: string[] = ['logcat'];
+  private formatOutput(data: LogcatData, logOutput: string): string {
+    const metadataJson = JSON.stringify(data, null, 2);
     
-    // Dump mode (default per forensics)
-    if (this.config.dumpMode !== false) {
-      parts.push('-d');
-    }
-    
-    // Buffer selection
-    if (this.config.buffer) {
-      parts.push(`-b ${this.config.buffer}`);
-    }
-    
-    // Format
-    if (this.config.format) {
-      parts.push(`-v ${this.config.format}`);
-    }
-    
-    // Max lines
-    if (this.config.maxLines) {
-      parts.push(`-t ${this.config.maxLines}`);
-    }
-    
-    // Filter (must be last)
-    if (this.config.filter) {
-      parts.push(this.config.filter);
-    }
-    
-    return parts.join(' ');
+    return `# Logcat Acquisition Metadata
+# Device: ${data.deviceInfo.model}
+# Time: ${data.acquisitionTime}
+# Buffer: ${data.buffer}
+# Format: ${data.format}
+# Total Lines: ${data.stats.totalLines}
+# Errors: ${data.stats.errorCount} | Warnings: ${data.stats.warningCount} | Info: ${data.stats.infoCount}
+#
+# ========================================
+# METADATA (JSON)
+# ========================================
+${metadataJson}
+#
+# ========================================
+# LOGCAT OUTPUT
+# ========================================
+${logOutput}`;
   }
 
   /**
@@ -295,9 +215,7 @@ ${logOutput}`;
     let lastTimestamp: string | null = null;
 
     for (const line of lines) {
-      // Count by priority level (format: "XX-XX XX:XX:XX.XXX  PID  TID L TAG: message")
-      // Priority is usually a single letter: V, D, I, W, E, F
-      
+      // Count by priority level
       if (line.includes(' E ') || line.includes('/E(')) {
         stats.errorCount++;
       } else if (line.includes(' W ') || line.includes('/W(')) {
@@ -310,7 +228,7 @@ ${logOutput}`;
         stats.verboseCount++;
       }
 
-      // Extract timestamps (format: "MM-DD HH:MM:SS.mmm")
+      // Extract timestamps
       const timestampMatch = line.match(/^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})/);
       if (timestampMatch) {
         const timestamp = timestampMatch[1];
@@ -329,53 +247,5 @@ ${logOutput}`;
     }
 
     return stats;
-  }
-
-  /**
-   * Download blob come file
-   */
-  private downloadBlob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  /**
-   * Calcola hash SHA-256
-   */
-  private async computeHash(data: Uint8Array): Promise<string> {
-    if (typeof crypto === 'undefined' || !crypto.subtle) {
-      throw new Error('Web Crypto API not available');
-    }
-
-    const normalizedData = new Uint8Array(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', normalizedData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  /**
-   * Helper per notificare progresso
-   */
-  private notifyProgress(
-    onProgress: ((progress: AcquisitionProgress) => void) | undefined,
-    progress: number,
-    message: string,
-    status: AcquisitionProgress['status'],
-    deviceInfo?: AcquisitionProgress['deviceInfo']
-  ): void {
-    if (onProgress) {
-      onProgress({
-        progress: Math.min(100, Math.max(0, progress)),
-        message,
-        status,
-        deviceInfo
-      });
-    }
   }
 }

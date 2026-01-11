@@ -8,7 +8,13 @@ export { ADBDevice } from './adb/device';
 export type { DeviceProperties } from './adb/device';
 
 export { ADBCommands } from './adb/commands';
-export type { ShellOptions, LogcatOptions } from './adb/commands';
+export type { 
+  ShellOptions, 
+  LogcatOptions,
+  PackageListOptions,
+  PackageInfoOptions,
+  PackageInfoResult
+} from './adb/commands';
 
 // ============================================================================
 // Forensics - Acquisition, Analysis, Export
@@ -26,6 +32,9 @@ export type {
 } from './forensics/acquisition/types';
 
 export { ACQUISITION_TYPES } from './forensics/acquisition/types';
+
+// Base Acquirer (NEW)
+export { BaseAcquirer } from './forensics/acquisition/base-acquirer';
 
 // Acquisition Modules
 export { BugreportAcquirer } from './forensics/acquisition/bugreport';
