@@ -20,7 +20,7 @@ export type {
 // Forensics - Acquisition, Analysis, Export
 // ============================================================================
 
-// Acquisition Base Types
+// Acquisition Base Types & BaseAcquirer
 export type {
   AcquisitionType,
   AcquisitionStatus,
@@ -29,12 +29,12 @@ export type {
   AcquisitionResult,
   AcquisitionMetadata,
   AcquisitionSession
-} from './forensics/acquisition/types';
+} from './forensics/acquisition/base-acquirer';
 
-export { ACQUISITION_TYPES } from './forensics/acquisition/types';
-
-// Base Acquirer (NEW)
-export { BaseAcquirer } from './forensics/acquisition/base-acquirer';
+export { 
+  ACQUISITION_TYPES,
+  BaseAcquirer 
+} from './forensics/acquisition/base-acquirer';
 
 // Acquisition Modules
 export { BugreportAcquirer } from './forensics/acquisition/bugreport';

@@ -4,7 +4,7 @@ import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
-} from './types';
+} from './base-acquirer';
 
 export interface PackagesConfig extends AcquisitionConfig {
   includeSystem?: boolean;
