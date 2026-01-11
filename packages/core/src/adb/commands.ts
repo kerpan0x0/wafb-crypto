@@ -1,5 +1,3 @@
-// packages/core/src/adb/commands.ts
-
 import type { Adb } from '@yume-chan/adb';
 import { Logger } from '../utils/logger';
 import { ADBCommandError } from '../utils/errors';
@@ -16,6 +14,32 @@ export interface LogcatOptions {
   dump?: boolean;
 }
 
+export interface PackageListOptions {
+  includeSystem?: boolean;
+  timeout?: number;
+}
+
+export interface PackageInfoOptions {
+  includePermissions?: boolean;
+  timeout?: number;
+}
+
+export interface PackageInfoResult {
+  packageName: string;
+  versionName: string;
+  versionCode: string;
+  installLocation: string;
+  firstInstallTime: string;
+  lastUpdateTime: string;
+  targetSdk?: number;
+  minSdk?: number;
+  permissions?: string[];
+}
+
+/**
+ * ADBCommands - Centralized ADB command execution
+ * All acquirers should use these methods instead of calling shell() directly
+ */
 export class ADBCommands {
   private logger: Logger;
 
@@ -23,9 +47,12 @@ export class ADBCommands {
     this.logger = new Logger('ADBCommands');
   }
 
+  // ============================================================================
+  // BASIC COMMANDS
+  // ============================================================================
+
   /**
    * Executes a shell command with optional timeout
-   * Usa l'API subprocess.shell() che restituisce un socket
    */
   async shell(command: string, options: ShellOptions = {}): Promise<string> {
     const { timeout } = options;
@@ -70,13 +97,17 @@ export class ADBCommands {
     return props;
   }
 
+  // ============================================================================
+  // PACKAGE MANAGEMENT
+  // ============================================================================
+
   /**
    * Lists installed packages
    */
-  async listPackages(options: { includeSystem?: boolean } = {}): Promise<string[]> {
-    const { includeSystem = true } = options;
+  async listPackages(options: PackageListOptions = {}): Promise<string[]> {
+    const { includeSystem = true, timeout = 30000 } = options;
     const command = includeSystem ? 'pm list packages' : 'pm list packages -3';
-    const output = await this.shell(command);
+    const output = await this.shell(command, { timeout });
 
     return output
       .split('\n')
@@ -88,25 +119,44 @@ export class ADBCommands {
   /**
    * Gets detailed package information
    */
-  async getPackageInfo(packageName: string) {
+  async getPackageInfo(
+    packageName: string, 
+    options: PackageInfoOptions = {}
+  ): Promise<PackageInfoResult | null> {
+    const { includePermissions = false, timeout = 10000 } = options;
+    
     try {
-      const output = await this.shell(`dumpsys package ${packageName}`);
+      const output = await this.shell(`dumpsys package ${packageName}`, { timeout });
+      
       if (!output || output.trim().length === 0) {
         return null;
       }
 
-      return {
+      const info: PackageInfoResult = {
+        packageName,
         versionName: this.extractField(output, 'versionName') || 'Unknown',
         versionCode: this.extractField(output, 'versionCode') || 'Unknown',
         installLocation: this.extractField(output, 'codePath') || 'Unknown',
         firstInstallTime: this.extractField(output, 'firstInstallTime') || 'Unknown',
-        lastUpdateTime: this.extractField(output, 'lastUpdateTime') || 'Unknown'
+        lastUpdateTime: this.extractField(output, 'lastUpdateTime') || 'Unknown',
+        targetSdk: this.extractNumber(output, 'targetSdk'),
+        minSdk: this.extractNumber(output, 'minSdk')
       };
+
+      if (includePermissions) {
+        info.permissions = this.extractPermissions(output);
+      }
+
+      return info;
     } catch (error) {
       this.logger.debug('Failed to get package info', { packageName, error });
       return null;
     }
   }
+
+  // ============================================================================
+  // LOGGING
+  // ============================================================================
 
   /**
    * Gets logcat output
@@ -121,6 +171,48 @@ export class ADBCommands {
 
     return this.shell(args.join(' '));
   }
+
+  // ============================================================================
+  // BUGREPORT - NEW METHODS
+  // ============================================================================
+
+  /**
+   * Check if bugreportz command is available
+   */
+  async checkCommandExists(command: string): Promise<boolean> {
+    try {
+      await this.shell(`which ${command}`, { timeout: 5000 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Generate bugreport using bugreportz (zip format)
+   */
+  async generateBugreportz(timeout: number = 180000): Promise<string> {
+    const output = await this.shell('bugreportz', { timeout });
+    const zipMatch = output.match(/OK:(.+\.zip)/);
+    
+    if (zipMatch) {
+      return zipMatch[1].trim();
+    }
+    
+    throw new ADBCommandError('Could not parse bugreportz output');
+  }
+
+  /**
+   * Generate legacy bugreport (text format)
+   */
+  async generateBugreportLegacy(outputPath: string, timeout: number = 180000): Promise<string> {
+    await this.shell(`bugreport > ${outputPath}`, { timeout });
+    return outputPath;
+  }
+
+  // ============================================================================
+  // FILE OPERATIONS
+  // ============================================================================
 
   /**
    * Reads a file via Sync service
@@ -162,12 +254,63 @@ export class ADBCommands {
   }
 
   /**
-   * Helper per estrarre campi da dumpsys output
+   * Delete file from device
+   */
+  async deleteFile(path: string): Promise<void> {
+    await this.shell(`rm ${path}`);
+  }
+
+  // ============================================================================
+  // HELPER METHODS (PRIVATE)
+  // ============================================================================
+
+  /**
+   * Extract field from dumpsys output
    */
   private extractField(output: string, field: string): string | null {
     const regex = new RegExp(`${field}=([^\\s]+)`, 'i');
     const match = output.match(regex);
     return match?.[1] || null;
+  }
+
+  /**
+   * Extract number from dumpsys output
+   */
+  private extractNumber(output: string, field: string): number | undefined {
+    const value = this.extractField(output, field);
+    if (!value) return undefined;
+    
+    const num = parseInt(value, 10);
+    return isNaN(num) ? undefined : num;
+  }
+
+  /**
+   * Extract permissions from dumpsys package output
+   */
+  private extractPermissions(output: string): string[] {
+    const permissions: string[] = [];
+    const lines = output.split('\n');
+    let inPermissionsSection = false;
+    
+    for (const line of lines) {
+      if (line.includes('requested permissions:')) {
+        inPermissionsSection = true;
+        continue;
+      }
+      
+      if (inPermissionsSection) {
+        if (line.trim().startsWith('android.permission.')) {
+          const permission = line.trim().split(':')[0];
+          if (permission) {
+            permissions.push(permission);
+          }
+        } else if (!line.trim().startsWith('android.') && line.trim().length > 0) {
+          break;
+        }
+      }
+    }
+    
+    return permissions;
   }
 
   /**
