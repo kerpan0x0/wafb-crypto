@@ -115,7 +115,7 @@ export function AcquisitionPage() {
 
     if (config) {
       // Istanziamo l'acquirer dinamicamente
-      const acquirer = new config.Class(device, config.options);
+      const acquirer = new config.Class(device, config);
 
       const result = await acquirer.acquire((progress: AcquisitionProgress) => {
         updateProgress(type, progress.progress, progress.message, progress.status);
@@ -314,7 +314,7 @@ export function AcquisitionPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {session.acquisitions.map((acq: any) => (
+                  {session.acquisitions.map((acq) => (
                     <div key={acq.type} className="flex items-center justify-between text-sm">
                       <span>{ACQUISITION_TYPES[acq.type].name}</span>
                       <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :
