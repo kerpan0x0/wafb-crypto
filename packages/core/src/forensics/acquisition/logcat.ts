@@ -1,10 +1,10 @@
 import type { ADBDevice } from '../../adb/device';
-import { BaseAcquirer } from './base-acquirer';
+import { BaseAcquirer } from './base';
 import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
-} from './base-acquirer';
+} from './base';
 
 export interface LogcatConfig extends AcquisitionConfig {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';

@@ -135,3 +135,129 @@ export function createMockProgressCallback() {
     getProgressHistory: () => callback.mock.calls.map(call => call[0])
   };
 }
+
+/**
+ * Crea un mock completo di ADBDevice con ADBCommands mockati
+ */
+export function createMockADBDeviceWithCommands(commandOverrides: {
+  listPackages?: string[];
+  getPackageInfo?: any;
+  getLogcat?: string;
+  checkCommandExists?: boolean;
+  generateBugreportz?: string;
+  generateBugreportLegacy?: string;
+  readFile?: Uint8Array;
+  deleteFile?: any;
+} = {}) {
+  const mockCommands = {
+    // Shell commands
+    shell: vi.fn().mockResolvedValue(''),
+    getprop: vi.fn().mockResolvedValue({}),
+    
+    // Package management
+    listPackages: vi.fn().mockResolvedValue(commandOverrides.listPackages || [
+      'com.android.vending',
+      'com.example.app',
+      'com.google.android.gms'
+    ]),
+    
+    getPackageInfo: vi.fn().mockImplementation((packageName: string) => {
+      if (commandOverrides.getPackageInfo !== undefined) {
+        return Promise.resolve(commandOverrides.getPackageInfo);
+      }
+      
+      return Promise.resolve({
+        packageName,
+        versionName: '1.0.0',
+        versionCode: '100',
+        installLocation: '/data/app/package',
+        firstInstallTime: '2024-01-01 10:00:00',
+        lastUpdateTime: '2024-01-15 14:30:00',
+        targetSdk: 33,
+        minSdk: 21
+      });
+    }),
+
+    // Logcat
+    getLogcat: vi.fn().mockResolvedValue(
+      commandOverrides.getLogcat !== undefined 
+        ? commandOverrides.getLogcat 
+        : '01-01 10:00:00.000  1234  5678 I Tag: Info message\n' +
+          '01-01 10:00:01.000  1234  5678 W Tag: Warning message\n' +
+          '01-01 10:00:02.000  1234  5678 E Tag: Error message'
+    ),
+
+    // Bugreport
+    checkCommandExists: vi.fn().mockResolvedValue(commandOverrides.checkCommandExists ?? true),
+    generateBugreportz: vi.fn().mockResolvedValue(
+      commandOverrides.generateBugreportz || 'OK:/data/bugreport-2024-01-01.zip'
+    ),
+    generateBugreportLegacy: vi.fn().mockResolvedValue(
+      commandOverrides.generateBugreportLegacy || '/sdcard/bugreport.txt'
+    ),
+    
+    // File operations
+    readFile: vi.fn().mockResolvedValue(
+      commandOverrides.readFile || new TextEncoder().encode('mock file content')
+    ),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+    deleteFile: vi.fn().mockResolvedValue(commandOverrides.deleteFile)
+  };
+
+  const mockDevice = {
+    commands: mockCommands,
+    getProperties: vi.fn().mockResolvedValue(createMockDeviceProperties()),
+    isRooted: vi.fn().mockResolvedValue(false),
+    getBatteryInfo: vi.fn().mockResolvedValue({
+      level: 85,
+      temperature: 28,
+      voltage: 4200,
+      status: '2'
+    }),
+    info: createMockDeviceInfo(),
+    isConnected: vi.fn().mockReturnValue(true),
+    disconnect: vi.fn().mockResolvedValue(undefined)
+  };
+
+  return mockDevice;
+}
+
+/**
+ * Mock globali per DOM APIs usate dagli acquirer (download)
+ */
+export function setupAcquirerDOMMocks() {
+  // Mock anchor element per download
+  const mockAnchor = {
+    href: '',
+    download: '',
+    click: vi.fn(),
+    remove: vi.fn()
+  };
+
+  const createElementSpy = vi.spyOn(document, 'createElement')
+    .mockReturnValue(mockAnchor as any);
+  
+  const appendChildSpy = vi.spyOn(document.body, 'appendChild')
+    .mockImplementation(() => mockAnchor as any);
+  
+  const removeChildSpy = vi.spyOn(document.body, 'removeChild')
+    .mockImplementation(() => mockAnchor as any);
+
+  // Mock URL APIs
+  const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL')
+    .mockReturnValue('blob:mock-url');
+  
+  const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL')
+    .mockImplementation(() => {});
+
+  return {
+    mockAnchor,
+    cleanup: () => {
+      createElementSpy.mockRestore();
+      appendChildSpy.mockRestore();
+      removeChildSpy.mockRestore();
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
+    }
+  };
+}

@@ -29,12 +29,12 @@ export type {
   AcquisitionResult,
   AcquisitionMetadata,
   AcquisitionSession
-} from './forensics/acquisition/base-acquirer';
+} from './forensics/acquisition/base';
 
 export { 
   ACQUISITION_TYPES,
   BaseAcquirer 
-} from './forensics/acquisition/base-acquirer';
+} from './forensics/acquisition/base';
 
 // Acquisition Modules
 export { BugreportAcquirer } from './forensics/acquisition/bugreport';
