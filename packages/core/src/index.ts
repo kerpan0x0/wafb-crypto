@@ -72,6 +72,9 @@ export type {
   SystemInfoData
 } from './forensics/acquisition/system';
 
+export { RootBinariesAcquirer } from './forensics/acquisition/root-binaries';
+export type { RootBinariesConfig } from './forensics/acquisition/root-binaries';
+
 // ============================================================================
 // Utilities
 // ============================================================================

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer } from '@wafb/core';
-import { BugreportAcquirer, LogcatAcquirer, PackagesAcquirer } from '@wafb/core';
+import { BugreportAcquirer, LogcatAcquirer, PackagesAcquirer, RootBinariesAcquirer } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
 
@@ -86,7 +86,6 @@ export function AcquisitionPage() {
 
   // Execute single acquisition
   const executeAcquisition = async (type: AcquisitionType, device: ADBDevice) => {
-    // Configurazione degli acquirer: associa il tipo alla sua classe e opzioni
     const acquirerConfig = {
       bugreport: {
         Class: BugreportAcquirer,
@@ -119,7 +118,11 @@ export function AcquisitionPage() {
           includeSensors: true,
           computeHash: true 
         }
-      }
+      },
+      rootBinaries: {
+        Class: RootBinariesAcquirer,
+        options: {}
+      },
     };
 
     const config = acquirerConfig[type as keyof typeof acquirerConfig];

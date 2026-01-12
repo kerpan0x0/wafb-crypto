@@ -6,13 +6,12 @@ import { Logger } from '../../utils/logger';
 // TYPES
 // ============================================================================
 
-/**
- * Tipi di acquisizione disponibili
- */
-export type AcquisitionType = 
+export type AcquisitionType =
   | 'bugreport'
   | 'packages'
   | 'logcat'
+  | 'root_binaries'
+  | 'env' 
   | 'system_info'
   | 'databases'
   | 'media'
@@ -20,28 +19,19 @@ export type AcquisitionType =
   | 'browser'
   | 'network';
 
-/**
- * Status di un'acquisizione
- */
-export type AcquisitionStatus = 
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'skipped';
+export type AcquisitionStatus =
+  | 'pending'      // In attesa di esecuzione
+  | 'running'      // In esecuzione
+  | 'completed'    // Completata con successo
+  | 'failed'       // Fallita
+  | 'skipped';     // Saltata
 
-/**
- * Configurazione base per un'acquisizione
- */
 export interface AcquisitionConfig {
   timeout?: number;
   computeHash?: boolean;
   options?: Record<string, unknown>;
 }
 
-/**
- * Progresso di un'acquisizione
- */
 export interface AcquisitionProgress {
   progress: number;
   message: string;
@@ -49,9 +39,6 @@ export interface AcquisitionProgress {
   deviceInfo?: DeviceProperties;
 }
 
-/**
- * Risultato di un'acquisizione
- */
 export interface AcquisitionResult {
   success: boolean;
   type: AcquisitionType;
@@ -65,9 +52,6 @@ export interface AcquisitionResult {
   error?: string;
 }
 
-/**
- * Metadati di un tipo di acquisizione
- */
 export interface AcquisitionMetadata {
   id: AcquisitionType;
   name: string;
@@ -80,9 +64,6 @@ export interface AcquisitionMetadata {
   defaultEnabled: boolean;
 }
 
-/**
- * Stato di una sessione di acquisizione multipla
- */
 export interface AcquisitionSession {
   id: string;
   startTime: Date;
@@ -98,9 +79,6 @@ export interface AcquisitionSession {
   status: 'preparing' | 'running' | 'completed' | 'failed' | 'cancelled';
 }
 
-/**
- * Registry dei tipi di acquisizione disponibili
- */
 export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
   bugreport: {
     id: 'bugreport',
@@ -200,16 +178,20 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false,
     estimatedDuration: 5,
     defaultEnabled: true
+  },
+  root_binaries: {
+    id: 'root_binaries',
+    name: 'Root Binaries',
+    description: 'Collection of root binaries present on the device',
+    category: 'system',
+    icon: '🔧',
+    minSdkVersion: 14,
+    requiresRoot: false, // TODO check if this should be true
+    estimatedDuration: 120,
+    defaultEnabled: false
   }
 };
 
-// ============================================================================
-// BASE ACQUIRER CLASS
-// ============================================================================
-
-/**
- * Classe base per tutti gli acquirer
- */
 export abstract class BaseAcquirer {
   protected logger: Logger;
 
@@ -221,9 +203,6 @@ export abstract class BaseAcquirer {
     this.logger = new Logger(`${acquisitionType}Acquirer`);
   }
 
-  /**
-   * Helper per notificare progresso
-   */
   protected notifyProgress(
     onProgress: ((progress: AcquisitionProgress) => void) | undefined,
     progress: number,
@@ -241,9 +220,6 @@ export abstract class BaseAcquirer {
     }
   }
 
-  /**
-   * Download blob come file
-   */
   protected downloadBlob(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -255,9 +231,6 @@ export abstract class BaseAcquirer {
     URL.revokeObjectURL(url);
   }
 
-  /**
-   * Calcola hash SHA-256
-   */
   protected async computeHash(data: Uint8Array): Promise<string> {
     if (typeof crypto === 'undefined' || !crypto.subtle) {
       throw new Error('Web Crypto API not available');
@@ -269,9 +242,6 @@ export abstract class BaseAcquirer {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  /**
-   * Genera nome file con timestamp
-   */
   protected generateFileName(prefix: string, extension: string, deviceModel: string): string {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     return `${prefix}-${deviceModel}-${timestamp}.${extension}`;
