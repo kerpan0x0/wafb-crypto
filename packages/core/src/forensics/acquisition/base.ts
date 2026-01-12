@@ -189,6 +189,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false, // TODO check if this should be true
     estimatedDuration: 120,
     defaultEnabled: false
+  },
+  env: {
+    id: 'env',
+    name: 'Environment Variables',
+    description: 'Collection of environment variables from the device',
+    category: 'system',
+    icon: '🌐',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 5,
+    defaultEnabled: true
   }
 };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer } from '@wafb/core';
-import { BugreportAcquirer, LogcatAcquirer, PackagesAcquirer, RootBinariesAcquirer } from '@wafb/core';
+import { EnvAcquirer, BugreportAcquirer, LogcatAcquirer, PackagesAcquirer, RootBinariesAcquirer } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
 
@@ -123,6 +123,10 @@ export function AcquisitionPage() {
         Class: RootBinariesAcquirer,
         options: {}
       },
+      env: {
+        Class: EnvAcquirer,
+        options: {}
+      }
     };
 
     const config = acquirerConfig[type as keyof typeof acquirerConfig];

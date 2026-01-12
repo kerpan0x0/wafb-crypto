@@ -48,6 +48,9 @@ export {
   BaseAcquirer 
 } from './forensics/acquisition/base';
 
+export { EnvAcquirer } from './forensics/acquisition/env';
+export type { EnvConfig } from './forensics/acquisition/env';
+
 // Acquisition Modules
 export { BugreportAcquirer } from './forensics/acquisition/bugreport';
 export type { BugreportConfig } from './forensics/acquisition/bugreport';
