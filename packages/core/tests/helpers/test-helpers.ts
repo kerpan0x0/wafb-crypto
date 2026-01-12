@@ -252,6 +252,8 @@ export function setupAcquirerDOMMocks() {
 
   return {
     mockAnchor,
+    createObjectURLSpy,
+    revokeObjectURLSpy,
     cleanup: () => {
       createElementSpy.mockRestore();
       appendChildSpy.mockRestore();

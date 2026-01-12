@@ -1,5 +1,5 @@
 import type { ADBDevice } from '../../adb/device';
-import type { DeviceProperties } from '../../adb/device';
+import type { DeviceProperties } from '../../adb/base';
 import { Logger } from '../../utils/logger';
 
 // ============================================================================

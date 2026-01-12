@@ -1,40 +1,16 @@
 import type { Adb } from '@yume-chan/adb';
+import type {
+  ShellOptions,
+  LogcatOptions,
+  PackageListOptions,
+  PackageInfoOptions,
+  PackageInfoResult
+}
+  from './base';
 import { Logger } from '../utils/logger';
 import { ADBCommandError } from '../utils/errors';
 import { readStreamAsText, readStreamAsBytes } from '../utils/stream-helpers';
 
-export interface ShellOptions {
-  timeout?: number;
-}
-
-export interface LogcatOptions {
-  buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'default' | 'all';
-  filter?: string;
-  maxLines?: number;
-  dump?: boolean;
-}
-
-export interface PackageListOptions {
-  includeSystem?: boolean;
-  timeout?: number;
-}
-
-export interface PackageInfoOptions {
-  includePermissions?: boolean;
-  timeout?: number;
-}
-
-export interface PackageInfoResult {
-  packageName: string;
-  versionName: string;
-  versionCode: string;
-  installLocation: string;
-  firstInstallTime: string;
-  lastUpdateTime: string;
-  targetSdk?: number;
-  minSdk?: number;
-  permissions?: string[];
-}
 
 /**
  * ADBCommands - Centralized ADB command execution
@@ -120,14 +96,14 @@ export class ADBCommands {
    * Gets detailed package information
    */
   async getPackageInfo(
-    packageName: string, 
+    packageName: string,
     options: PackageInfoOptions = {}
   ): Promise<PackageInfoResult | null> {
     const { includePermissions = false, timeout = 10000 } = options;
-    
+
     try {
       const output = await this.shell(`dumpsys package ${packageName}`, { timeout });
-      
+
       if (!output || output.trim().length === 0) {
         return null;
       }
@@ -194,11 +170,11 @@ export class ADBCommands {
   async generateBugreportz(timeout: number = 180000): Promise<string> {
     const output = await this.shell('bugreportz', { timeout });
     const zipMatch = output.match(/OK:(.+\.zip)/);
-    
+
     if (zipMatch) {
       return zipMatch[1].trim();
     }
-    
+
     throw new ADBCommandError('Could not parse bugreportz output');
   }
 
@@ -279,7 +255,7 @@ export class ADBCommands {
   private extractNumber(output: string, field: string): number | undefined {
     const value = this.extractField(output, field);
     if (!value) return undefined;
-    
+
     const num = parseInt(value, 10);
     return isNaN(num) ? undefined : num;
   }
@@ -291,13 +267,13 @@ export class ADBCommands {
     const permissions: string[] = [];
     const lines = output.split('\n');
     let inPermissionsSection = false;
-    
+
     for (const line of lines) {
       if (line.includes('requested permissions:')) {
         inPermissionsSection = true;
         continue;
       }
-      
+
       if (inPermissionsSection) {
         if (line.trim().startsWith('android.permission.')) {
           const permission = line.trim().split(':')[0];
@@ -309,7 +285,7 @@ export class ADBCommands {
         }
       }
     }
-    
+
     return permissions;
   }
 

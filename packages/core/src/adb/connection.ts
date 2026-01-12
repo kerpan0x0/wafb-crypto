@@ -1,4 +1,5 @@
 import type { Adb } from '@yume-chan/adb';
+import type { ConnectionOptions, DeviceInfo } from './base';
 import { Adb as AdbClass } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import { AdbDaemonTransport } from '@yume-chan/adb';
@@ -6,19 +7,6 @@ import AdbWebCredentialStore from '@yume-chan/adb-credential-web';
 import { ADBDevice } from './device';
 import { ADBConnectionError, ADBDeviceNotFoundError } from '../utils/errors';
 import { Logger } from '../utils/logger';
-
-export interface ConnectionOptions {
-  retryAttempts?: number;
-  retryDelay?: number;
-}
-
-export interface DeviceInfo {
-  productName: string;
-  manufacturerName: string;
-  serialNumber: string;
-  vendorId: number;
-  productId: number;
-}
 
 export class ADBConnection {
   private credentialStore: AdbWebCredentialStore;

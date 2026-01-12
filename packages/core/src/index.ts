@@ -1,20 +1,32 @@
 // ============================================================================
 // ADB Core - Connection and Device Management
 // ============================================================================
+
 export { ADBConnection } from './adb/connection';
-export type { ConnectionOptions, DeviceInfo } from './adb/connection';
-
 export { ADBDevice } from './adb/device';
-export type { DeviceProperties } from './adb/device';
-
 export { ADBCommands } from './adb/commands';
-export type { 
-  ShellOptions, 
+
+// Export all ADB types from single source
+export type {
+  // Connection types
+  DeviceInfo,
+  ConnectionOptions,
+  
+  // Device types
+  DeviceProperties,
+  BatteryInfo,
+  NetworkInfo,
+  StorageInfo,
+  MemoryInfo,
+  SensorInfo,
+  
+  // Command types
+  ShellOptions,
   LogcatOptions,
   PackageListOptions,
   PackageInfoOptions,
   PackageInfoResult
-} from './adb/commands';
+} from './adb/base';
 
 // ============================================================================
 // Forensics - Acquisition, Analysis, Export
@@ -54,9 +66,16 @@ export type {
   LogcatData
 } from './forensics/acquisition/logcat';
 
+export { SystemInfoAcquirer } from './forensics/acquisition/system';
+export type {
+  SystemInfoConfig,
+  SystemInfoData
+} from './forensics/acquisition/system';
+
 // ============================================================================
 // Utilities
 // ============================================================================
+
 export { Logger } from './utils/logger';
 export type { LogLevel, LogEntry } from './utils/logger';
 
@@ -77,4 +96,5 @@ export {
 // ============================================================================
 // Re-exports from @yume-chan/adb for convenience
 // ============================================================================
+
 export type { Adb } from '@yume-chan/adb';
