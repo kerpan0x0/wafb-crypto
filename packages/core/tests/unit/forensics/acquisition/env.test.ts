@@ -26,8 +26,9 @@ LD_LIBRARY_PATH=/system/lib`;
   beforeEach(() => {
     vi.clearAllMocks();
     
-    device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
-    device.commands.shell = vi.fn().mockResolvedValue(mockEnvOutput);
+    device = createMockADBDeviceWithCommands({
+      shellOutput: mockEnvOutput
+    }) as unknown as ADBDevice;
     
     domMocks = setupAcquirerDOMMocks();
     acquirer = new EnvAcquirer(device);
@@ -44,14 +45,13 @@ LD_LIBRARY_PATH=/system/lib`;
       expect(result.success).toBe(true);
       expect(result.type).toBe('env');
       expect(result.fileName).toBe('env.txt');
-        expect(device.commands.shell).toHaveBeenCalledWith('env');
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
       it('should call env command', async () => {
       await acquirer.acquire();
 
-        expect(device.commands.shell).toHaveBeenCalledWith('env');
-      expect(device.commands.shell).toHaveBeenCalledTimes(1);
+        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -93,7 +93,12 @@ LD_LIBRARY_PATH=/system/lib`;
     });
 
     it('should handle empty environment variables', async () => {
-      device.commands.shell = vi.fn().mockResolvedValue('');
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: ''
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
@@ -127,12 +132,12 @@ LD_LIBRARY_PATH=/system/lib`;
     });
 
     it('should handle shell command errors', async () => {
-      device.commands.shell = vi.fn().mockRejectedValue(new Error('Shell command failed'));
+      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(new Error('Shell command failed'));
 
       const result = await acquirer.acquire();
 
-      expect(result.success).toBe(true); // Should still succeed as error is caught
-        expect(device.commands.shell).toHaveBeenCalledWith('env');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Shell command failed');
     });
 
     it('should report progress on error', async () => {
@@ -168,16 +173,26 @@ LD_LIBRARY_PATH=/system/lib`;
 
   describe('environment variable parsing', () => {
     it('should handle PATH variable', async () => {
-      device.commands.shell = vi.fn().mockResolvedValue('PATH=/system/bin:/system/xbin');
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: 'PATH=/system/bin:/system/xbin'
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-        expect(device.commands.shell).toHaveBeenCalledWith('env');
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should handle ANDROID_DATA variable', async () => {
-      device.commands.shell = vi.fn().mockResolvedValue('ANDROID_DATA=/data');
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: 'ANDROID_DATA=/data'
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
@@ -188,7 +203,12 @@ LD_LIBRARY_PATH=/system/lib`;
       const multiLineEnv = `VAR1=value1
 VAR2=value2
 VAR3=value3`;
-      device.commands.shell = vi.fn().mockResolvedValue(multiLineEnv);
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: multiLineEnv
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
@@ -196,7 +216,12 @@ VAR3=value3`;
     });
 
     it('should handle environment variables with special characters', async () => {
-      device.commands.shell = vi.fn().mockResolvedValue('PATH=/system/bin:/system/xbin:$HOME');
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: 'PATH=/system/bin:/system/xbin:$HOME'
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
@@ -204,7 +229,12 @@ VAR3=value3`;
     });
 
     it('should handle environment variables with spaces', async () => {
-      device.commands.shell = vi.fn().mockResolvedValue('DESCRIPTION=Android System Variables');
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: 'DESCRIPTION=Android System Variables'
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
@@ -339,8 +369,7 @@ VAR3=value3`;
       await acquirer.acquire();
 
       expect(device.getProperties).toHaveBeenCalledTimes(1);
-      expect(device.commands.shell).toHaveBeenCalledTimes(1);
-        expect(device.commands.shell).toHaveBeenCalledWith('env');
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should pass device info to result', async () => {
@@ -380,12 +409,17 @@ ANDROID_STORAGE=/storage
 EXTERNAL_STORAGE=/sdcard
 BOOTCLASSPATH=/system/framework/core.jar`;
       
-      device.commands.shell = vi.fn().mockResolvedValue(standardEnv);
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: standardEnv
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-        expect(device.commands.shell).toHaveBeenCalledWith('env');
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should handle shell user environment', async () => {
@@ -394,7 +428,12 @@ HOME=/data
 TMPDIR=/data/local/tmp
 SHELL=/system/bin/sh`;
       
-      device.commands.shell = vi.fn().mockResolvedValue(shellEnv);
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: shellEnv
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 
@@ -405,7 +444,12 @@ SHELL=/system/bin/sh`;
       const libEnv = `LD_LIBRARY_PATH=/system/lib:/vendor/lib
 LD_PRELOAD=/system/lib/libpreload.so`;
       
-      device.commands.shell = vi.fn().mockResolvedValue(libEnv);
+      domMocks.cleanup();
+      device = createMockADBDeviceWithCommands({
+        shellOutput: libEnv
+      }) as unknown as ADBDevice;
+      domMocks = setupAcquirerDOMMocks();
+      acquirer = new EnvAcquirer(device);
 
       const result = await acquirer.acquire();
 

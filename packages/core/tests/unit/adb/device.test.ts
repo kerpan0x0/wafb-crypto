@@ -88,27 +88,6 @@ describe('ADBDevice - Refactored', () => {
     });
   });
 
-  describe('getBatteryInfo', () => {
-    it('should return battery information', async () => {
-      const output = `Current Battery Service state:
-  level: 85
-  temperature: 280
-  voltage: 4200
-  status: 2`;
-
-      (mockAdb.subprocess.shellProtocol as any).spawn.mockResolvedValue(
-        createMockShellSocket(output)
-      );
-
-      const batteryInfo = await device.getBatteryInfo();
-
-      expect(batteryInfo.level).toBe(85);
-      expect(batteryInfo.temperature).toBe(28); // 280 / 10
-      expect(batteryInfo.voltage).toBe(4200);
-      expect(batteryInfo.status).toBe('2');
-    });
-  });
-
   describe('disconnect', () => {
     it('should call connection disconnect', async () => {
       await device.disconnect();

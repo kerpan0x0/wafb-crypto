@@ -1,6 +1,4 @@
-import type { ADBDevice } from '../../adb/device';
-import type { DeviceProperties } from '../../adb/base';
-import { Logger } from '../../utils/logger';
+import type { DeviceProperties } from '../../adb';
 
 // ============================================================================
 // TYPES
@@ -10,7 +8,7 @@ export type AcquisitionType =
   | 'bugreport'
   | 'packages'
   | 'logcat'
-  | 'root_binaries'
+  | 'rootBinaries'
   | 'env' 
   | 'system_info'
   | 'databases'
@@ -179,8 +177,8 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 5,
     defaultEnabled: true
   },
-  root_binaries: {
-    id: 'root_binaries',
+  rootBinaries: {
+    id: 'rootBinaries',
     name: 'Root Binaries',
     description: 'Collection of root binaries present on the device',
     category: 'system',
@@ -203,58 +201,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
   }
 };
 
-export abstract class BaseAcquirer {
-  protected logger: Logger;
-
-  constructor(
-    protected device: ADBDevice,
-    protected config: AcquisitionConfig = {},
-    protected acquisitionType: AcquisitionType
-  ) {
-    this.logger = new Logger(`${acquisitionType}Acquirer`);
-  }
-
-  protected notifyProgress(
-    onProgress: ((progress: AcquisitionProgress) => void) | undefined,
-    progress: number,
-    message: string,
-    status: AcquisitionProgress['status'],
-    deviceInfo?: AcquisitionProgress['deviceInfo']
-  ): void {
-    if (onProgress) {
-      onProgress({
-        progress: Math.min(100, Math.max(0, progress)),
-        message,
-        status,
-        deviceInfo
-      });
-    }
-  }
-
-  protected downloadBlob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  protected async computeHash(data: Uint8Array): Promise<string> {
-    if (typeof crypto === 'undefined' || !crypto.subtle) {
-      throw new Error('Web Crypto API not available');
-    }
-
-    const normalizedData = new Uint8Array(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', normalizedData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  protected generateFileName(prefix: string, extension: string, deviceModel: string): string {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    return `${prefix}-${deviceModel}-${timestamp}.${extension}`;
-  }
-}
+// Export Acquirers 
+// TODO export acquirers classes
+export { Acquirer } from './acquirer';
+export { BugreportAcquirer } from './bugreport';
+export { PackagesAcquirer } from './packages';
+export { LogcatAcquirer } from './logcat';
+export { RootBinariesAcquirer } from './root-binaries';
+export { EnvAcquirer } from './env';
+// export { SystemInfoAcquirer } from './system-info';
+// export { DatabasesAcquirer } from './databases';
+// export { MediaAcquirer } from './media';
+// export { CommunicationsAcquirer } from './communications';
+// export { BrowserAcquirer } from './browser';
+// export { NetworkAcquirer } from './network';

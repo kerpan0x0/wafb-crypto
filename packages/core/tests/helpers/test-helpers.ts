@@ -148,64 +148,114 @@ export function createMockADBDeviceWithCommands(commandOverrides: {
   generateBugreportLegacy?: string;
   readFile?: Uint8Array;
   deleteFile?: any;
+  shellOutput?: string;
+  getPropOutput?: Record<string, string>;
+  rootBinaryPaths?: Record<string, string>;
 } = {}) {
-  const mockCommands = {
-    // Shell commands
-    shell: vi.fn().mockResolvedValue(''),
-    getprop: vi.fn().mockResolvedValue({}),
-    
-    // Package management
-    listPackages: vi.fn().mockResolvedValue(commandOverrides.listPackages || [
-      'com.android.vending',
-      'com.example.app',
-      'com.google.android.gms'
-    ]),
-    
-    getPackageInfo: vi.fn().mockImplementation((packageName: string) => {
-      if (commandOverrides.getPackageInfo !== undefined) {
-        return Promise.resolve(commandOverrides.getPackageInfo);
-      }
-      
-      return Promise.resolve({
-        packageName,
-        versionName: '1.0.0',
-        versionCode: '100',
-        installLocation: '/data/app/package',
-        firstInstallTime: '2024-01-01 10:00:00',
-        lastUpdateTime: '2024-01-15 14:30:00',
-        targetSdk: 33,
-        minSdk: 21
-      });
-    }),
+  // Create default shell outputs
+  const defaultPackageList = commandOverrides.listPackages || [
+    'com.android.vending',
+    'com.example.app',
+    'com.google.android.gms'
+  ];
 
-    // Logcat
-    getLogcat: vi.fn().mockResolvedValue(
-      commandOverrides.getLogcat !== undefined 
+  const defaultRootBinaryPaths = commandOverrides.rootBinaryPaths || {
+    'su': '/system/bin/su\n/system/xbin/su',
+    'busybox': '/system/bin/busybox',
+    'magisk': '/data/adb/magisk',
+    'magiskhide': '/data/adb/magisk/magiskhide',
+    'supersu': '',
+    'Superuser.apk': '',
+    'KingoUser.apk': '',
+    'SuperSu.apk': '',
+    'magiskinit': '/data/adb/magisk/magiskinit',
+    'magiskpolicy': '/data/adb/magisk/magiskpolicy',
+    'magiskboot': '/data/adb/magisk/magiskboot'
+  };
+
+  const packageListOutput = defaultPackageList.map(pkg => `package:${pkg}`).join('\n');
+
+  // Mock shell command to return appropriate output based on command
+  const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
+    let output = '';
+
+    // Handle different commands
+    if (command.includes('pm list packages')) {
+      output = packageListOutput;
+    } else if (command.includes('dumpsys package')) {
+      const pkgName = command.match(/dumpsys package ([\w.]+)/)?.[1];
+      if (pkgName && commandOverrides.getPackageInfo) {
+        output = `Package [${pkgName}]
+versionName=${commandOverrides.getPackageInfo.versionName || '1.0.0'}
+versionCode=${commandOverrides.getPackageInfo.versionCode || '100'}`;
+      } else if (pkgName) {
+        output = `Package [${pkgName}]
+versionName=1.0.0
+versionCode=100
+firstInstallTime=2024-01-01 10:00:00
+lastUpdateTime=2024-01-15 14:30:00
+targetSdk=33
+minSdk=21`;
+      }
+    } else if (command.includes('logcat')) {
+      output = commandOverrides.getLogcat !== undefined 
         ? commandOverrides.getLogcat 
         : '01-01 10:00:00.000  1234  5678 I Tag: Info message\n' +
           '01-01 10:00:01.000  1234  5678 W Tag: Warning message\n' +
-          '01-01 10:00:02.000  1234  5678 E Tag: Error message'
-    ),
+        '01-01 10:00:02.000  1234  5678 E Tag: Error message';
+    } else if (command.includes('bugreportz')) {
+      output = commandOverrides.generateBugreportz || 'OK:/data/bugreport-2024-01-01.zip';
+    } else if (command === 'bugreport') {
+      output = commandOverrides.generateBugreportLegacy || '/sdcard/bugreport.txt';
+    } else if (command.includes('which -a')) {
+      const binaryName = command.replace('which -a ', '').trim();
+      output = defaultRootBinaryPaths[binaryName as keyof typeof defaultRootBinaryPaths] || '';
+    } else if (command.includes('which')) {
+      output = commandOverrides.checkCommandExists ? '/system/bin/' + command.split(' ').pop() : '';
+    } else if (command === 'getprop') {
+      const props = commandOverrides.getPropOutput || {
+        'ro.build.version.release': '13',
+        'ro.build.id': 'TP1A.220905.004',
+        'ro.product.model': 'Test Device',
+        'ro.product.manufacturer': 'Test Manufacturer',
+        'ro.product.brand': 'Test',
+        'ro.build.version.sdk': '33'
+      };
+      output = Object.entries(props).map(([key, value]) => `[${key}]: [${value}]`).join('\n');
+    } else {
+      output = commandOverrides.shellOutput || '';
+    }
 
-    // Bugreport
-    checkCommandExists: vi.fn().mockResolvedValue(commandOverrides.checkCommandExists ?? true),
-    generateBugreportz: vi.fn().mockResolvedValue(
-      commandOverrides.generateBugreportz || 'OK:/data/bugreport-2024-01-01.zip'
-    ),
-    generateBugreportLegacy: vi.fn().mockResolvedValue(
-      commandOverrides.generateBugreportLegacy || '/sdcard/bugreport.txt'
-    ),
-    
-    // File operations
-    readFile: vi.fn().mockResolvedValue(
+    return Promise.resolve({
+      stdout: createMockReadableStream(output),
+      stderr: createMockReadableStream(''),
+      stdin: new WritableStream(),
+      exit: Promise.resolve({ code: 0 })
+    });
+  });
+
+  // Mock sync service for file operations
+  const mockSync = vi.fn().mockResolvedValue({
+    read: vi.fn().mockReturnValue(createMockReadableStream(
       commandOverrides.readFile || new TextEncoder().encode('mock file content')
-    ),
-    writeFile: vi.fn().mockResolvedValue(undefined),
-    deleteFile: vi.fn().mockResolvedValue(commandOverrides.deleteFile)
+    )),
+    write: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn().mockResolvedValue(undefined)
+  });
+
+  const mockAdb = {
+    subprocess: {
+      shellProtocol: {
+        spawn: mockShellSpawn
+      },
+      spawn: vi.fn()
+    },
+    sync: mockSync,
+    close: vi.fn().mockResolvedValue(undefined)
   };
 
   const mockDevice = {
-    commands: mockCommands,
+    adb: mockAdb as any,
     getProperties: vi.fn().mockResolvedValue(createMockDeviceProperties()),
     isRooted: vi.fn().mockResolvedValue(false),
     getBatteryInfo: vi.fn().mockResolvedValue({
@@ -214,6 +264,25 @@ export function createMockADBDeviceWithCommands(commandOverrides: {
       voltage: 4200,
       status: '2'
     }),
+    getNetworkInfo: vi.fn().mockResolvedValue({
+      wifiEnabled: true,
+      mobileDataEnabled: false,
+      airplaneModeOn: false
+    }),
+    getStorageInfo: vi.fn().mockResolvedValue({
+      totalInternal: '64GB',
+      availableInternal: '32GB'
+    }),
+    getMemoryInfo: vi.fn().mockResolvedValue({
+      totalRam: '8GB',
+      availableRam: '4GB',
+      lowMemory: false,
+      threshold: '1GB'
+    }),
+    getSensors: vi.fn().mockResolvedValue([
+      { name: 'Accelerometer', type: 'android.sensor.accelerometer' },
+      { name: 'Gyroscope', type: 'android.sensor.gyroscope' }
+    ]),
     info: createMockDeviceInfo(),
     isConnected: vi.fn().mockReturnValue(true),
     disconnect: vi.fn().mockResolvedValue(undefined)

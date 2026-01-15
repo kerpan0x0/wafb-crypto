@@ -126,7 +126,7 @@ export function AcquisitionPage() {
       env: {
         Class: EnvAcquirer,
         options: {}
-      }
+      },
     };
 
     const config = acquirerConfig[type as keyof typeof acquirerConfig];

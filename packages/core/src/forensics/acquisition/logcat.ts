@@ -1,10 +1,11 @@
+import { GetLogCatCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb/device';
-import { BaseAcquirer } from './base';
+import { Acquirer } from './acquirer';
 import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
-} from './base';
+} from '.';
 
 export interface LogcatConfig extends AcquisitionConfig {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';
@@ -35,10 +36,7 @@ export interface LogcatData {
   acquisitionTime: string;
 }
 
-/**
- * Acquirer per Logcat (system logs)
- */
-export class LogcatAcquirer extends BaseAcquirer {
+export class LogcatAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
     private logcatConfig: LogcatConfig = {}
@@ -75,7 +73,7 @@ export class LogcatAcquirer extends BaseAcquirer {
         'running'
       );
       
-      const logOutput = await this.device.commands.getLogcat({
+      const logOutput = await new GetLogCatCommand(this.device.adb).exec({   
         buffer: this.logcatConfig.buffer,
         maxLines: this.logcatConfig.maxLines,
         filter: this.logcatConfig.filter,
@@ -171,9 +169,6 @@ export class LogcatAcquirer extends BaseAcquirer {
     }
   }
 
-  /**
-   * Formatta l'output con metadata
-   */
   private formatOutput(data: LogcatData, logOutput: string): string {
     const metadataJson = JSON.stringify(data, null, 2);
     

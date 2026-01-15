@@ -1,17 +1,19 @@
 import type { ADBDevice } from '../../adb/device';
-import { BaseAcquirer } from './base';
+import { Acquirer } from './acquirer';
 import type {
 	AcquisitionConfig,
 	AcquisitionProgress,
 	AcquisitionResult
-} from './base';
+} from '.';
+
 import type {
 	BatteryInfo,
 	NetworkInfo,
 	StorageInfo,
 	MemoryInfo,
 	SensorInfo
-} from '../../adb/base';
+} from '../../adb/commands/index';
+import { GetBatteryInfoCommand, GetMemoryInfoCommand, GetNetworkInfoCommand, GetPropCommand, GetSensorsCommand, GetStorageInfoCommand } from '../../adb/commands';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
 	includeBattery?: boolean;
@@ -49,7 +51,7 @@ export interface SystemInfoData {
  * DESIGN: Uses ADBDevice methods for device-level information
  * All types are centralized in adb/base.ts
  */
-export class SystemInfoAcquirer extends BaseAcquirer {
+export class SystemInfoAcquirer extends Acquirer {
 	constructor(
 		device: ADBDevice,
 		private systemConfig: SystemInfoConfig = {}
@@ -79,7 +81,7 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 
 			// Step 2: Get all system properties (30%)
 			this.notifyProgress(onProgress, 30, 'Gathering system properties...', 'running');
-			const systemProps = await this.device.commands.getprop();
+			const systemProps = await new GetPropCommand(this.device.adb).exec({ timeout: this.config.timeout || 30000 });
 
 			// Step 3: Build system info data
 			const systemInfoData: SystemInfoData = {
@@ -106,7 +108,7 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 			if (this.systemConfig.includeBattery !== false) {
 				this.notifyProgress(onProgress, progressOffset, 'Reading battery information...', 'running');
 				try {
-					systemInfoData.battery = await this.device.getBatteryInfo();
+					systemInfoData.battery = await this.getBatteryInfo();
 				} catch (error) {
 					this.logger.warn('Failed to acquire battery info', error);
 					// Non rilanciamo l'errore, permettiamo l'acquisizione parziale
@@ -118,7 +120,7 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 			if (this.systemConfig.includeNetwork !== false) {
 				this.notifyProgress(onProgress, progressOffset, 'Reading network information...', 'running');
 				try {
-					systemInfoData.network = await this.device.getNetworkInfo();
+					systemInfoData.network = await this.getNetworkInfo();
 				} catch (error) {
 					this.logger.warn('Failed to acquire network info', error);
 				}
@@ -129,7 +131,7 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 			if (this.systemConfig.includeStorage !== false) {
 				this.notifyProgress(onProgress, progressOffset, 'Reading storage information...', 'running');
 				try {
-					systemInfoData.storage = await this.device.getStorageInfo();
+					systemInfoData.storage = await this.getStorageInfo();
 				} catch (error) {
 					this.logger.warn('Failed to acquire storage info', error);
 				}
@@ -140,7 +142,7 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 			if (this.systemConfig.includeMemory !== false) {
 				this.notifyProgress(onProgress, progressOffset, 'Reading memory information...', 'running');
 				try {
-					systemInfoData.memory = await this.device.getMemoryInfo();
+					systemInfoData.memory = await this.getMemoryInfo();
 				} catch (error) {
 					this.logger.warn('Failed to acquire memory info', error);
 				}
@@ -151,7 +153,7 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 			if (this.systemConfig.includeSensors !== false) {
 				this.notifyProgress(onProgress, progressOffset, 'Reading sensors information...', 'running');
 				try {
-					systemInfoData.sensors = await this.device.getSensors();
+					systemInfoData.sensors = await this.getSensors();
 				} catch (error) {
 					this.logger.warn('Failed to acquire sensors info', error);
 				}
@@ -238,5 +240,67 @@ export class SystemInfoAcquirer extends BaseAcquirer {
 		if (this.systemConfig.includeMemory !== false) count++;
 		if (this.systemConfig.includeSensors !== false) count++;
 		return count || 1;
+	}
+
+	async getBatteryInfo(): Promise<BatteryInfo> {
+		try {
+			return await new GetBatteryInfoCommand(this.device.adb).exec();
+		} catch (error) {
+			this.logger.warn('Failed to get battery info', error);
+			return {
+				level: 0,
+				temperature: 0,
+				voltage: 0,
+				status: 'Unknown'
+			};
+		}
+	}
+
+	async getNetworkInfo(): Promise<NetworkInfo> {
+		try {
+			return await new GetNetworkInfoCommand(this.device.adb).exec();
+		} catch (error) {
+			this.logger.warn('Failed to get network info', error);
+			return {
+				wifiEnabled: false,
+				mobileDataEnabled: false,
+				airplaneModeOn: false
+			};
+		}
+	}
+
+	async getStorageInfo(): Promise<StorageInfo> {
+		try {
+			return await new GetStorageInfoCommand(this.device.adb).exec();
+		} catch (error) {
+			this.logger.warn('Failed to get storage info', error);
+			return {
+				totalInternal: 'Unknown',
+				availableInternal: 'Unknown'
+			};
+		}
+	}
+
+	async getMemoryInfo(): Promise<MemoryInfo> {
+		try {
+			return await new GetMemoryInfoCommand(this.device.adb).exec();
+		} catch (error) {
+			this.logger.warn('Failed to get memory info', error);
+			return {
+				totalRam: 'Unknown',
+				availableRam: 'Unknown',
+				lowMemory: false,
+				threshold: 'Unknown'
+			};
+		}
+	}
+
+	async getSensors(): Promise<SensorInfo[]> {
+		try {
+			return await new GetSensorsCommand(this.device.adb).exec();
+		} catch (error) {
+			this.logger.warn('Failed to get sensors info', error);
+			return [];
+		}
 	}
 }

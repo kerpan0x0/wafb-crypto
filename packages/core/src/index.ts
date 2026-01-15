@@ -4,35 +4,23 @@
 
 export { ADBConnection } from './adb/connection';
 export { ADBDevice } from './adb/device';
-export { ADBCommands } from './adb/commands';
 
 // Export all ADB types from single source
 export type {
   // Connection types
   DeviceInfo,
   ConnectionOptions,
-  
-  // Device types
+
   DeviceProperties,
-  BatteryInfo,
-  NetworkInfo,
-  StorageInfo,
-  MemoryInfo,
-  SensorInfo,
-  
-  // Command types
-  ShellOptions,
-  LogcatOptions,
-  PackageListOptions,
-  PackageInfoOptions,
-  PackageInfoResult
-} from './adb/base';
+} from './adb';
+
+
 
 // ============================================================================
 // Forensics - Acquisition, Analysis, Export
 // ============================================================================
 
-// Acquisition Base Types & BaseAcquirer
+// Acquisition Base Types & Acquirer
 export type {
   AcquisitionType,
   AcquisitionStatus,
@@ -41,12 +29,12 @@ export type {
   AcquisitionResult,
   AcquisitionMetadata,
   AcquisitionSession
-} from './forensics/acquisition/base';
+} from './forensics/acquisition';
 
 export { 
   ACQUISITION_TYPES,
-  BaseAcquirer 
-} from './forensics/acquisition/base';
+  Acquirer
+} from './forensics/acquisition';
 
 export { EnvAcquirer } from './forensics/acquisition/env';
 export type { EnvConfig } from './forensics/acquisition/env';

@@ -1,10 +1,11 @@
+import { GetPackageInfoCommand, ListPackageCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb/device';
-import { BaseAcquirer } from './base';
+import { Acquirer } from './acquirer';
 import type {
   AcquisitionConfig,
   AcquisitionProgress,
   AcquisitionResult
-} from './base';
+} from '.';
 
 export interface PackagesConfig extends AcquisitionConfig {
   includeSystem?: boolean;
@@ -37,7 +38,7 @@ export interface PackagesData {
 /**
  * Acquirer per lista pacchetti installati
  */
-export class PackagesAcquirer extends BaseAcquirer {
+export class PackagesAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
     private packagesConfig: PackagesConfig = {}
@@ -67,7 +68,7 @@ export class PackagesAcquirer extends BaseAcquirer {
 
       // Step 2: List all packages
       this.notifyProgress(onProgress, 30, 'Listing installed packages...', 'running');
-      const packageNames = await this.device.commands.listPackages({
+      const packageNames = await new ListPackageCommand(this.device.adb).exec({
         includeSystem: this.packagesConfig.includeSystem,
         timeout: this.config.timeout || 30000
       });
@@ -98,7 +99,7 @@ export class PackagesAcquirer extends BaseAcquirer {
           const packageName = packageNames[i];
           
           try {
-            const info = await this.device.commands.getPackageInfo(packageName, {
+            const info = await new GetPackageInfoCommand(this.device.adb).exec({ packageName: packageName }, {
               includePermissions: this.packagesConfig.includePermissions,
               timeout: 10000
             });

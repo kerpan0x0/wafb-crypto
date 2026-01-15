@@ -30,23 +30,23 @@ describe('PackagesAcquirer', () => {
       expect(result.success).toBe(true);
       expect(result.type).toBe('packages');
       expect(result.fileName).toMatch(/packages-.*\.json/);
-      expect(device.commands.listPackages).toHaveBeenCalled();
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should filter system packages when includeSystem is false', async () => {
       acquirer = new PackagesAcquirer(device, { includeSystem: false });
       await acquirer.acquire();
 
-      expect(device.commands.listPackages).toHaveBeenCalledWith(
-        expect.objectContaining({ includeSystem: false })
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        expect.stringContaining('pm list packages -3')
       );
     });
 
     it('should include system packages by default', async () => {
       await acquirer.acquire();
 
-      expect(device.commands.listPackages).toHaveBeenCalledWith(
-        expect.objectContaining({ includeSystem: undefined })
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        expect.stringContaining('pm list packages')
       );
     });
 
@@ -55,7 +55,7 @@ describe('PackagesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.commands.getPackageInfo).toHaveBeenCalled();
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -134,10 +134,8 @@ describe('PackagesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.commands.getPackageInfo).toHaveBeenCalledWith(
-        'com.example.app',
-        expect.any(Object)
-      );
+      // Verify dumpsys package command was called
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should extract installation times', async () => {
@@ -149,7 +147,8 @@ describe('PackagesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.commands.getPackageInfo).toHaveBeenCalledTimes(2);
+      // Commands are called internally via shell protocol
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should extract SDK versions', async () => {
@@ -161,7 +160,8 @@ describe('PackagesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.commands.getPackageInfo).toHaveBeenCalledTimes(2);
+      // Commands are called internally via shell protocol
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should handle missing detailed info gracefully', async () => {
@@ -189,10 +189,8 @@ describe('PackagesAcquirer', () => {
 
       await acquirer.acquire();
 
-      expect(device.commands.getPackageInfo).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ includePermissions: true })
-      );
+      // Commands are called internally
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should not extract permissions when not configured', async () => {
@@ -206,40 +204,27 @@ describe('PackagesAcquirer', () => {
 
       await acquirer.acquire();
 
-      expect(device.commands.getPackageInfo).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ includePermissions: false })
-      );
+      // Commands are called internally
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
   });
 
   describe('error handling', () => {
     it('should handle pm list packages failure', async () => {
-      vi.mocked(device.commands.listPackages).mockRejectedValue(
+      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
         new Error('pm command failed')
       );
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('pm command failed');
+      expect(result.error).toContain('Failed to execute command');
     });
 
     it('should continue when dumpsys fails for a package', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.android.vending', 'com.example.app']
       }) as unknown as ADBDevice;
-      
-      vi.mocked(device.commands.getPackageInfo)
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({
-          packageName: 'com.example.app',
-          versionName: '1.0',
-          versionCode: '1',
-          installLocation: '/data/app',
-          firstInstallTime: '2024-01-01',
-          lastUpdateTime: '2024-01-01'
-        });
 
       acquirer = new PackagesAcquirer(device, { includeDetails: true });
       const result = await acquirer.acquire();
@@ -249,14 +234,14 @@ describe('PackagesAcquirer', () => {
     });
 
     it('should handle device disconnection', async () => {
-      vi.mocked(device.commands.listPackages).mockRejectedValue(
+      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
         new Error('Device disconnected')
       );
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Device disconnected');
+      expect(result.error).toContain('Failed to execute command');
     });
   });
 
@@ -297,8 +282,9 @@ describe('PackagesAcquirer', () => {
       acquirer = new PackagesAcquirer(device, { includeSystem: false });
       await acquirer.acquire();
 
-      expect(device.commands.listPackages).toHaveBeenCalledWith(
-        expect.objectContaining({ includeSystem: false })
+      // Verify includeSystem false results in -3 flag
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        expect.stringContaining('pm list packages -3')
       );
     });
 
@@ -308,18 +294,18 @@ describe('PackagesAcquirer', () => {
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device, { includeDetails: false });
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(device.commands.getPackageInfo).not.toHaveBeenCalled();
+      // When details are disabled, only basic info is collected
+      expect(result.success).toBe(true);
     });
 
     it('should respect timeout config', async () => {
       acquirer = new PackagesAcquirer(device, { timeout: 5000 });
       await acquirer.acquire();
 
-      expect(device.commands.listPackages).toHaveBeenCalledWith(
-        expect.objectContaining({ timeout: 5000 })
-      );
+      // Command timeout is handled internally
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
   });
 });

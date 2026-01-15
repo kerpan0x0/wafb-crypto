@@ -1,16 +1,18 @@
-import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, BaseAcquirer } from '../..';
+import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import { Acquirer } from './acquirer';
+import { RootBinariesCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb/device';
 
 export interface RootBinariesConfig extends AcquisitionConfig {
 }
 
-export class RootBinariesAcquirer extends BaseAcquirer {
+export class RootBinariesAcquirer extends Acquirer {
 
   constructor(
     protected device: ADBDevice,
     protected config: RootBinariesConfig = {}
   ) {
-    super(device, config, 'root_binaries');
+    super(device, config, 'rootBinaries');
   }
 
   async acquire(
@@ -84,7 +86,7 @@ export class RootBinariesAcquirer extends BaseAcquirer {
       // Step 5: Build result
       const result: AcquisitionResult = {
         success: true,
-        type: 'root_binaries',
+        type: 'rootBinaries',
         fileName,
         fileSize: rootBinaries.length,
         startTime,
@@ -119,7 +121,7 @@ export class RootBinariesAcquirer extends BaseAcquirer {
 
       return {
         success: false,
-        type: 'root_binaries',
+        type: 'rootBinaries',
         startTime,
         endTime,
         duration,
@@ -136,7 +138,7 @@ export class RootBinariesAcquirer extends BaseAcquirer {
 
     for (const binary of binaries) {
       try {
-        const result = await this.device.commands.shell(`which -a ${binary}`);
+        const result = await new RootBinariesCommand(this.device.adb).exec({ binary });
         rootBinariesData[binary] = result;
         this.logger.info(`Retrieved root binary: ${binary}`);
       } catch (err) {

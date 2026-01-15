@@ -1,5 +1,5 @@
 import type { Adb } from '@yume-chan/adb';
-import type { ConnectionOptions, DeviceInfo } from './base';
+import type { ConnectionOptions, DeviceInfo } from '.';
 import { Adb as AdbClass } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import { AdbDaemonTransport } from '@yume-chan/adb';

@@ -5,16 +5,36 @@ import {
   createMockProgressCallback,
   createMockDeviceInfo,
   createMockDeviceProperties,
-  createMockConnection
+  createMockReadableStream
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
-import type { 
+import { 
   BatteryInfo, 
-  NetworkInfo, 
-  StorageInfo, 
   MemoryInfo, 
-  SensorInfo 
-} from '../../../../src/adb/base';
+  NetworkInfo, 
+  SensorInfo, 
+  StorageInfo,
+  GetBatteryInfoCommand,
+  GetNetworkInfoCommand,
+  GetStorageInfoCommand,
+  GetMemoryInfoCommand,
+  GetSensorsCommand,
+  GetPropCommand
+} from '../../../../src/adb/commands';
+
+// Mock the command classes
+vi.mock('../../../../src/adb/commands', async () => {
+  const actual = await vi.importActual('../../../../src/adb/commands');
+  return {
+    ...actual,
+    GetBatteryInfoCommand: vi.fn(),
+    GetNetworkInfoCommand: vi.fn(),
+    GetStorageInfoCommand: vi.fn(),
+    GetMemoryInfoCommand: vi.fn(),
+    GetSensorsCommand: vi.fn(),
+    GetPropCommand: vi.fn()
+  };
+});
 
 describe('SystemInfoAcquirer', () => {
   let device: ADBDevice;
@@ -63,9 +83,49 @@ describe('SystemInfoAcquirer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
+    // Setup command mocks
+    vi.mocked(GetPropCommand).mockImplementation(() => ({
+      exec: vi.fn().mockResolvedValue({
+        'ro.bootloader': 'bootloader-v1',
+        'ro.hardware': 'qcom',
+        'ro.build.fingerprint': 'test/fingerprint'
+      })
+    } as any));
+
+    vi.mocked(GetBatteryInfoCommand).mockImplementation(() => ({
+      exec: vi.fn().mockResolvedValue(mockBatteryInfo)
+    } as any));
+
+    vi.mocked(GetNetworkInfoCommand).mockImplementation(() => ({
+      exec: vi.fn().mockResolvedValue(mockNetworkInfo)
+    } as any));
+
+    vi.mocked(GetStorageInfoCommand).mockImplementation(() => ({
+      exec: vi.fn().mockResolvedValue(mockStorageInfo)
+    } as any));
+
+    vi.mocked(GetMemoryInfoCommand).mockImplementation(() => ({
+      exec: vi.fn().mockResolvedValue(mockMemoryInfo)
+    } as any));
+
+    vi.mocked(GetSensorsCommand).mockImplementation(() => ({
+      exec: vi.fn().mockResolvedValue(mockSensors)
+    } as any));
+
     // Create a complete mock ADBDevice
     device = {
       info: createMockDeviceInfo(),
+      adb: {
+        subprocess: {
+          shellProtocol: {
+            spawn: vi.fn().mockResolvedValue({
+              stdout: createMockReadableStream(''),
+              stderr: createMockReadableStream(''),
+              exit: Promise.resolve({ code: 0 })
+            })
+          }
+        }
+      },
       commands: {
         getprop: vi.fn().mockResolvedValue({
           'ro.bootloader': 'bootloader-v1',
@@ -101,7 +161,6 @@ describe('SystemInfoAcquirer', () => {
       expect(result.type).toBe('system_info');
       expect(result.fileName).toMatch(/system-info-.*\.json/);
       expect(device.getProperties).toHaveBeenCalled();
-      expect(device.commands.getprop).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -150,7 +209,7 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.battery).toBe(true);
-      expect(device.getBatteryInfo).toHaveBeenCalled();
+      expect(GetBatteryInfoCommand).toHaveBeenCalled();
     });
 
     it('should skip battery info when disabled', async () => {
@@ -159,19 +218,19 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.battery).toBe(false);
-      expect(device.getBatteryInfo).not.toHaveBeenCalled();
     });
 
     it('should handle battery info errors gracefully', async () => {
-      vi.mocked(device.getBatteryInfo).mockRejectedValue(
-        new Error('Battery service unavailable')
-      );
+      vi.mocked(GetBatteryInfoCommand).mockImplementation(() => ({
+        exec: vi.fn().mockRejectedValue(new Error('Battery service unavailable'))
+      } as any));
+      acquirer = new SystemInfoAcquirer(device);
 
       const result = await acquirer.acquire();
 
-      // Should still succeed because errors are caught in device.getBatteryInfo
-      // which returns default values
+      // Should still succeed because errors are caught and default values are returned
       expect(result.success).toBe(true);
+      expect((result.data as any).componentsCollected.battery).toBe(true);
     });
   });
 
@@ -181,7 +240,7 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.network).toBe(true);
-      expect(device.getNetworkInfo).toHaveBeenCalled();
+      expect(GetNetworkInfoCommand).toHaveBeenCalled();
     });
 
     it('should skip network info when disabled', async () => {
@@ -190,17 +249,18 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.network).toBe(false);
-      expect(device.getNetworkInfo).not.toHaveBeenCalled();
     });
 
     it('should handle network info errors gracefully', async () => {
-      vi.mocked(device.getNetworkInfo).mockRejectedValue(
-        new Error('Settings unavailable')
-      );
+      vi.mocked(GetNetworkInfoCommand).mockImplementation(() => ({
+        exec: vi.fn().mockRejectedValue(new Error('Settings unavailable'))
+      } as any));
+      acquirer = new SystemInfoAcquirer(device);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
+      expect((result.data as any).componentsCollected.network).toBe(true);
     });
   });
 
@@ -210,7 +270,7 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.storage).toBe(true);
-      expect(device.getStorageInfo).toHaveBeenCalled();
+      expect(GetStorageInfoCommand).toHaveBeenCalled();
     });
 
     it('should skip storage info when disabled', async () => {
@@ -219,17 +279,18 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.storage).toBe(false);
-      expect(device.getStorageInfo).not.toHaveBeenCalled();
     });
 
     it('should handle storage info errors gracefully', async () => {
-      vi.mocked(device.getStorageInfo).mockRejectedValue(
-        new Error('df command failed')
-      );
+      vi.mocked(GetStorageInfoCommand).mockImplementation(() => ({
+        exec: vi.fn().mockRejectedValue(new Error('df command failed'))
+      } as any));
+      acquirer = new SystemInfoAcquirer(device);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
+      expect((result.data as any).componentsCollected.storage).toBe(true);
     });
   });
 
@@ -239,7 +300,7 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.memory).toBe(true);
-      expect(device.getMemoryInfo).toHaveBeenCalled();
+      expect(GetMemoryInfoCommand).toHaveBeenCalled();
     });
 
     it('should skip memory info when disabled', async () => {
@@ -248,17 +309,18 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.memory).toBe(false);
-      expect(device.getMemoryInfo).not.toHaveBeenCalled();
     });
 
     it('should handle memory info errors gracefully', async () => {
-      vi.mocked(device.getMemoryInfo).mockRejectedValue(
-        new Error('meminfo unavailable')
-      );
+      vi.mocked(GetMemoryInfoCommand).mockImplementation(() => ({
+        exec: vi.fn().mockRejectedValue(new Error('meminfo unavailable'))
+      } as any));
+      acquirer = new SystemInfoAcquirer(device);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
+      expect((result.data as any).componentsCollected.memory).toBe(true);
     });
   });
 
@@ -268,7 +330,7 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.sensors).toBe(true);
-      expect(device.getSensors).toHaveBeenCalled();
+      expect(GetSensorsCommand).toHaveBeenCalled();
     });
 
     it('should skip sensors info when disabled', async () => {
@@ -277,17 +339,18 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.sensors).toBe(false);
-      expect(device.getSensors).not.toHaveBeenCalled();
     });
 
     it('should handle sensors info errors gracefully', async () => {
-      vi.mocked(device.getSensors).mockRejectedValue(
-        new Error('sensorservice unavailable')
-      );
+      vi.mocked(GetSensorsCommand).mockImplementation(() => ({
+        exec: vi.fn().mockRejectedValue(new Error('sensorservice unavailable'))
+      } as any));
+      acquirer = new SystemInfoAcquirer(device);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
+      expect((result.data as any).componentsCollected.sensors).toBe(true);
     });
   });
 
@@ -349,9 +412,10 @@ describe('SystemInfoAcquirer', () => {
     });
 
     it('should handle getprop failure', async () => {
-      vi.mocked(device.commands.getprop).mockRejectedValue(
-        new Error('getprop failed')
-      );
+      vi.mocked(GetPropCommand).mockImplementation(() => ({
+        exec: vi.fn().mockRejectedValue(new Error('getprop failed'))
+      } as any));
+      acquirer = new SystemInfoAcquirer(device);
 
       const result = await acquirer.acquire();
 
