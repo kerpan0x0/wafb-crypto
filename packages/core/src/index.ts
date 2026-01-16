@@ -3,7 +3,7 @@
 // ============================================================================
 
 export { ADBConnection } from './adb/connection';
-export { ADBDevice } from './adb/device';
+export { ADBDevice } from './adb';
 
 // Export all ADB types from single source
 export type {

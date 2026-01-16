@@ -1,7 +1,7 @@
 import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 import { Acquirer } from './acquirer';
 import { EnvCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb/device';
+import type { ADBDevice } from '../../adb';
 
 export interface EnvConfig extends AcquisitionConfig {
 }

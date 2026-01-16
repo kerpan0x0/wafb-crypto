@@ -4,7 +4,7 @@ import { Adb as AdbClass } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import { AdbDaemonTransport } from '@yume-chan/adb';
 import AdbWebCredentialStore from '@yume-chan/adb-credential-web';
-import { ADBDevice } from './device';
+import { ADBDevice } from '.';
 import { ADBConnectionError, ADBDeviceNotFoundError } from '../utils/errors';
 import { Logger } from '../utils/logger';
 

@@ -1,4 +1,4 @@
-import type { ADBDevice } from '../../adb/device';
+import type { ADBDevice } from '../../adb';
 import { Logger } from '../../utils/logger';
 import { AcquisitionConfig, AcquisitionType, AcquisitionProgress } from '.';
 

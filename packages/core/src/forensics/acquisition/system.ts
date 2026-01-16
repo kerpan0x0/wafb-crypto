@@ -1,4 +1,4 @@
-import type { ADBDevice } from '../../adb/device';
+import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
 import type {
 	AcquisitionConfig,

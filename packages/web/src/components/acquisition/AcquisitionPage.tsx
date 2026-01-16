@@ -332,7 +332,7 @@ export function AcquisitionPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {session.acquisitions.map((acq) => (
+                    {session.acquisitions.map((acq: { type: AcquisitionType; status: string; progress: number }) => (
                     <div key={acq.type} className="flex items-center justify-between text-sm">
                       <span>{ACQUISITION_TYPES[acq.type].name}</span>
                       <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :
