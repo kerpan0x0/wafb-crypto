@@ -46,7 +46,7 @@ export class BugreportAcquirer extends Acquirer {
 
       // Step 2: Check bugreportz availability
       this.notifyProgress(onProgress, 30, 'Checking bugreport support...', 'running');
-      useZip = await this.checkBugreportzSupport();
+      useZip = (this.bugreportConfig.preferZip === false) ? false : await this.checkBugreportzSupport();
 
       if (useZip) {
         this.logger.info('Using bugreportz (zip format)');
@@ -182,9 +182,6 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private async checkBugreportzSupport(): Promise<boolean> {
-    if (this.bugreportConfig.preferZip === false) {
-      return false;
-    }
 
     return await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' });
   }
