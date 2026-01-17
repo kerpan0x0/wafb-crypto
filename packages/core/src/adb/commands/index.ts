@@ -121,4 +121,5 @@ export { GetLogcatCommand } from './logcatCommand';
 export { ListPackageCommand } from './listPackageCommand';
 export { GetenforceCommand } from './getenforceCommand'
 export { PsCommand } from './psCommand'
-export { LsCommand } from './lsCommand'export { MountCommand, ProcMountCommand } from './mountCommand';
+export { LsCommand } from './lsCommand';
+export { MountCommand, ProcMountCommand } from './mountCommand';
