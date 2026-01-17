@@ -9,8 +9,9 @@ export type AcquisitionType =
   | 'packages'
   | 'logcat'
   | 'rootBinaries'
-  | 'env' 
+  | 'env'
   | 'system_info'
+  | 'selinux'
   | 'databases'
   | 'media'
   | 'communications'
@@ -111,6 +112,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 5,
     defaultEnabled: true
   },
+  selinux: {
+    id: 'selinux',
+    name: 'SELinux Information',
+    description: 'SELinux mode, policy, contexts, and audit denials',
+    category: 'system',
+    icon: '🔒',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 15,
+    defaultEnabled: true
+  },
   system_info: {
     id: 'system_info',
     name: 'System Information',
@@ -209,7 +221,8 @@ export { PackagesAcquirer } from './packages';
 export { LogcatAcquirer } from './logcat';
 export { RootBinariesAcquirer } from './root-binaries';
 export { EnvAcquirer } from './env';
-// export { SystemInfoAcquirer } from './system-info';
+export { SystemInfoAcquirer } from './system';
+export { SELinuxAcquirer } from './selinux'
 // export { DatabasesAcquirer } from './databases';
 // export { MediaAcquirer } from './media';
 // export { CommunicationsAcquirer } from './communications';

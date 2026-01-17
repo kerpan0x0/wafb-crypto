@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer } from '@wafb/core';
-import { EnvAcquirer, BugreportAcquirer, LogcatAcquirer, PackagesAcquirer, RootBinariesAcquirer } from '@wafb/core';
+import {
+  EnvAcquirer,
+  BugreportAcquirer,
+  LogcatAcquirer,
+  PackagesAcquirer,
+  RootBinariesAcquirer,
+  SELinuxAcquirer
+} from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
 
@@ -116,7 +123,7 @@ export function AcquisitionPage() {
           includeStorage: true,
           includeMemory: true,
           includeSensors: true,
-          computeHash: true 
+          computeHash: true
         }
       },
       rootBinaries: {
@@ -127,6 +134,15 @@ export function AcquisitionPage() {
         Class: EnvAcquirer,
         options: {}
       },
+      selinux: {
+        Class: SELinuxAcquirer,
+        options: {
+          includeContexts: true,
+          includeFileContexts: true,
+          includeDenials: true,
+          maxDenialLines: 100
+        }
+      }
     };
 
     const config = acquirerConfig[type as keyof typeof acquirerConfig];
@@ -332,7 +348,7 @@ export function AcquisitionPage() {
                 </div>
 
                 <div className="space-y-2">
-                    {session.acquisitions.map((acq: { type: AcquisitionType; status: string; progress: number }) => (
+                  {session.acquisitions.map((acq: { type: AcquisitionType; status: string; progress: number }) => (
                     <div key={acq.type} className="flex items-center justify-between text-sm">
                       <span>{ACQUISITION_TYPES[acq.type].name}</span>
                       <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :

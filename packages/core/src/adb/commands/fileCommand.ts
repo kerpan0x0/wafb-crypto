@@ -90,5 +90,3 @@ export class DeleteFileCommand implements ADBCommands<void> {
     await new ShellCommand(this.adb, `rm ${args.path}`).exec();
   }
 }
-
-

@@ -25,6 +25,21 @@ export interface ListPackageOptions extends CommandOptions {
 export interface PackageInfoOptions extends CommandOptions {
     includePermissions?: boolean;
 }
+
+export interface PsOptions extends CommandOptions {
+  all?: boolean;
+  filter?: string;
+  selinux?: boolean;
+}
+
+export interface LsOptions extends CommandOptions {
+  path?: string;
+  all?: boolean;
+  long?: boolean;
+  recursive?: boolean;
+  selinux?: boolean;
+  filter?: string;
+}
 // ---------------------------------------------------------------------------
 
 // +------------------------ Command Output Types ------------------------------------------------
@@ -86,7 +101,11 @@ export interface PackageInfoResult {
 // +------------------------ Export Commands ------------------------------------------------
 export { WhichCommand, RootBinariesCommand } from './whichCommand';
 export { GenerateBugReportCommand, GenerateBugReportzCommand } from './generateBugReportCommand';
-export { ReadFileCommand, WriteFileCommand, DeleteFileCommand } from './fileCommand';
+export {
+    ReadFileCommand,
+    WriteFileCommand,
+    DeleteFileCommand,
+} from './fileCommand';
 export {
     GetPropCommand,
     GetBatteryInfoCommand,
@@ -98,5 +117,8 @@ export {
 } from './getDeviceProperty';
 export { IsRootedCommand } from './isRootedCommand';
 export { EnvCommand } from './envCommand';
-export { GetLogCatCommand } from './logCatCommand';
+export { GetLogcatCommand } from './logcatCommand';
 export { ListPackageCommand } from './listPackageCommand';
+export { GetenforceCommand } from './getenforceCommand'
+export { PsCommand } from './psCommand'
+export { LsCommand } from './lsCommand'

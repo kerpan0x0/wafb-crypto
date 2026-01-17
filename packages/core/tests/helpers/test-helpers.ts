@@ -332,3 +332,18 @@ export function setupAcquirerDOMMocks() {
     }
   };
 }
+
+export function createMockADBDeviceForSELinux(selinuxMode: 'Enforcing' | 'Permissive' | 'Disabled' = 'Enforcing') {
+  return createMockADBDeviceWithCommands({
+    shellOutput: selinuxMode, // For getenforce
+    getPropOutput: {
+      'ro.build.version.release': '13',
+      'ro.build.id': 'TP1A.220905.004',
+      'ro.product.model': 'Test Device',
+      'ro.product.manufacturer': 'Test Manufacturer',
+      'ro.product.brand': 'Test',
+      'ro.build.version.sdk': '33',
+      'ro.build.selinux': '30'
+    }
+  });
+}

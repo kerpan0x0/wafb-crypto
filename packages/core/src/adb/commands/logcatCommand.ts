@@ -4,7 +4,7 @@ import { ADBCommands } from '.';
 import { ShellCommand } from './shellCommand';
 
 
-export class GetLogCatCommand implements ADBCommands<string> {
+export class GetLogcatCommand implements ADBCommands<string> {
 
   constructor(private adb: Adb) { }
 

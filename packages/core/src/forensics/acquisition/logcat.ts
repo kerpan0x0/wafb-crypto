@@ -1,4 +1,4 @@
-import { GetLogCatCommand } from '../../adb/commands';
+import { GetLogcatCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
 import type {
@@ -73,7 +73,7 @@ export class LogcatAcquirer extends Acquirer {
         'running'
       );
       
-      const logOutput = await new GetLogCatCommand(this.device.adb).exec({   
+      const logOutput = await new GetLogcatCommand(this.device.adb).exec({   
         buffer: this.logcatConfig.buffer,
         maxLines: this.logcatConfig.maxLines,
         filter: this.logcatConfig.filter,

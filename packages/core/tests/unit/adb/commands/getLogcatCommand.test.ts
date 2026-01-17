@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GetLogCatCommand } from '../../../../src/adb/commands/logCatCommand';
+import { GetLogcatCommand } from '../../../../src/adb/commands/logcatCommand';
 import type { Adb } from '@yume-chan/adb';
 import { createMockAdb, createMockShellSocket, MOCK_LOGCAT_OUTPUT } from './test-helpers';
 
-describe('GetLogCatCommand', () => {
+describe('GetLogcatCommand', () => {
   let mockAdb: Adb;
-  let command: GetLogCatCommand;
+  let command: GetLogcatCommand;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -14,7 +14,7 @@ describe('GetLogCatCommand', () => {
   describe('exec', () => {
     it('should get logcat output with default options', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_LOGCAT_OUTPUT));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       const result = await command.exec();
 
@@ -24,7 +24,7 @@ describe('GetLogCatCommand', () => {
 
     it('should apply buffer option', async () => {
       mockAdb = createMockAdb(createMockShellSocket('system logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ buffer: 'system' });
 
@@ -33,7 +33,7 @@ describe('GetLogCatCommand', () => {
 
     it('should apply maxLines option', async () => {
       mockAdb = createMockAdb(createMockShellSocket('last 100 lines'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ maxLines: 100 });
 
@@ -42,7 +42,7 @@ describe('GetLogCatCommand', () => {
 
     it('should apply filter option', async () => {
       mockAdb = createMockAdb(createMockShellSocket('filtered logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ filter: 'ActivityManager:I *:S' });
 
@@ -53,7 +53,7 @@ describe('GetLogCatCommand', () => {
 
     it('should apply multiple options together', async () => {
       mockAdb = createMockAdb(createMockShellSocket('filtered system logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({
         buffer: 'system',
@@ -79,7 +79,7 @@ describe('GetLogCatCommand', () => {
 
       for (const buffer of bufferTypes) {
         mockAdb = createMockAdb(createMockShellSocket(`${buffer} buffer logs`));
-        command = new GetLogCatCommand(mockAdb);
+        command = new GetLogcatCommand(mockAdb);
 
         await command.exec({ buffer });
 
@@ -91,7 +91,7 @@ describe('GetLogCatCommand', () => {
 
     it('should handle dump option as false to stream logs', async () => {
       mockAdb = createMockAdb(createMockShellSocket('streaming logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ dump: false });
 
@@ -102,7 +102,7 @@ describe('GetLogCatCommand', () => {
 
     it('should handle empty logcat output', async () => {
       mockAdb = createMockAdb(createMockShellSocket(''));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       const result = await command.exec();
 
@@ -118,7 +118,7 @@ describe('GetLogCatCommand', () => {
       `.trim();
 
       mockAdb = createMockAdb(createMockShellSocket(multilineOutput));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       const result = await command.exec();
 
@@ -128,7 +128,7 @@ describe('GetLogCatCommand', () => {
 
     it('should apply complex filters', async () => {
       mockAdb = createMockAdb(createMockShellSocket('complex filtered logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({
         filter: 'ActivityManager:I MyApp:D *:S'
@@ -141,7 +141,7 @@ describe('GetLogCatCommand', () => {
 
     it('should handle timeout option', async () => {
       mockAdb = createMockAdb(createMockShellSocket('logs with timeout'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ timeout: 10000 });
 
@@ -153,7 +153,7 @@ describe('GetLogCatCommand', () => {
 
       for (const maxLines of maxLinesValues) {
         mockAdb = createMockAdb(createMockShellSocket(`${maxLines} lines`));
-        command = new GetLogCatCommand(mockAdb);
+        command = new GetLogcatCommand(mockAdb);
 
         await command.exec({ maxLines });
 
@@ -176,7 +176,7 @@ describe('GetLogCatCommand', () => {
 
       for (const filter of filters) {
         mockAdb = createMockAdb(createMockShellSocket(`logs with ${filter}`));
-        command = new GetLogCatCommand(mockAdb);
+        command = new GetLogcatCommand(mockAdb);
 
         await command.exec({ filter });
 
@@ -188,7 +188,7 @@ describe('GetLogCatCommand', () => {
 
     it('should combine all buffer options', async () => {
       mockAdb = createMockAdb(createMockShellSocket('all buffer logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ buffer: 'all' });
 
@@ -197,7 +197,7 @@ describe('GetLogCatCommand', () => {
 
     it('should handle crash buffer for crash logs', async () => {
       mockAdb = createMockAdb(createMockShellSocket('crash logs'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({ buffer: 'crash' });
 
@@ -206,7 +206,7 @@ describe('GetLogCatCommand', () => {
 
     it('should build command with all options in correct order', async () => {
       mockAdb = createMockAdb(createMockShellSocket('full options'));
-      command = new GetLogCatCommand(mockAdb);
+      command = new GetLogcatCommand(mockAdb);
 
       await command.exec({
         dump: true,
