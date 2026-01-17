@@ -16,6 +16,7 @@ export type AcquisitionType =
   | 'media'
   | 'communications'
   | 'browser'
+  | 'mount'
   | 'network';
 
 export type AcquisitionStatus =
@@ -210,7 +211,18 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false,
     estimatedDuration: 5,
     defaultEnabled: true
-  }
+  },
+  mount: {
+    id: 'mount',
+    name: 'Mount Points',
+    description: 'Information about mounted file systems on the device',
+    category: 'system',
+    icon: '🗂️',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 5,
+    defaultEnabled: true
+  },
 };
 
 // Export Acquirers 
@@ -221,6 +233,7 @@ export { PackagesAcquirer } from './packages';
 export { LogcatAcquirer } from './logcat';
 export { RootBinariesAcquirer } from './root-binaries';
 export { EnvAcquirer } from './env';
+export { MountAcquirer } from './mount';
 export { SystemInfoAcquirer } from './system';
 export { SELinuxAcquirer } from './selinux'
 // export { DatabasesAcquirer } from './databases';

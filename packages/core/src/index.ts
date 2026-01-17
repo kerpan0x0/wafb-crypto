@@ -36,6 +36,8 @@ export {
   Acquirer
 } from './forensics/acquisition';
 
+export { MountAcquirer } from './forensics/acquisition/mount';
+
 export { EnvAcquirer } from './forensics/acquisition/env';
 export type { EnvConfig } from './forensics/acquisition/env';
 

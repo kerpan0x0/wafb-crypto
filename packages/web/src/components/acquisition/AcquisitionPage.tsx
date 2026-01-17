@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer } from '@wafb/core';
 import {
+  MountAcquirer,
   EnvAcquirer,
   BugreportAcquirer,
   LogcatAcquirer,
@@ -142,6 +143,10 @@ export function AcquisitionPage() {
           includeDenials: true,
           maxDenialLines: 100
         }
+      },
+      mount: {
+        Class: MountAcquirer,
+        options: {}
       }
     };
 
