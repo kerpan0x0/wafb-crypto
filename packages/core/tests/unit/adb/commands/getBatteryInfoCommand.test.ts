@@ -12,24 +12,20 @@ describe('GetBatteryInfoCommand', () => {
   });
 
   describe('exec', () => {
-    it('should parse battery information correctly', async () => {
+    it('should return raw battery information', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_BATTERY_OUTPUT));
       command = new GetBatteryInfoCommand(mockAdb);
 
       const result = await command.exec();
 
-      expect(result).toEqual({
-        level: 85,
-        temperature: 35.0,
-        voltage: 5000000,
-        status: '2',
-        health: '2',
-        technology: 'Li-ion',
-        present: true
-      });
+      expect(result).toBe(MOCK_BATTERY_OUTPUT);
+      expect(result).toContain('level: 85');
+      expect(result).toContain('temperature: 350');
+      expect(result).toContain('voltage: 5000000');
+      expect(result).toContain('status: 2');
     });
 
-    it('should handle missing optional fields', async () => {
+    it('should return raw output with minimal fields', async () => {
       const minimalOutput = `
         level: 50
         temperature: 250
@@ -41,15 +37,14 @@ describe('GetBatteryInfoCommand', () => {
 
       const result = await command.exec();
 
-      expect(result.level).toBe(50);
-      expect(result.temperature).toBe(25.0);
-      expect(result.voltage).toBe(3800);
-      expect(result.status).toBe('Charging');
-      expect(result.health).toBe('');
-      expect(result.technology).toBe('');
+      expect(result).toBe(minimalOutput);
+      expect(result).toContain('level: 50');
+      expect(result).toContain('temperature: 250');
+      expect(result).toContain('voltage: 3800');
+      expect(result).toContain('status: Charging');
     });
 
-    it('should convert temperature correctly (divide by 10)', async () => {
+    it('should return raw output with temperature values', async () => {
       const output = `
         level: 100
         temperature: 320
@@ -61,10 +56,11 @@ describe('GetBatteryInfoCommand', () => {
 
       const result = await command.exec();
 
-      expect(result.temperature).toBe(32.0);
+      expect(result).toBe(output);
+      expect(result).toContain('temperature: 320');
     });
 
-    it('should parse present field as boolean', async () => {
+    it('should return raw output with present field', async () => {
       const outputPresent = `
         level: 80
         temperature: 300
@@ -76,10 +72,12 @@ describe('GetBatteryInfoCommand', () => {
       command = new GetBatteryInfoCommand(mockAdb);
 
       const result = await command.exec();
-      expect(result.present).toBe(true);
+
+      expect(result).toBe(outputPresent);
+      expect(result).toContain('present: true');
     });
 
-    it('should handle present field as false', async () => {
+    it('should return raw output with present false', async () => {
       const outputNotPresent = `
         level: 0
         temperature: 0
@@ -91,10 +89,12 @@ describe('GetBatteryInfoCommand', () => {
       command = new GetBatteryInfoCommand(mockAdb);
 
       const result = await command.exec();
-      expect(result.present).toBe(false);
+
+      expect(result).toBe(outputNotPresent);
+      expect(result).toContain('present: false');
     });
 
-    it('should return default values on error', async () => {
+    it('should return empty string on error', async () => {
       mockAdb = createMockAdb();
       (mockAdb.subprocess.shellProtocol.spawn as any).mockRejectedValue(
         new Error('Device disconnected')
@@ -103,15 +103,10 @@ describe('GetBatteryInfoCommand', () => {
 
       const result = await command.exec();
 
-      expect(result).toEqual({
-        level: 0,
-        temperature: 0,
-        voltage: 0,
-        status: 'Unknown'
-      });
+      expect(result).toBe('');
     });
 
-    it('should handle malformed output gracefully', async () => {
+    it('should return malformed output as-is', async () => {
       const malformedOutput = `
         this is not valid battery output
         random text
@@ -122,10 +117,7 @@ describe('GetBatteryInfoCommand', () => {
 
       const result = await command.exec();
 
-      expect(result.level).toBe(0);
-      expect(result.temperature).toBe(0);
-      expect(result.voltage).toBe(0);
-      expect(result.status).toBe('Unknown');
+      expect(result).toBe(malformedOutput);
     });
 
     it('should handle various status strings', async () => {
@@ -142,11 +134,12 @@ describe('GetBatteryInfoCommand', () => {
         command = new GetBatteryInfoCommand(mockAdb);
 
         const result = await command.exec();
-        expect(result.status).toBe(status);
+        expect(result).toBe(output);
+        expect(result).toContain(`status: ${status}`);
       }
     });
 
-    it('should extract numeric values with colons', async () => {
+    it('should return raw output with colons', async () => {
       const output = `
         level:90
         temperature:310
@@ -158,12 +151,11 @@ describe('GetBatteryInfoCommand', () => {
 
       const result = await command.exec();
 
-      expect(result.level).toBe(90);
-      expect(result.temperature).toBe(31.0);
-      expect(result.voltage).toBe(4150);
+      expect(result).toBe(output);
+      expect(result).toContain('level:90');
     });
 
-    it('should extract numeric values with spaces', async () => {
+    it('should return raw output with spaces', async () => {
       const output = `
         level    95
         temperature    305
@@ -175,9 +167,8 @@ describe('GetBatteryInfoCommand', () => {
 
       const result = await command.exec();
 
-      expect(result.level).toBe(95);
-      expect(result.temperature).toBe(30.5);
-      expect(result.voltage).toBe(4180);
+      expect(result).toBe(output);
+      expect(result).toContain('level    95');
     });
 
     it('should call dumpsys battery command', async () => {

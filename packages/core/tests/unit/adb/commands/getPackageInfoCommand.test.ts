@@ -12,78 +12,67 @@ describe('GetPackageInfoCommand', () => {
   });
 
   describe('exec', () => {
-    it('should parse package information correctly', async () => {
+    it('should return raw package information', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_PACKAGE_INFO));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result).not.toBeNull();
-      expect(result?.packageName).toBe('com.example.app');
-      expect(result?.versionName).toBe('1.0.0');
-      expect(result?.versionCode).toBe('100');
-      expect(result?.targetSdk).toBe(33);
-      expect(result?.minSdk).toBe(21);
+      expect(result).toBe(MOCK_PACKAGE_INFO);
+      expect(result).toContain('com.example.app');
+      expect(result).toContain('versionName=1.0.0');
+      expect(result).toContain('versionCode=100');
     });
 
-    it('should parse install times correctly', async () => {
+    it('should return raw output containing install times', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_PACKAGE_INFO));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      // Times are parsed as the first word only (date part)
-      expect(result?.firstInstallTime).toBe('2025-01-10');
-      expect(result?.lastUpdateTime).toBe('2025-01-15');
+      expect(result).toContain('firstInstallTime=2025-01-10');
+      expect(result).toContain('lastUpdateTime=2025-01-15');
     });
 
-    it('should parse install location correctly', async () => {
+    it('should return raw output containing install location', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_PACKAGE_INFO));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.installLocation).toBe('/data/app/com.example.app-hash');
+      expect(result).toContain('codePath=/data/app/com.example.app-hash');
     });
 
-    it('should extract permissions when includePermissions is true', async () => {
+    it('should return raw output with permissions', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_PACKAGE_INFO));
       command = new GetPackageInfoCommand(mockAdb);
 
-      const result = await command.exec(
-        { packageName: 'com.example.app' },
-        { includePermissions: true }
-      );
+      const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.permissions).toBeDefined();
-      expect(result?.permissions).toContain('android.permission.INTERNET');
-      expect(result?.permissions).toContain('android.permission.ACCESS_NETWORK_STATE');
-      expect(result?.permissions).toContain('android.permission.CAMERA');
-      expect(result?.permissions?.length).toBe(3);
+      expect(result).toContain('android.permission.INTERNET');
+      expect(result).toContain('android.permission.ACCESS_NETWORK_STATE');
+      expect(result).toContain('android.permission.CAMERA');
     });
 
-    it('should not extract permissions when includePermissions is false', async () => {
+    it('should return raw output regardless of options', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_PACKAGE_INFO));
       command = new GetPackageInfoCommand(mockAdb);
 
-      const result = await command.exec(
-        { packageName: 'com.example.app' },
-        { includePermissions: false }
-      );
+      const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.permissions).toBeUndefined();
+      expect(result).toBe(MOCK_PACKAGE_INFO);
     });
 
-    it('should return null for non-existent package', async () => {
+    it('should return empty string for non-existent package', async () => {
       mockAdb = createMockAdb(createMockShellSocket(''));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.nonexistent.app' });
 
-      expect(result).toBeNull();
+      expect(result).toBe('');
     });
 
-    it('should return null when dumpsys fails', async () => {
+    it('should return empty string when dumpsys fails', async () => {
       mockAdb = createMockAdb();
       (mockAdb.subprocess.shellProtocol.spawn as any).mockRejectedValue(
         new Error('Package not found')
@@ -92,36 +81,38 @@ describe('GetPackageInfoCommand', () => {
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result).toBeNull();
+      expect(result).toBe('');
     });
 
-    it('should handle package without targetSdk', async () => {
+    it('should return raw output without targetSdk', async () => {
       const packageInfoWithoutTargetSdk = MOCK_PACKAGE_INFO.replace('targetSdk=33', '');
       mockAdb = createMockAdb(createMockShellSocket(packageInfoWithoutTargetSdk));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.targetSdk).toBeUndefined();
-      expect(result?.minSdk).toBe(21);
+      expect(result).toBe(packageInfoWithoutTargetSdk);
+      expect(result).not.toContain('targetSdk=');
+      expect(result).toContain('minSdk=21');
     });
 
-    it('should handle package without minSdk', async () => {
+    it('should return raw output without minSdk', async () => {
       const packageInfoWithoutMinSdk = MOCK_PACKAGE_INFO.replace('minSdk=21', '');
       mockAdb = createMockAdb(createMockShellSocket(packageInfoWithoutMinSdk));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.minSdk).toBeUndefined();
-      expect(result?.targetSdk).toBe(33);
+      expect(result).toBe(packageInfoWithoutMinSdk);
+      expect(result).not.toContain('minSdk=');
+      expect(result).toContain('targetSdk=33');
     });
 
     it('should use custom timeout', async () => {
       mockAdb = createMockAdb(createMockShellSocket(MOCK_PACKAGE_INFO));
       command = new GetPackageInfoCommand(mockAdb);
 
-      await command.exec({ packageName: 'com.example.app' }, { timeout: 15000 });
+      await command.exec({ packageName: 'com.example.app', timeout: 15000 });
 
       expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
         'dumpsys package com.example.app'
@@ -139,7 +130,7 @@ describe('GetPackageInfoCommand', () => {
       );
     });
 
-    it('should handle package with version name containing spaces', async () => {
+    it('should return raw output with spaces in version', async () => {
       const packageInfoWithSpaces = MOCK_PACKAGE_INFO.replace(
         'versionName=1.0.0',
         'versionName=1.0.0 Beta'
@@ -149,31 +140,33 @@ describe('GetPackageInfoCommand', () => {
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      // Should only capture up to the first space
-      expect(result?.versionName).toBe('1.0.0');
+      expect(result).toBe(packageInfoWithSpaces);
+      expect(result).toContain('versionName=1.0.0 Beta');
     });
 
-    it('should handle package with missing versionName', async () => {
+    it('should return raw output without versionName', async () => {
       const packageInfoWithoutVersion = MOCK_PACKAGE_INFO.replace('versionName=1.0.0', '');
       mockAdb = createMockAdb(createMockShellSocket(packageInfoWithoutVersion));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.versionName).toBe('Unknown');
+      expect(result).toBe(packageInfoWithoutVersion);
+      expect(result).not.toContain('versionName=');
     });
 
-    it('should handle package with missing versionCode', async () => {
+    it('should return raw output without versionCode', async () => {
       const packageInfoWithoutCode = MOCK_PACKAGE_INFO.replace('versionCode=100', '');
       mockAdb = createMockAdb(createMockShellSocket(packageInfoWithoutCode));
       command = new GetPackageInfoCommand(mockAdb);
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.versionCode).toBe('Unknown');
+      expect(result).toBe(packageInfoWithoutCode);
+      expect(result).not.toContain('versionCode=');
     });
 
-    it('should extract permissions only in permissions section', async () => {
+    it('should return raw output with complex permissions', async () => {
       const complexOutput = `
       Packages:
         Package [com.test.app]:
@@ -192,18 +185,15 @@ describe('GetPackageInfoCommand', () => {
       mockAdb = createMockAdb(createMockShellSocket(complexOutput));
       command = new GetPackageInfoCommand(mockAdb);
 
-      const result = await command.exec(
-        { packageName: 'com.test.app' },
-        { includePermissions: true }
-      );
+      const result = await command.exec({ packageName: 'com.test.app' });
 
-      expect(result?.permissions).toContain('android.permission.INTERNET');
-      expect(result?.permissions).toContain('android.permission.CAMERA');
-      expect(result?.permissions).toContain('android.permission.WRITE_STORAGE');
-      expect(result?.permissions).toHaveLength(3);
+      expect(result).toBe(complexOutput);
+      expect(result).toContain('android.permission.INTERNET');
+      expect(result).toContain('android.permission.CAMERA');
+      expect(result).toContain('android.permission.WRITE_STORAGE');
     });
 
-    it('should handle empty permissions section', async () => {
+    it('should return raw output with empty permissions', async () => {
       const outputWithoutPermissions = `
       Packages:
         Package [com.test.app]:
@@ -217,12 +207,10 @@ describe('GetPackageInfoCommand', () => {
       mockAdb = createMockAdb(createMockShellSocket(outputWithoutPermissions));
       command = new GetPackageInfoCommand(mockAdb);
 
-      const result = await command.exec(
-        { packageName: 'com.test.app' },
-        { includePermissions: true }
-      );
+      const result = await command.exec({ packageName: 'com.test.app' });
 
-      expect(result?.permissions).toEqual([]);
+      expect(result).toBe(outputWithoutPermissions);
+      expect(result).toContain('requested permissions:');
     });
 
     it('should call dumpsys with correct package name', async () => {
@@ -236,7 +224,7 @@ describe('GetPackageInfoCommand', () => {
       );
     });
 
-    it('should handle invalid SDK numbers gracefully', async () => {
+    it('should return raw output with invalid SDK numbers', async () => {
       const invalidSdkOutput = MOCK_PACKAGE_INFO.replace(
         'versionCode=100 minSdk=21 targetSdk=33',
         'versionCode=100 minSdk=abc targetSdk=xyz'
@@ -246,8 +234,9 @@ describe('GetPackageInfoCommand', () => {
 
       const result = await command.exec({ packageName: 'com.example.app' });
 
-      expect(result?.minSdk).toBeUndefined();
-      expect(result?.targetSdk).toBeUndefined();
+      expect(result).toBe(invalidSdkOutput);
+      expect(result).toContain('minSdk=abc');
+      expect(result).toContain('targetSdk=xyz');
     });
   });
 });

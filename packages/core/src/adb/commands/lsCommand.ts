@@ -1,7 +1,15 @@
 import type { Adb } from '@yume-chan/adb';
-import { ADBCommands, LsOptions } from '.';
 import { ShellCommand } from './shellCommand';
+import { ADBCommands, CommandOptions } from '.';
 
+export interface LsOptions extends CommandOptions {
+  path?: string;
+  all?: boolean;
+  long?: boolean;
+  recursive?: boolean;
+  selinux?: boolean;
+  filter?: string;
+}
 
 export class LsCommand implements ADBCommands<string> {
   constructor(private adb: Adb) { }

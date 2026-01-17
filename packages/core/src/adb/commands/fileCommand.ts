@@ -1,11 +1,17 @@
 import type { Adb } from '@yume-chan/adb';
 import { ADBCommandError } from '../../utils/errors';
 import { Logger } from '../../utils/logger';
-import type { CommandArgs } from '.';
-import { ADBCommands } from '.';
+import { ADBCommands, CommandOptions } from '.';
 import { ShellCommand } from './shellCommand';
 import { readStreamAsBytes } from '../..';
 
+export interface FileOptions extends CommandOptions {
+  path: string,
+}
+
+export interface WriteFileOptions extends FileOptions {
+  content: Uint8Array,
+}
 
 export class WriteFileCommand implements ADBCommands<void> {
   private logger: Logger;
@@ -14,8 +20,8 @@ export class WriteFileCommand implements ADBCommands<void> {
     this.logger = new Logger('WriteFileCommand');
   }
 
-  async exec(args: CommandArgs): Promise<void> {
-    const filePath = args.path;
+  async exec(option: WriteFileOptions): Promise<void> {
+    const filePath = option.path;
     const sync = await this.adb.sync();
 
 
@@ -24,7 +30,7 @@ export class WriteFileCommand implements ADBCommands<void> {
         filename: filePath,
         file: new ReadableStream({
           start(controller) {
-            controller.enqueue(args['content']);
+            controller.enqueue(option.content);
             controller.close();
           }
         }) as any
@@ -55,8 +61,8 @@ export class ReadFileCommand implements ADBCommands<Uint8Array> {
   constructor(private adb: Adb) {
     this.logger = new Logger('ReadFileCommand');
   }
-  async exec(args: CommandArgs): Promise<Uint8Array> {
-    const filePath = args.path.toString();
+  async exec(option: FileOptions): Promise<Uint8Array> {
+    const filePath = option.path.toString();
 
     const sync = await this.adb.sync();
 
@@ -86,7 +92,7 @@ export class ReadFileCommand implements ADBCommands<Uint8Array> {
 export class DeleteFileCommand implements ADBCommands<void> {
   constructor(private adb: Adb) { }
 
-  async exec(args: CommandArgs): Promise<void> {
-    await new ShellCommand(this.adb, `rm ${args.path}`).exec();
+  async exec(option: FileOptions): Promise<void> {
+    await new ShellCommand(this.adb, `rm ${option.path}`).exec();
   }
 }

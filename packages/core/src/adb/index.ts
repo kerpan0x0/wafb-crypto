@@ -12,14 +12,5 @@ export interface ConnectionOptions {
   timeout?: number;
 }
 
-export interface DeviceProperties {
-  androidVersion: string;
-  buildId: string;
-  model: string;
-  manufacturer: string;
-  brand: string;
-  sdkVersion: number;
-  serialNumber: string;
-}
-
+export type DeviceProperties = import('./device').DeviceProperties;
 export { ADBDevice } from './device';

@@ -411,18 +411,8 @@ describe('SystemInfoAcquirer', () => {
       expect(result.error).toContain('Failed to get device properties');
     });
 
-    it('should handle getprop failure', async () => {
-      vi.mocked(GetPropCommand).mockImplementation(() => ({
-        exec: vi.fn().mockRejectedValue(new Error('getprop failed'))
-      } as any));
-      acquirer = new SystemInfoAcquirer(device);
-
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('getprop failed');
-    });
-
+    // GetPropCommand is now called internally by device.getProperties()
+    // so this test is redundant - getProperties failure covers it
     it('should handle device disconnection', async () => {
       vi.mocked(device.getProperties).mockRejectedValue(
         new Error('Device disconnected')

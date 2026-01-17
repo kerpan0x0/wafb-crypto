@@ -1,19 +1,11 @@
-import type { ADBDevice } from '../../adb';
+import type { ADBDevice, DeviceProperties } from '../../adb';
 import { Acquirer } from './acquirer';
 import type {
 	AcquisitionConfig,
 	AcquisitionProgress,
 	AcquisitionResult
 } from '.';
-
-import type {
-	BatteryInfo,
-	NetworkInfo,
-	StorageInfo,
-	MemoryInfo,
-	SensorInfo
-} from '../../adb/commands/index';
-import { GetBatteryInfoCommand, GetMemoryInfoCommand, GetNetworkInfoCommand, GetPropCommand, GetSensorsCommand, GetStorageInfoCommand } from '../../adb/commands';
+import { GetBatteryInfoCommand, GetMemoryInfoCommand, GetNetworkInfoCommand, GetSensorsCommand, GetStorageInfoCommand } from '../../adb/commands';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
 	includeBattery?: boolean;
@@ -22,6 +14,50 @@ export interface SystemInfoConfig extends AcquisitionConfig {
 	includeMemory?: boolean;
 	includeSensors?: boolean;
 }
+
+export interface BatteryInfo {
+	level: number;
+	temperature: number;
+	voltage: number;
+	status: string;
+	health?: string;
+	technology?: string;
+	present?: boolean;
+}
+
+export interface NetworkInfo {
+	wifiEnabled: boolean;
+	mobileDataEnabled: boolean;
+	airplaneModeOn: boolean;
+	activeNetworkType?: string;
+	ipAddress?: string;
+	macAddress?: string;
+}
+
+export interface StorageInfo {
+	totalInternal: string;
+	availableInternal: string;
+	totalExternal?: string;
+	availableExternal?: string;
+}
+
+export interface MemoryInfo {
+	totalRam: string;
+	availableRam: string;
+	lowMemory: boolean;
+	threshold: string;
+}
+
+export interface SensorInfo {
+	name: string;
+	type: string;
+	vendor?: string;
+	version?: string;
+	power?: string;
+	maxRange?: string;
+}
+
+// ------------------------------------------------------------------------
 
 export interface SystemInfoData {
 	device: {
@@ -41,16 +77,10 @@ export interface SystemInfoData {
 	storage?: StorageInfo;
 	memory?: MemoryInfo;
 	sensors?: SensorInfo[];
-	systemProperties: Record<string, string>;
+	systemProperties: DeviceProperties;
 	acquisitionTime: string;
 }
 
-/**
- * Acquirer for System Information
- * 
- * DESIGN: Uses ADBDevice methods for device-level information
- * All types are centralized in adb/base.ts
- */
 export class SystemInfoAcquirer extends Acquirer {
 	constructor(
 		device: ADBDevice,
@@ -81,30 +111,13 @@ export class SystemInfoAcquirer extends Acquirer {
 
 			// Step 2: Get all system properties (30%)
 			this.notifyProgress(onProgress, 30, 'Gathering system properties...', 'running');
-			const systemProps = await new GetPropCommand(this.device.adb).exec({ timeout: this.config.timeout || 30000 });
-
-			// Step 3: Build system info data
-			const systemInfoData: SystemInfoData = {
-				device: {
-					manufacturer: deviceInfo.manufacturer,
-					model: deviceInfo.model,
-					brand: deviceInfo.brand,
-					androidVersion: deviceInfo.androidVersion,
-					buildId: deviceInfo.buildId,
-					sdkVersion: deviceInfo.sdkVersion,
-					serialNumber: deviceInfo.serialNumber,
-					bootloader: systemProps['ro.bootloader'],
-					hardware: systemProps['ro.hardware'],
-					fingerprint: systemProps['ro.build.fingerprint']
-				},
-				systemProperties: systemProps,
-				acquisitionTime: new Date().toISOString()
-			};
+			const deviceProps = await this.device.getProperties();
+			const systemInfoData: SystemInfoData = this.buildSystemInfoData(deviceInfo, deviceProps);
 
 			let progressOffset = 40;
 			const step = 60 / this.getEnabledComponentsCount();
 
-			// Step 4: Get battery info (40-50%)
+			// Step 3: Get battery info (40-50%)
 			if (this.systemConfig.includeBattery !== false) {
 				this.notifyProgress(onProgress, progressOffset, 'Reading battery information...', 'running');
 				try {
@@ -229,6 +242,149 @@ export class SystemInfoAcquirer extends Acquirer {
 	}
 
 	// ============================================================================
+	// Adapters
+	// ============================================================================
+
+	private buildSystemInfoData(deviceInfo: DeviceProperties, systemProps: DeviceProperties): SystemInfoData {
+		return {
+			device: {
+				manufacturer: deviceInfo.manufacturer,
+				model: deviceInfo.model,
+				brand: deviceInfo.brand,
+				androidVersion: deviceInfo.androidVersion,
+				buildId: deviceInfo.buildId,
+				sdkVersion: deviceInfo.sdkVersion,
+				serialNumber: deviceInfo.serialNumber,
+				bootloader: deviceInfo.bootloader,
+				hardware: deviceInfo.hardware,
+				fingerprint: deviceInfo.fingerprint
+			},
+			systemProperties: systemProps,
+			acquisitionTime: new Date().toISOString()
+		};
+	}
+
+	private buildBatteryinfo(output: string): BatteryInfo | PromiseLike<BatteryInfo> {
+		return {
+			level: this.extractNumber(output, 'level') ?? 0,
+			temperature: (this.extractNumber(output, 'temperature') ?? 0) / 10,
+			voltage: this.extractNumber(output, 'voltage') ?? 0,
+			status: this.extractString(output, 'status') || 'Unknown',
+			health: this.extractString(output, 'health') || '',
+			technology: this.extractString(output, 'technology') || '',
+			present: this.extractString(output, 'present') === 'true'
+		};
+	}
+
+	private extractNumber(output: string, key: string): number | null {
+		const regex = new RegExp(`${key}[:\\s]+(\\d+)`, 'i');
+		const match = output.match(regex);
+		return match ? parseInt(match[1], 10) : null;
+	}
+
+	private extractString(output: string, key: string): string | null {
+		const regex = new RegExp(`${key}[:\\s]+([^\\n\\r]+)`, 'i');
+		const match = output.match(regex);
+		return match?.[1]?.trim() || null;
+	}
+
+	private buildNetworkInfo(output: string): NetworkInfo {
+
+		return {
+			wifiEnabled: output.includes('wifi_on=1'),
+			mobileDataEnabled: output.includes('mobile_data=1'),
+			airplaneModeOn: output.includes('airplane_mode_on=1'),
+			activeNetworkType: this.extractActiveNetwork(output)
+		};
+	}
+
+	private extractActiveNetwork(output: string): string | undefined {
+		if (output.includes('wifi_on=1')) return 'WiFi';
+		if (output.includes('mobile_data=1')) return 'Mobile Data';
+		return undefined;
+	}
+
+	private buildMemoryInfo(output: string): MemoryInfo {
+		const totalMatch = output.match(/Total RAM:\s+([^\n]+)/);
+		const freeMatch = output.match(/Free RAM:\s+([^\n]+)/);
+		const lowMemMatch = output.match(/Low Memory:\s+(\w+)/);
+		const thresholdMatch = output.match(/Threshold:\s+([^\n]+)/);
+
+		return {
+			totalRam: totalMatch?.[1]?.trim() || 'Unknown',
+			availableRam: freeMatch?.[1]?.trim() || 'Unknown',
+			lowMemory: lowMemMatch?.[1] === 'true',
+			threshold: thresholdMatch?.[1]?.trim() || 'Unknown'
+		};
+	}
+
+	private buildStorageInfo(output: string): StorageInfo {
+		const lines = output.split('\n').filter(l => l.trim());
+
+		let totalInternal = 'Unknown';
+		let availableInternal = 'Unknown';
+
+		for (const line of lines) {
+			if (line.includes('/data') || line.includes('userdata')) {
+				const parts = line.split(/\s+/).filter(p => p);
+				if (parts.length >= 4) {
+					totalInternal = parts[1];
+					availableInternal = parts[3];
+				}
+				break;
+			}
+		}
+
+		return {
+			totalInternal,
+			availableInternal
+		};
+	}
+
+	private buildSensorInfo(output: string): SensorInfo[] {
+
+		const sensors: SensorInfo[] = [];
+
+		const lines = output.split('\n');
+		let currentSensor: Partial<SensorInfo> | null = null;
+
+		for (const line of lines) {
+			const trimmed = line.trim();
+
+			if (trimmed.match(/^\w+\s+Sensor\s*$/i) || trimmed.includes('| ')) {
+				if (currentSensor?.name) {
+					sensors.push(currentSensor as SensorInfo);
+				}
+				currentSensor = {};
+				continue;
+			}
+
+			if (!currentSensor) continue;
+
+			if (trimmed.includes('name=')) {
+				currentSensor.name = this.extractValue(trimmed, 'name');
+			} else if (trimmed.includes('type=')) {
+				currentSensor.type = this.extractValue(trimmed, 'type');
+			} else if (trimmed.includes('vendor=')) {
+				currentSensor.vendor = this.extractValue(trimmed, 'vendor');
+			} else if (trimmed.includes('version=')) {
+				currentSensor.version = this.extractValue(trimmed, 'version');
+			}
+		}
+
+		if (currentSensor?.name) {
+			sensors.push(currentSensor as SensorInfo);
+		}
+
+		return sensors;
+	}
+
+	private extractValue(line: string, key: string): string {
+		const regex = new RegExp(`${key}=([^,\\s]+)`);
+		const match = line.match(regex);
+		return match?.[1] || 'Unknown';
+	}
+	// ============================================================================
 	// PRIVATE HELPERS
 	// ============================================================================
 
@@ -244,60 +400,49 @@ export class SystemInfoAcquirer extends Acquirer {
 
 	async getBatteryInfo(): Promise<BatteryInfo> {
 		try {
-			return await new GetBatteryInfoCommand(this.device.adb).exec();
+			const output = await new GetBatteryInfoCommand(this.device.adb).exec();
+			return this.buildBatteryinfo(output);
 		} catch (error) {
 			this.logger.warn('Failed to get battery info', error);
-			return {
-				level: 0,
-				temperature: 0,
-				voltage: 0,
-				status: 'Unknown'
-			};
+			return this.buildBatteryinfo('');
+
 		}
 	}
 
 	async getNetworkInfo(): Promise<NetworkInfo> {
 		try {
-			return await new GetNetworkInfoCommand(this.device.adb).exec();
+			const output = await new GetNetworkInfoCommand(this.device.adb).exec();
+			return this.buildNetworkInfo(output);
 		} catch (error) {
 			this.logger.warn('Failed to get network info', error);
-			return {
-				wifiEnabled: false,
-				mobileDataEnabled: false,
-				airplaneModeOn: false
-			};
+			return this.buildNetworkInfo('');
 		}
 	}
 
 	async getStorageInfo(): Promise<StorageInfo> {
 		try {
-			return await new GetStorageInfoCommand(this.device.adb).exec();
+			const output = await new GetStorageInfoCommand(this.device.adb).exec();
+			return this.buildStorageInfo(output);
 		} catch (error) {
 			this.logger.warn('Failed to get storage info', error);
-			return {
-				totalInternal: 'Unknown',
-				availableInternal: 'Unknown'
-			};
+			return this.buildStorageInfo('');
 		}
 	}
 
 	async getMemoryInfo(): Promise<MemoryInfo> {
 		try {
-			return await new GetMemoryInfoCommand(this.device.adb).exec();
+			const output = await new GetMemoryInfoCommand(this.device.adb).exec();
+			return this.buildMemoryInfo(output);
 		} catch (error) {
 			this.logger.warn('Failed to get memory info', error);
-			return {
-				totalRam: 'Unknown',
-				availableRam: 'Unknown',
-				lowMemory: false,
-				threshold: 'Unknown'
-			};
+			return this.buildMemoryInfo('');
 		}
 	}
 
 	async getSensors(): Promise<SensorInfo[]> {
 		try {
-			return await new GetSensorsCommand(this.device.adb).exec();
+			const output = await new GetSensorsCommand(this.device.adb).exec();
+			return this.buildSensorInfo(output);
 		} catch (error) {
 			this.logger.warn('Failed to get sensors info', error);
 			return [];

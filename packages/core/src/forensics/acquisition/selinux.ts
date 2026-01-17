@@ -2,7 +2,6 @@ import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 import { Acquirer } from './acquirer';
 import {
   GetLogcatCommand,
-  GetPropCommand,
   ReadFileCommand,
   GetenforceCommand,
   PsCommand,
@@ -273,9 +272,6 @@ export class SELinuxAcquirer extends Acquirer {
     }
   }
 
-  /**
-   * Get SELinux policy information
-   */
   private async getSELinuxPolicy(): Promise<SELinuxPolicy> {
     try {
       const decoder = new TextDecoder("utf-8");
@@ -286,13 +282,9 @@ export class SELinuxAcquirer extends Acquirer {
       // Try to get full policy version from multiple sources
       let policyVersion = 'Unknown';
       try {
-        const props = await new GetPropCommand(this.device.adb).exec({ timeout: 15000 });
+        const props = await this.device.getProperties();
 
-        // Try multiple properties in order of preference
-        policyVersion =
-          props['ro.build.selinux'] ||
-          props['ro.boot.selinux'] ||
-          props['selinux.reload_policy'] ||
+        policyVersion = props.policyVersion ||
           `Version ${version}`;  // Fallback to just the version number
 
         policyVersion = policyVersion.trim();
@@ -308,9 +300,6 @@ export class SELinuxAcquirer extends Acquirer {
     }
   }
 
-  /**
-   * Get process contexts from running processes
-   */
   private async getProcessContexts(): Promise<ProcessContext[]> {
     try {
       const output = await new PsCommand(

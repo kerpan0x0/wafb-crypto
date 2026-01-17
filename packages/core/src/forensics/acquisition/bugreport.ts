@@ -191,9 +191,9 @@ export class BugreportAcquirer extends Acquirer {
     const bugreportPath = `/sdcard/bugreport-${timestamp}.txt`;
 
     if (useZip) {
-      return await new GenerateBugReportzCommand(this.device.adb).exec({ outputPath: bugreportPath }, { timeout: 180000 });
+      return await new GenerateBugReportzCommand(this.device.adb).exec({ outputPath: bugreportPath, timeout: 180000 });
     } else {
-      return await new GenerateBugReportCommand(this.device.adb).exec({ outputPath: bugreportPath }, { timeout: 180000 });
+      return await new GenerateBugReportCommand(this.device.adb).exec({ outputPath: bugreportPath, timeout: 180000 });
     }
   }
 

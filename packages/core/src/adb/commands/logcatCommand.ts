@@ -1,8 +1,13 @@
 import type { Adb } from '@yume-chan/adb';
-import type { LogcatOptions } from '.';
-import { ADBCommands } from '.';
+import { ADBCommands, CommandOptions } from '.';
 import { ShellCommand } from './shellCommand';
 
+export interface LogcatOptions extends CommandOptions {
+  buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'default' | 'all';
+  filter?: string;
+  maxLines?: number;
+  dump?: boolean;
+}
 
 export class GetLogcatCommand implements ADBCommands<string> {
 

@@ -138,7 +138,7 @@ export class RootBinariesAcquirer extends Acquirer {
 
     for (const binary of binaries) {
       try {
-        const result = await new RootBinariesCommand(this.device.adb).exec({ binary });
+        const result = await new RootBinariesCommand(this.device.adb).exec({ command: binary });
         rootBinariesData[binary] = result;
         this.logger.info(`Retrieved root binary: ${binary}`);
       } catch (err) {

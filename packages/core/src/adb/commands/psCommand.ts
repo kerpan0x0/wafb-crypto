@@ -1,8 +1,12 @@
 import type { Adb } from '@yume-chan/adb';
-import type { PsOptions } from '.';
-import { ADBCommands } from '.';
+import { ADBCommands, CommandOptions } from '.';
 import { ShellCommand } from './shellCommand';
 
+export interface PsOptions extends CommandOptions {
+  all?: boolean;
+  filter?: string;
+  selinux?: boolean;
+}
 
 export class PsCommand implements ADBCommands<string> {
   constructor(private adb: Adb) { }

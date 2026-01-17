@@ -7,7 +7,7 @@ export class GetenforceCommand implements ADBCommands<string> {
   constructor(private adb: Adb) {
   }
 
-  async exec(options: CommandOptions = {}): Promise<string> {
-    return await new ShellCommand(this.adb, `getenforce`).exec({ timeout: 5000});
+  async exec(_options: CommandOptions): Promise<string> {
+    return await new ShellCommand(this.adb, `getenforce`).exec();
   }
 }

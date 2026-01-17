@@ -5,7 +5,21 @@ import { Logger } from '../utils/logger';
 import {
   IsRootedCommand,
 } from './commands';
-import { DeviceInfo, DeviceProperties } from '.';
+import { DeviceInfo } from '.';
+
+export interface DeviceProperties {
+  androidVersion: string;
+  buildId: string;
+  model: string;
+  manufacturer: string;
+  brand: string;
+  sdkVersion: number;
+  serialNumber: string;
+  policyVersion?: string;
+  bootloader?: string;
+  hardware?: string;
+  fingerprint?: string;
+}
 
 export class ADBDevice {
   private logger: Logger;
@@ -36,6 +50,13 @@ export class ADBDevice {
       brand: props['ro.product.brand'] || 'Unknown',
       sdkVersion: parseInt(props['ro.build.version.sdk'] || '0', 10),
       serialNumber: this.info.serialNumber || 'Unknown',
+      policyVersion:
+        props['ro.build.selinux'] ||
+        props['ro.boot.selinux'] ||
+        props['selinux.reload_policy'],
+      bootloader: props['ro.bootloader'],
+      hardware: props['ro.hardware'],
+      fingerprint: props['ro.build.fingerprint']
     };
   }
 
