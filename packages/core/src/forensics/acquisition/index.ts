@@ -248,6 +248,7 @@ export { EnvAcquirer } from './env';
 export { MountAcquirer } from './mount';
 export { SystemInfoAcquirer } from './system';
 export { SELinuxAcquirer } from './selinux'
+export { SettingsAcquirer } from './settings';
 // export { DatabasesAcquirer } from './databases';
 // export { MediaAcquirer } from './media';
 // export { CommunicationsAcquirer } from './communications';

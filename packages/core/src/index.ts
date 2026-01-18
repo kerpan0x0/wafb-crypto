@@ -36,6 +36,9 @@ export {
   Acquirer
 } from './forensics/acquisition';
 
+export { SettingsAcquirer } from './forensics/acquisition/settings';
+export type { SettingsConfig } from './forensics/acquisition/settings';
+
 export { MountAcquirer } from './forensics/acquisition/mount';
 
 export { EnvAcquirer } from './forensics/acquisition/env';

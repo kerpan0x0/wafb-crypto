@@ -7,7 +7,8 @@ import {
   LogcatAcquirer,
   PackagesAcquirer,
   RootBinariesAcquirer,
-  SELinuxAcquirer
+  SELinuxAcquirer,
+  SettingsAcquirer
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
@@ -147,6 +148,15 @@ export function AcquisitionPage() {
       mount: {
         Class: MountAcquirer,
         options: {}
+      },
+      settings: {
+        Class: SettingsAcquirer,
+        options: {
+          includeSecure: true,
+          includeSystem: true,
+          includeGlobal: true,
+          computeHash: true
+        }
       }
     };
 

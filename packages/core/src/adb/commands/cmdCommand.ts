@@ -15,6 +15,6 @@ export class CmdCommand implements ADBCommands<string> {
 
     async exec(options: CmdOptions): Promise<string> {
         validNamespaces.includes(options.namespace) || (() => { throw new Error(`Invalid namespace: ${options.namespace}`); })();
-        return await new ShellCommand(this.adb, `settings list ${options.namespace}`).exec();
+        return await new ShellCommand(this.adb, `cmd settings list ${options.namespace}`).exec();
     }
 }

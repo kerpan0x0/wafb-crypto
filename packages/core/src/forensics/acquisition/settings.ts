@@ -5,7 +5,7 @@ import { CmdCommand } from "../../adb/commands";
 export interface SettingsConfig extends AcquisitionConfig {
 }
 
-export class SettingAcquirer extends Acquirer {
+export class SettingsAcquirer extends Acquirer {
     constructor(
         device: ADBDevice,
         settingsConfig: SettingsConfig = {}
@@ -44,11 +44,14 @@ export class SettingAcquirer extends Acquirer {
             const namespaces = ['global', 'system', 'secure'];
             const settingsData: { namespace: string; data: string }[] = [];
 
-            namespaces.forEach(async ns => {
+            namespaces.map(async ns => {
                 this.logger.info(`Acquiring settings for namespace: ${ns}`);
 
                 const output = await new CmdCommand(this.device.adb).exec({ namespace: `${ns}` });
-                settingsData.push({ namespace: ns, data: output });
+
+                this.logger.debug(`Settings data for namespace ${ns}: ${output}`);
+                const blob = new Blob([output], { type: 'text/plain' });
+                this.downloadBlob(blob, `settings_${ns}.txt`);
 
                 this.notifyProgress(
                     onProgress,
@@ -58,22 +61,34 @@ export class SettingAcquirer extends Acquirer {
                 );
             });
 
-            // Step 3: create blog and trigger download
+            // Step 3: Compute hash if required
+            if (this.computeHash) {
+                this.notifyProgress(
+                    onProgress,
+                    90,
+                    'Computing hashes for settings data...',
+                    'running'
+                );
 
-            settingsData.map(item => {
-                this.logger.debug(`Settings data for namespace ${item.namespace}: ${item.data}`);
-                const blob = new Blob([item.data], { type: 'text/plain' });
-                this.downloadBlob(blob, `settings_${item.namespace}.txt`);
+                settingsData.forEach(item => {
+                    this.computeHash(new TextEncoder().encode(item.data))
+                        .then(hash => {
+                            this.logger.info(`Computed SHA-256 hash for ${item.namespace} settings: ${hash}`);
+                        })
+                        .catch(error => {
+                            this.logger.error(`Failed to compute hash for ${item.namespace} settings`, { error });
+                        });
+                });
+            }
 
-            });
-
+            // Step 5: Complete acquisition
             this.notifyProgress(
                 onProgress,
                 100,
                 'Set    tings acquisition completed',
                 'completed'
             );
-            
+
             const endTime = new Date();
             const duration = endTime.getTime() - startTime.getTime();
 
