@@ -17,7 +17,8 @@ export type AcquisitionType =
   | 'communications'
   | 'browser'
   | 'mount'
-  | 'network';
+  | 'network'
+  | 'settings';
 
 export type AcquisitionStatus =
   | 'pending'      // In attesa di esecuzione
@@ -223,6 +224,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 5,
     defaultEnabled: true
   },
+  settings: {
+    id: 'settings',
+    name: 'System Settings',
+    description: 'Export of system settings and configurations',
+    category: 'system',
+    icon: '⚙️',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 10,
+    defaultEnabled: true
+  }
 };
 
 // Export Acquirers 

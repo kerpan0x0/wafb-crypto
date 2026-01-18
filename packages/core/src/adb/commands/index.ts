@@ -30,3 +30,4 @@ export { GetenforceCommand } from './getenforceCommand'
 export { PsCommand } from './psCommand'
 export { LsCommand } from './lsCommand';
 export { MountCommand, ProcMountCommand } from './mountCommand';
+export { CmdCommand } from './cmdCommand';
