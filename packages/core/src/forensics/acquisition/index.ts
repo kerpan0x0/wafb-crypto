@@ -18,7 +18,8 @@ export type AcquisitionType =
   | 'browser'
   | 'mount'
   | 'network'
-  | 'settings';
+  | 'settings'
+  | 'process';
 
 export type AcquisitionStatus =
   | 'pending'      // In attesa di esecuzione
@@ -234,7 +235,18 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false,
     estimatedDuration: 10,
     defaultEnabled: true
-  }
+  },
+  process: {
+    id: 'process',
+    name: 'Running Processes',
+    description: 'Snapshot of all running processes with PID, memory usage, CPU info, and SELinux contexts',
+    category: 'system',
+    icon: '🔄',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 5,
+    defaultEnabled: true,
+  },
 };
 
 // Export Acquirers 
@@ -249,6 +261,7 @@ export { MountAcquirer } from './mount';
 export { SystemInfoAcquirer } from './system';
 export { SELinuxAcquirer } from './selinux'
 export { SettingsAcquirer } from './settings';
+export { ProcessAcquirer } from './process';
 // export { DatabasesAcquirer } from './databases';
 // export { MediaAcquirer } from './media';
 // export { CommunicationsAcquirer } from './communications';

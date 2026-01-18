@@ -74,6 +74,9 @@ export type { RootBinariesConfig } from './forensics/acquisition/root-binaries';
 export { SELinuxAcquirer } from './forensics/acquisition/selinux'
 export type { SELinuxConfig } from './forensics/acquisition/selinux'
 
+export { ProcessAcquirer } from './forensics/acquisition/process'
+export type { ProcessConfig } from './forensics/acquisition/process'
+
 // ============================================================================
 // Utilities
 // ============================================================================

@@ -8,7 +8,8 @@ import {
   PackagesAcquirer,
   RootBinariesAcquirer,
   SELinuxAcquirer,
-  SettingsAcquirer
+  SettingsAcquirer,
+  ProcessAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
@@ -156,6 +157,14 @@ export function AcquisitionPage() {
           includeSystem: true,
           includeGlobal: true,
           computeHash: true
+        }
+      },
+      process: {
+        Class: ProcessAcquirer,
+        options: {
+          includeThreads: true,
+          includeSELinuxContext: true,
+          includeMemoryInfo: true
         }
       }
     };
