@@ -61,5 +61,8 @@
     "*.{json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "@yume-chan/android-bin": "^2.1.0"
   }
 }

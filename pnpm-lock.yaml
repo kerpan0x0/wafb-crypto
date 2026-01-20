@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@yume-chan/android-bin':
+        specifier: ^2.1.0
+        version: 2.1.0
     devDependencies:
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.0.0
@@ -890,6 +894,9 @@ packages:
 
   '@yume-chan/adb@2.5.1':
     resolution: {integrity: sha512-Nm9ZA0cOxfINE+BlZ7whgqjtoLpaZg1xcV8e0C7YbpG/KOHnQGseGTwbfqJFR6xdqbRvvrNL4jIGGpxvn31ykw==}
+
+  '@yume-chan/android-bin@2.1.0':
+    resolution: {integrity: sha512-is97IQwmSTmGCLe8GKO3rRDib2is6Xumo9KzeArgHwizIF0XnpCUm/xIVJLnpifR9PlMyLldDUttTZMTnaNivg==}
 
   '@yume-chan/async@4.1.3':
     resolution: {integrity: sha512-0vzhNJMkWUPyjKzUK4rqHEeCU6YQtF78RsB1kFRB6Y2BLupmEQNxcSb0mjKabPL9jZpCCiLa5KL8oTOJClUVaw==}
@@ -2908,6 +2915,12 @@ snapshots:
       '@yume-chan/async': 4.1.3
       '@yume-chan/event': 2.0.0
       '@yume-chan/no-data-view': 2.0.0
+      '@yume-chan/stream-extra': 2.1.0
+      '@yume-chan/struct': 2.3.2
+
+  '@yume-chan/android-bin@2.1.0':
+    dependencies:
+      '@yume-chan/adb': 2.5.1
       '@yume-chan/stream-extra': 2.1.0
       '@yume-chan/struct': 2.3.2
 

@@ -16,6 +16,7 @@ import {
   LogAcquirer,
   TmpAcquirer,
   DumpsysAcquirer,
+  BackupAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType, AcquisitionResult } from '@wafb/core';
@@ -246,6 +247,13 @@ export function AcquisitionPage() {
       dumpsys: {
         Class: DumpsysAcquirer,
         options: { autoDownload: false },
+      },
+      backup: {
+        Class: BackupAcquirer,
+        options: {
+          type: 'full',
+          useCompression: false,
+        },
       },
     };
 

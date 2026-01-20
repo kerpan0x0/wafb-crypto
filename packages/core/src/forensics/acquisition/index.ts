@@ -5,6 +5,7 @@ import type { DeviceProperties } from '../../adb';
 // ============================================================================
 
 export type AcquisitionType =
+  | 'backup'
   | 'bugreport'
   | 'packages'
   | 'logcat'
@@ -90,6 +91,17 @@ export interface AcquisitionSession {
 }
 
 export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
+  backup: {
+    id: 'backup',
+    name: 'Full Backup',
+    description: 'Complete backup of the device including apps and data',
+    category: 'system',
+    icon: '💾',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 300,
+    defaultEnabled: true,
+  },
   bugreport: {
     id: 'bugreport',
     name: 'Bugreport',
@@ -275,6 +287,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
 
 // Export Acquirers
 export { Acquirer } from './acquirer';
+export { BackupAcquirer } from './backup';
 export { BugreportAcquirer } from './bugreport';
 export { PackagesAcquirer } from './packages';
 export { LogcatAcquirer } from './logcat';

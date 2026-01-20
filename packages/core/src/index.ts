@@ -30,6 +30,9 @@ export type {
 
 export { ACQUISITION_TYPES, Acquirer } from './forensics/acquisition';
 
+export { BackupAcquirer } from './forensics/acquisition/backup';
+export type { BackupConfig } from './forensics/acquisition/backup';
+
 export { SettingsAcquirer } from './forensics/acquisition/settings';
 export type { SettingsConfig } from './forensics/acquisition/settings';
 
