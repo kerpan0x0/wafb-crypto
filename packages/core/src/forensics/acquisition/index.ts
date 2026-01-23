@@ -19,7 +19,8 @@ export type AcquisitionType =
   | 'mount'
   | 'network'
   | 'settings'
-  | 'process';
+  | 'process'
+  | 'services';
 
 export type AcquisitionStatus =
   | 'pending'      // In attesa di esecuzione
@@ -247,6 +248,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 5,
     defaultEnabled: true,
   },
+  services: {
+    id: 'services',
+    name: 'System Services',
+    description: 'List of active system services and their status',
+    category: 'system',
+    icon: '🧩',
+    minSdkVersion: 15,
+    requiresRoot: false,
+    estimatedDuration: 2000,
+    defaultEnabled: true,
+  },
 };
 
 // Export Acquirers 
@@ -262,6 +274,7 @@ export { SystemInfoAcquirer } from './system';
 export { SELinuxAcquirer } from './selinux'
 export { SettingsAcquirer } from './settings';
 export { ProcessAcquirer } from './process';
+export { ServicesAcquirer } from './services';
 // export { DatabasesAcquirer } from './databases';
 // export { MediaAcquirer } from './media';
 // export { CommunicationsAcquirer } from './communications';

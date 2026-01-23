@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer } from '@wafb/core';
+import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer, ServicesAcquirer } from '@wafb/core';
 import {
   MountAcquirer,
   EnvAcquirer,
@@ -165,6 +165,14 @@ export function AcquisitionPage() {
           includeThreads: true,
           includeSELinuxContext: true,
           includeMemoryInfo: true
+        }
+      },
+      services: {
+        Class: ServicesAcquirer,
+        options: {
+          includeSystemServices: true,
+          includeUserServices: true,
+          includeServiceDetails: true
         }
       }
     };

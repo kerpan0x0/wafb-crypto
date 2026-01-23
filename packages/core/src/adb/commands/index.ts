@@ -21,6 +21,12 @@ export {
     GetMemoryInfoCommand,
     GetSensorsCommand,
 } from './getSystemProperty';
+export { 
+  DumpsysListCommand, 
+  DumpsysActivityServicesCommand, 
+  DumpsysServiceCommand 
+} from './dumpsysCommand';
+export type { DumpsysOptions } from './dumpsysCommand';
 export { GetPropCommand } from './getDevicePropertyCommand';
 export { GetPackageInfoCommand, ListPackageCommand } from './getPackageInfoCommand';
 export { IsRootedCommand } from './isRootedCommand';

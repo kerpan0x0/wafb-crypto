@@ -77,6 +77,9 @@ export type { SELinuxConfig } from './forensics/acquisition/selinux'
 export { ProcessAcquirer } from './forensics/acquisition/process'
 export type { ProcessConfig } from './forensics/acquisition/process'
 
+export { ServicesAcquirer } from './forensics/acquisition/services'
+export type { ServicesConfig } from './forensics/acquisition/services'
+
 // ============================================================================
 // Utilities
 // ============================================================================
