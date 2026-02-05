@@ -62,6 +62,12 @@ export type {
   LogcatData
 } from './forensics/acquisition/logcat';
 
+export { LogAcquirer } from './forensics/acquisition/logs';
+export type {
+  LogConfig,
+  LogData
+} from './forensics/acquisition/logs';
+
 export { SystemInfoAcquirer } from './forensics/acquisition/system';
 export type {
   SystemInfoConfig,

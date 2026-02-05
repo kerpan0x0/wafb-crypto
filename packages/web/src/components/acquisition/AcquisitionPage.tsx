@@ -12,7 +12,8 @@ import {
   ProcessAcquirer,
   FileAcquirer,
   SystemInfoAcquirer,
-  ServicesAcquirer
+  ServicesAcquirer,
+  LogAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
@@ -176,6 +177,13 @@ export function AcquisitionPage() {
           includeSystemServices: true,
           includeUserServices: true,
           includeServiceDetails: true
+        }
+      },
+      logs: {
+        Class: LogAcquirer,
+        options: {
+          includeSystemLogs: true,
+          computeHash: true
         }
       },
       files: {

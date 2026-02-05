@@ -8,6 +8,7 @@ export type AcquisitionType =
   | 'bugreport'
   | 'packages'
   | 'logcat'
+  | 'logs'
   | 'rootBinaries'
   | 'env'
   | 'system_info'
@@ -172,6 +173,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 30,
     defaultEnabled: false
   },
+  logs: {
+    id: 'logs',
+    name: 'System Log Files',
+    description: 'Collection of system log files from various locations (kernel logs, ANR, system logs)',
+    category: 'logs',
+    icon: '📄',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 30,
+    defaultEnabled: true
+  },
   browser: {
     id: 'browser',
     name: 'Browser Data',
@@ -274,7 +286,6 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
 };
 
 // Export Acquirers 
-// TODO export acquirers classes
 export { Acquirer } from './acquirer';
 export { BugreportAcquirer } from './bugreport';
 export { PackagesAcquirer } from './packages';
@@ -288,8 +299,4 @@ export { SettingsAcquirer } from './settings';
 export { ProcessAcquirer } from './process';
 export { ServicesAcquirer } from './services';
 export { FileAcquirer } from './files'
-// export { DatabasesAcquirer } from './databases';
-// export { MediaAcquirer } from './media';
-// export { CommunicationsAcquirer } from './communications';
-// export { BrowserAcquirer } from './browser';
-// export { NetworkAcquirer } from './network';
+export { LogAcquirer } from './logs';
