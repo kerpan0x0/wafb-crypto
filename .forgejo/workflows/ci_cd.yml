@@ -1,4 +1,4 @@
-name: WAFB CI
+name: WAFB CI + Deploy
 on:
   push:
     branches: [ develop, main ]
@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [ develop, main ]
 
+env:
+  NODE_VERSION: '20'
+  AWS_REGION: 'eu-west-1'
+
 jobs:
   quality:
     runs-on: ubuntu-22.04
@@ -14,16 +18,101 @@ jobs:
       image: node:20-bookworm
     steps:
       - uses: actions/checkout@v4
+      
       - name: Install pnpm
         run: corepack enable && corepack prepare pnpm@latest --activate
+      
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      
       - name: Lint
         run: pnpm lint
+      
       - name: Test
         run: pnpm test
+      
       - name: Build
         run: pnpm build
+      
+      # Salva l'artifact per i job successivi
+      - name: Upload build artifact
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        uses: actions/upload-artifact@v3        
+        with:
+          name: web-build
+          path: packages/web/dist/
+          retention-days: 1
+
+  deploy-dev:
+    needs: quality
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-22.04
+    container:
+      image: node:20-bookworm
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: web-build
+          path: packages/web/dist/
+      
+      - name: Install AWS CLI
+        run: |
+          apt-get update
+          apt-get install -y awscli
+      
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials <<EOF
+          [default]
+          aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          EOF
+          cat > ~/.aws/config <<EOF
+          [default]
+          region = ${{ env.AWS_REGION }}
+          output = json
+          EOF
+      
+      - name: Sync to S3 DEV
+        run: |
+          # Assets con cache lungo
+          aws s3 sync ./packages/web/dist/assets/ s3://${{ secrets.S3_BUCKET_DEV }}/assets/ \
+            --delete \
+            --cache-control "public,max-age=31536000,immutable" \
+            --metadata-directive REPLACE
+
+          # Altri file
+          aws s3 sync ./packages/web/dist/ s3://${{ secrets.S3_BUCKET_DEV }}/ \
+            --exclude "assets/*" \
+            --exclude "*.html" \
+            --delete \
+            --cache-control "public,max-age=3600" \
+            --metadata-directive REPLACE
+
+          # HTML senza cache
+          aws s3 sync ./packages/web/dist/ s3://${{ secrets.S3_BUCKET_DEV }}/ \
+            --exclude "*" \
+            --include "*.html" \
+            --delete \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --metadata-directive REPLACE
+      
+      - name: Invalidate CloudFront DEV
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID_DEV }} \
+            --paths "/*"
+      
+      - name: Deploy Summary
+        run: |
+          echo "🚀 Deploy to DEV completed!"
+          echo "📦 Bucket: ${{ secrets.S3_BUCKET_DEV }}"
+          echo "https://d3o52vzag5art.cloudfront.net"
 
   release:
     needs: quality
@@ -34,6 +123,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: node:20-bookworm
+    
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,7 +145,7 @@ jobs:
 
       - name: Archive Web Bundle
         run: |
-          cp packages/web/nginx.conf packages/web/dist/
+          cp packages/web/nginx.conf packages/web/dist/ || true
           cd packages/web/dist
           tar -czf ../../../wafb-web-static.tar.gz .
           cd ../../..
@@ -63,14 +153,11 @@ jobs:
       - name: Create and Upload Release Asset
         run: |
           echo "Creazione/Recupero Release..."
-          # Creiamo la release e salviamo l'intera risposta JSON in un file
           curl -s -X POST -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{\"tag_name\":\"${{ github.ref_name }}\",\"title\":\"Release ${{ github.ref_name }}\",\"draft\":false,\"prerelease\":false}" \
             "${{ github.api_url }}/repos/${{ github.repository }}/releases" > release_info.json || true
           
-          # Se la release esisteva già, il POST sopra potrebbe aver dato errore. 
-          # Recuperiamo l'ID in ogni caso (sia che sia nuova, sia che esistesse)
           RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             "${{ github.api_url }}/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | \
             grep -oP '"id":\s*\K\d+' | head -n 1)
@@ -83,7 +170,6 @@ jobs:
           fi
 
           echo "Caricamento asset su ID $RELEASE_ID..."
-          # Usiamo l'endpoint basato sull'ID, che è quello più primitivo e garantito
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
             -H "Content-Type: application/gzip" \
