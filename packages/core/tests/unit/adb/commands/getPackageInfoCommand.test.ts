@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GetPackageInfoCommand } from '../../../../src/adb/commands/';
 import type { Adb } from '@yume-chan/adb';
-import { createMockAdb, createMockShellSocket, MOCK_PACKAGE_INFO } from './test-helpers';
+import { createMockAdb, createMockShellSocket, MOCK_PACKAGE_INFO } from '../../../helpers/test-helpers';
+
 
 describe('GetPackageInfoCommand', () => {
   let mockAdb: Adb;

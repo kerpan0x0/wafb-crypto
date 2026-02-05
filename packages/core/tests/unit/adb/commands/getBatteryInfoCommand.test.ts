@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GetBatteryInfoCommand } from '../../../../src/adb/commands/';
 import type { Adb } from '@yume-chan/adb';
-import { createMockAdb, createMockShellSocket, MOCK_BATTERY_OUTPUT } from './test-helpers';
+import { createMockAdb, createMockShellSocket, MOCK_BATTERY_OUTPUT } from '../../../helpers/test-helpers';
+
 
 describe('GetBatteryInfoCommand', () => {
   let mockAdb: Adb;

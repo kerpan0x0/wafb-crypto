@@ -80,6 +80,9 @@ export type { ProcessConfig } from './forensics/acquisition/process'
 export { ServicesAcquirer } from './forensics/acquisition/services'
 export type { ServicesConfig } from './forensics/acquisition/services'
 
+export { FileAcquirer } from './forensics/acquisition/files'
+export type { FileAcquisitionConfig } from './forensics/acquisition/files'
+
 // ============================================================================
 // Utilities
 // ============================================================================

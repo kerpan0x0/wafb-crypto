@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ReadFileCommand } from '../../../../src/adb/commands/';
 import { ADBCommandError } from '../../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
-import { createMockAdb, createMockSync, createReadableStream } from './test-helpers';
+import { createMockAdb, createMockSync, createReadableStream } from '../../../helpers/test-helpers';
+
 
 describe('ReadFileCommand', () => {
   let mockAdb: Adb;

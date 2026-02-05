@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, SystemInfoAcquirer, ServicesAcquirer } from '@wafb/core';
+import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger } from '@wafb/core';
 import {
   MountAcquirer,
   EnvAcquirer,
@@ -10,6 +10,9 @@ import {
   SELinuxAcquirer,
   SettingsAcquirer,
   ProcessAcquirer,
+  FileAcquirer,
+  SystemInfoAcquirer,
+  ServicesAcquirer
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
@@ -173,6 +176,21 @@ export function AcquisitionPage() {
           includeSystemServices: true,
           includeUserServices: true,
           includeServiceDetails: true
+        }
+      },
+      files: {
+        Class: FileAcquirer,
+        options: {
+          downloadFiles: false,
+          maxStatBatchSize: 30,
+          maxHashBatchSize: 15,
+          parallelScans: 3,
+          computeFileHashes: true,
+          hashAlgorithms: ['sha256'],
+          maxHashFileSize: 10 * 1024 * 1024,
+          excludeHashPaths: ['/system', '/vendor', '/product', '/apex', '/proc'],
+          hashMethod: 'auto',
+          timeout: 600000
         }
       }
     };

@@ -37,3 +37,10 @@ export { PsCommand } from './psCommand'
 export { LsCommand } from './lsCommand';
 export { MountCommand, ProcMountCommand } from './mountCommand';
 export { CmdCommand } from './cmdCommand';
+export { TestFileCommand } from './testCommand';
+export { StatCommand, StatBatchCommand } from './statCommand';
+export type { StatOptions, StatBatchOptions } from './statCommand';
+export { FindCommand } from './findCommand';
+export { HashCommand, HashBatchCommand} from './hashCommand'
+export type { HashOptions, HashBatchOptions } from './hashCommand'
+

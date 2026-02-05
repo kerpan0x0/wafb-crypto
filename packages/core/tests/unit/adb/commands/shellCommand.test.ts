@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { ShellCommand } from '../../../../src/adb/commands/shellCommand';
 import { ADBCommandError } from '../../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
-import { createMockAdb, createMockShellSocket, createHangingShellSocket } from './test-helpers';
+import { createMockAdb, createMockShellSocket, createHangingShellSocket } from '../../../helpers/test-helpers';
+
 
 describe('ShellCommand', () => {
   let mockAdb: Adb;

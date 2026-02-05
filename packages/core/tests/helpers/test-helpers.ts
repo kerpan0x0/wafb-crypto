@@ -1,7 +1,13 @@
 import { vi } from 'vitest';
+import type { Adb } from '@yume-chan/adb';
+
+// ============================================================================
+// MOCK READABLE STREAMS
+// ============================================================================
 
 /**
  * Crea un mock ReadableStream che restituisce il contenuto specificato
+ * Può accettare sia stringhe che Uint8Array
  */
 export function createMockReadableStream(content: string | Uint8Array) {
   const data = typeof content === 'string' 
@@ -26,35 +32,93 @@ export function createMockReadableStream(content: string | Uint8Array) {
 }
 
 /**
- * Crea un mock shell socket per ADB commands
+ * Creates a readable stream from binary data
+ * Alias for createMockReadableStream for backward compatibility
  */
-export function createMockShellSocket(output: string) {
+export function createReadableStream(data: Uint8Array) {
+  let readCount = 0;
   return {
-    stdout: createMockReadableStream(output),
+    getReader: () => ({
+      read: async () => {
+        if (readCount === 0) {
+          readCount++;
+          return { done: false, value: data };
+        }
+        return { done: true, value: undefined };
+      },
+      releaseLock: vi.fn()
+    })
+  };
+}
+
+// ============================================================================
+// MOCK SHELL SOCKETS
+// ============================================================================
+
+/**
+ * Creates a mock shell socket with customizable stdout output
+ * Versione estesa che supporta exitCode personalizzato
+ */
+export function createMockShellSocket(output: string, exitCode: number = 0) {
+  const encoder = new TextEncoder();
+  let readCount = 0;
+
+  return {
+    stdout: {
+      getReader: () => ({
+        read: async () => {
+          if (readCount === 0) {
+            readCount++;
+            return { done: false, value: encoder.encode(output) };
+          }
+          return { done: true, value: undefined };
+        },
+        releaseLock: vi.fn()
+      })
+    },
     stderr: new ReadableStream(),
     stdin: new WritableStream(),
-    exit: Promise.resolve({ code: 0 })
+    exit: Promise.resolve({ code: exitCode })
   };
 }
 
 /**
- * Crea un mock Adb object completo
+ * Creates a shell socket that never resolves (for timeout tests)
  */
-export function createMockAdb() {
+export function createHangingShellSocket() {
   return {
-    subprocess: {
-      shellProtocol: {
-        spawn: vi.fn()
-      },
-      spawn: vi.fn()
+    stdout: {
+      getReader: () => ({
+        read: () => new Promise(() => {}),
+        releaseLock: vi.fn()
+      })
     },
-    sync: vi.fn(),
+    stderr: new ReadableStream(),
+    stdin: new WritableStream(),
+    exit: new Promise(() => {})
+  };
+}
+
+// ============================================================================
+// MOCK SYNC SERVICES
+// ============================================================================
+
+/**
+ * Creates a mock sync service for file operations
+ * Versione semplice per command tests
+ */
+export function createMockSync() {
+  return {
+    read: vi.fn(),
+    write: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined)
   };
 }
 
 /**
- * Crea un mock sync service per file operations
+ * Crea un mock sync service per file operations con opzioni
+ * Versione estesa per acquirer tests
  */
 export function createMockSyncService(options: {
   readContent?: Uint8Array;
@@ -71,6 +135,32 @@ export function createMockSyncService(options: {
     close: vi.fn().mockResolvedValue(undefined)
   };
 }
+
+// ============================================================================
+// MOCK ADB INSTANCES
+// ============================================================================
+
+/**
+ * Creates a complete mock Adb instance
+ * Supporta shellSocket opzionale per command tests
+ */
+export function createMockAdb(shellSocket?: any): Adb {
+  const defaultShellSocket = createMockShellSocket('');
+  
+  return {
+    subprocess: {
+      shellProtocol: {
+        spawn: vi.fn().mockResolvedValue(shellSocket || defaultShellSocket)
+      },
+      spawn: vi.fn()
+    },
+    sync: vi.fn().mockResolvedValue(createMockSync())
+  } as unknown as Adb;
+}
+
+// ============================================================================
+// MOCK DEVICE INFO & PROPERTIES
+// ============================================================================
 
 /**
  * Crea mock device info
@@ -102,6 +192,10 @@ export function createMockDeviceProperties(overrides = {}) {
   };
 }
 
+// ============================================================================
+// MOCK CONNECTION
+// ============================================================================
+
 /**
  * Crea mock ADB connection
  */
@@ -113,12 +207,20 @@ export function createMockConnection(connected = true) {
   };
 }
 
+// ============================================================================
+// ASYNC UTILITIES
+// ============================================================================
+
 /**
  * Helper per attendere tick asincroni nei test
  */
 export function waitForAsync() {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
+
+// ============================================================================
+// PROGRESS CALLBACK UTILITIES
+// ============================================================================
 
 /**
  * Helper per creare mock progress callback
@@ -136,8 +238,13 @@ export function createMockProgressCallback() {
   };
 }
 
+// ============================================================================
+// MOCK ADB DEVICE WITH COMMANDS (COMPLETO)
+// ============================================================================
+
 /**
  * Crea un mock completo di ADBDevice con ADBCommands mockati
+ * Questa è la factory principale per creare device mock completi
  */
 export function createMockADBDeviceWithCommands(commandOverrides: {
   listPackages?: string[];
@@ -291,6 +398,96 @@ minSdk=21`;
   return mockDevice;
 }
 
+// ============================================================================
+// SPECIALIZED DEVICE MOCKS
+// ============================================================================
+
+/**
+ * Crea un mock device specifico per test SELinux
+ */
+export function createMockADBDeviceForSELinux(selinuxMode: 'Enforcing' | 'Permissive' | 'Disabled' = 'Enforcing') {
+  return createMockADBDeviceWithCommands({
+    shellOutput: selinuxMode, // For getenforce
+    getPropOutput: {
+      'ro.build.version.release': '13',
+      'ro.build.id': 'TP1A.220905.004',
+      'ro.product.model': 'Test Device',
+      'ro.product.manufacturer': 'Test Manufacturer',
+      'ro.product.brand': 'Test',
+      'ro.build.version.sdk': '33',
+      'ro.build.selinux': '30'
+    }
+  });
+}
+
+/**
+ * Crea un mock device specifico per test FileAcquirer
+ * Configura i mock per FindCommand e StatBatchCommand
+ */
+export function createMockADBDeviceForFileAcquirer(overrides: {
+  findOutput?: string;
+  statBatchOutput?: string;
+  getPropOutput?: Record<string, string>;
+} = {}) {
+  const findOutput = overrides.findOutput !== undefined ? overrides.findOutput : MOCK_FIND_OUTPUT;
+  const statBatchOutput = overrides.statBatchOutput !== undefined ? overrides.statBatchOutput : MOCK_STAT_BATCH_OUTPUT;
+  const getPropOutput = overrides.getPropOutput || {
+    'ro.build.version.release': '13',
+    'ro.build.id': 'TP1A.220905.004',
+    'ro.product.model': 'Test Device',
+    'ro.product.manufacturer': 'Test Manufacturer',
+    'ro.product.brand': 'Test',
+    'ro.build.version.sdk': '33'
+  };
+
+  const device = createMockADBDeviceWithCommands({
+    getPropOutput
+  });
+
+  // Override spawn to handle find and stat commands
+  vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockImplementation((command: string) => {
+    let output = '';
+    
+    if (command.includes('find')) {
+      output = findOutput;
+    } else if (command.includes('stat')) {
+      output = statBatchOutput;
+    } else if (command.includes('getprop')) {
+      output = Object.entries(getPropOutput)
+        .map(([key, value]) => `[${key}]: [${value}]`)
+        .join('\n');
+    }
+
+    return Promise.resolve({
+      stdout: {
+        getReader: () => {
+          let readCount = 0;
+          const data = new TextEncoder().encode(output);
+          return {
+            read: async () => {
+              if (readCount === 0) {
+                readCount++;
+                return { done: false, value: data };
+              }
+              return { done: true, value: undefined };
+            },
+            releaseLock: vi.fn()
+          };
+        }
+      },
+      stderr: new ReadableStream(),
+      stdin: new WritableStream(),
+      exit: Promise.resolve({ code: 0 })
+    } as any);
+  });
+
+  return device;
+}
+
+// ============================================================================
+// DOM MOCKS PER ACQUIRERS
+// ============================================================================
+
 /**
  * Mock globali per DOM APIs usate dagli acquirer (download)
  */
@@ -333,17 +530,90 @@ export function setupAcquirerDOMMocks() {
   };
 }
 
-export function createMockADBDeviceForSELinux(selinuxMode: 'Enforcing' | 'Permissive' | 'Disabled' = 'Enforcing') {
-  return createMockADBDeviceWithCommands({
-    shellOutput: selinuxMode, // For getenforce
-    getPropOutput: {
-      'ro.build.version.release': '13',
-      'ro.build.id': 'TP1A.220905.004',
-      'ro.product.model': 'Test Device',
-      'ro.product.manufacturer': 'Test Manufacturer',
-      'ro.product.brand': 'Test',
-      'ro.build.version.sdk': '33',
-      'ro.build.selinux': '30'
-    }
-  });
-}
+// ============================================================================
+// MOCK DATA CONSTANTS (da command tests)
+// ============================================================================
+
+/**
+ * Sample dumpsys battery output for testing
+ */
+export const MOCK_BATTERY_OUTPUT = `Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  Wireless powered: false
+  Max charging current: 500000
+  Max charging voltage: 5000000
+  Charge counter: 2500000
+  status: 2
+  health: 2
+  present: true
+  level: 85
+  scale: 100
+  voltage: 4200
+  temperature: 350
+  technology: Li-ion`;
+
+/**
+ * Sample dumpsys package output for testing
+ */
+export const MOCK_PACKAGE_INFO = `Packages:
+  Package [com.example.app] (12345678):
+    userId=10123
+    pkg=Package{hash12345 com.example.app}
+    codePath=/data/app/com.example.app-hash
+    resourcePath=/data/app/com.example.app-hash
+    legacyNativeLibraryDir=/data/app/com.example.app-hash/lib
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    versionCode=100 minSdk=21 targetSdk=33
+    versionName=1.0.0
+    splits=[base]
+    apkSigningVersion=3
+    applicationInfo=ApplicationInfo{hash com.example.app}
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE ]
+    dataDir=/data/user/0/com.example.app
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2025-01-15 10:00:00
+    firstInstallTime=2025-01-10 08:30:00
+    lastUpdateTime=2025-01-15 10:00:00
+    signatures=PackageSignatures{hash12345 version:3, signatures:[hash], pastSigningCertificates=[hash]}
+    installPermissionsFixed=true
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    requested permissions:
+      android.permission.INTERNET: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      android.permission.CAMERA: granted=true`;
+
+/**
+ * Sample pm list packages output
+ */
+export const MOCK_PACKAGE_LIST = `package:com.android.systemui
+package:com.example.app1
+package:com.example.app2
+package:com.google.android.gms`;
+
+/**
+ * Sample logcat output
+ */
+export const MOCK_LOGCAT_OUTPUT = `01-15 10:30:45.123  1234  5678 I ActivityManager: START u0 {act=android.intent.action.MAIN}
+01-15 10:30:45.234  1234  5678 D ActivityManager: Activity resumed
+01-15 10:30:45.345  1234  5678 W ActivityManager: Activity paused
+01-15 10:30:45.456  1234  5678 E ActivityManager: Activity crashed`;
+
+/**
+ * Sample find command output (file list)
+ */
+export const MOCK_FIND_OUTPUT = `/sdcard/Documents/test1.txt
+/sdcard/Pictures/photo.jpg
+/sdcard/Download/app.apk
+/sdcard/DCIM/Camera/IMG_001.jpg`;
+
+/**
+ * Sample stat batch command output (pipe-separated format)
+ * Format: size|type|mtime|atime|ctime|octal_perms|human_perms|owner|group|uid|gid|inode
+ */
+export const MOCK_STAT_BATCH_OUTPUT = `1234|regular file|1704067200|1704067100|1704067200|0644|-rw-r--r--|root|sdcard_rw|0|1015|12345
+567890|regular file|1704067300|1704067200|1704067300|0644|-rw-r--r--|root|sdcard_rw|0|1015|12346
+2048000|regular file|1704067400|1704067300|1704067400|0644|-rw-r--r--|root|sdcard_rw|0|1015|12347
+4096|directory|1704067500|1704067400|1704067500|0755|drwxr-xr-x|root|sdcard_rw|0|1015|12348`;

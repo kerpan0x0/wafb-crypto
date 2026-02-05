@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WriteFileCommand } from '../../../../src/adb/commands/';
 import { ADBCommandError } from '../../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
-import { createMockAdb, createMockSync } from './test-helpers';
+import { createMockAdb, createMockSync } from '../../../helpers/test-helpers';
+
+
 
 describe('WriteFileCommand', () => {
   let mockAdb: Adb;

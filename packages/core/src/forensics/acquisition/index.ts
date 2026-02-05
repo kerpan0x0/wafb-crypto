@@ -20,7 +20,8 @@ export type AcquisitionType =
   | 'network'
   | 'settings'
   | 'process'
-  | 'services';
+  | 'services'
+  | 'files';
 
 export type AcquisitionStatus =
   | 'pending'      // In attesa di esecuzione
@@ -259,6 +260,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 2000,
     defaultEnabled: true,
   },
+  files: {
+    id: 'files',
+    name: 'File Listing',
+    description: 'Complete file system listing with forensic metadata (timestamps, permissions, ownership)',
+    category: 'system',
+    icon: '📁',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 180,
+    defaultEnabled: true
+  }
 };
 
 // Export Acquirers 
@@ -275,6 +287,7 @@ export { SELinuxAcquirer } from './selinux'
 export { SettingsAcquirer } from './settings';
 export { ProcessAcquirer } from './process';
 export { ServicesAcquirer } from './services';
+export { FileAcquirer } from './files'
 // export { DatabasesAcquirer } from './databases';
 // export { MediaAcquirer } from './media';
 // export { CommunicationsAcquirer } from './communications';

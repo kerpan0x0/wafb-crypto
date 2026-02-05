@@ -5,10 +5,8 @@ import {
   DumpsysServiceCommand 
 } from '../../../../src/adb/commands';
 import type { Adb } from '@yume-chan/adb';
-import { 
-  createMockAdb, 
-  createMockShellSocket 
-} from './test-helpers';
+import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
+
 
 describe('DumpsysCommands', () => {
   let mockAdb: Adb;
