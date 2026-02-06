@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BugreportAcquirer } from '../../../../src/forensics/acquisition/bugreport';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
   createMockProgressCallback
 } from '../../../helpers/test-helpers';
@@ -69,7 +69,7 @@ describe('BugreportAcquirer', () => {
         checkCommandExists: false
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
-      
+
       acquirer = new BugreportAcquirer(device, { cleanupAfter: true });
       await acquirer.acquire();
 
@@ -102,7 +102,7 @@ describe('BugreportAcquirer', () => {
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new BugreportAcquirer(device, { preferZip: false });
-      
+
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -153,7 +153,7 @@ describe('BugreportAcquirer', () => {
       }) as unknown as ADBDevice;
       vi.mocked(device.adb.sync).mockRejectedValue(new Error('Read failed'));
       domMocks = setupAcquirerDOMMocks();
-      
+
       acquirer = new BugreportAcquirer(device, { cleanupAfter: true });
       const result = await acquirer.acquire();
 
@@ -184,7 +184,7 @@ describe('BugreportAcquirer', () => {
       });
 
       domMocks = setupAcquirerDOMMocks();
-      
+
       acquirer = new BugreportAcquirer(mockDevice, { cleanupAfter: true, preferZip: false });
       const result = await acquirer.acquire();
 
@@ -285,6 +285,31 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
+    });
+  });
+  describe('BugreportAcquirer - parseBugreportPath logic', () => {
+    it('should extract path from legacy output (no OK: prefix)', () => {
+      const rawLegacy = '/sdcard/bugreport-2026-02-06.txt';
+      const result = (acquirer as any).parseBugreportPath(rawLegacy);
+      expect(result).toBe('/sdcard/bugreport-2026-02-06.txt');
+    });
+
+    it('should extract path from bugreportz output (with OK: prefix)', () => {
+      const rawZip = 'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip';
+      const result = (acquirer as any).parseBugreportPath(rawZip);
+      expect(result).toBe('/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip');
+    });
+
+    it('should handle messy output with ANSI codes or trailing text', () => {
+      const messyOutput = 'Generating...\nOK:/sdcard/report.zip\nDone.';
+      const result = (acquirer as any).parseBugreportPath(messyOutput);
+      expect(result).toBe('/sdcard/report.zip');
+    });
+
+    it('should return empty string if output is invalid', () => {
+      const invalid = 'Something went wrong, no path here';
+      const result = (acquirer as any).parseBugreportPath(invalid);
+      expect(result).toBe('');
     });
   });
 });
