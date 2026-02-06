@@ -7,17 +7,12 @@ export interface WhichOptions extends CommandOptions {
   command: string;
 }
 
-export class WhichCommand implements ADBCommands<boolean> {
+export class WhichCommand implements ADBCommands<string> {
 
   constructor(private adb: Adb) { }
 
-  async exec(options: WhichOptions): Promise<boolean> {
-    try {
-      await new ShellCommand(this.adb, `which ${options.command}`).exec(options);
-      return true;
-    } catch (error) {
-      return false;
-    }
+  async exec(options: WhichOptions): Promise<string> {
+    return (await new ShellCommand(this.adb, `which ${options.command}`).exec(options)).trim();
   }
 }
 

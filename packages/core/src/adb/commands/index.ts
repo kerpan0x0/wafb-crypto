@@ -8,7 +8,7 @@ export interface CommandOptions {
 
 // +------------------------ Export Commands ------------------------------------------------
 export { WhichCommand, RootBinariesCommand } from './whichCommand';
-export { GenerateBugReportCommand, GenerateBugReportzCommand } from './generateBugReportCommand';
+export { BugreportCommand, BugreportzCommand } from './bugreportCommand';
 export {
     ReadFileCommand,
     WriteFileCommand,

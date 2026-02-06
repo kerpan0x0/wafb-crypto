@@ -1,4 +1,10 @@
-import { WhichCommand, DeleteFileCommand, GenerateBugReportCommand, GenerateBugReportzCommand, ReadFileCommand } from '../../adb/commands';
+import { 
+  WhichCommand, 
+  DeleteFileCommand, 
+  BugreportCommand, 
+  BugreportzCommand, 
+  ReadFileCommand 
+} from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
 import type {
@@ -46,7 +52,7 @@ export class BugreportAcquirer extends Acquirer {
 
       // Step 2: Check bugreportz availability
       this.notifyProgress(onProgress, 30, 'Checking bugreport support...', 'running');
-      useZip = (this.bugreportConfig.preferZip === false) ? false : await this.checkBugreportzSupport();
+      useZip = await this.checkBugreportzSupport();
 
       if (useZip) {
         this.logger.info('Using bugreportz (zip format)');
@@ -62,7 +68,8 @@ export class BugreportAcquirer extends Acquirer {
         'running'
       );
 
-      bugreportPath = await this.generateBugreport(useZip);
+      const bugreportOut = await this.generateBugreport(useZip);
+      bugreportPath = this.parseBugreportPath(bugreportOut)
 
       // Step 4: Download file
       this.notifyProgress(
@@ -182,8 +189,11 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private async checkBugreportzSupport(): Promise<boolean> {
+    if (this.bugreportConfig.preferZip === false) {
+      return false;
+    }
 
-    return await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' });
+    return '' !== (await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' }));
   }
 
   private async generateBugreport(useZip: boolean): Promise<string> {
@@ -191,13 +201,37 @@ export class BugreportAcquirer extends Acquirer {
     const bugreportPath = `/sdcard/bugreport-${timestamp}.txt`;
 
     if (useZip) {
-      return await new GenerateBugReportzCommand(this.device.adb).exec({ outputPath: bugreportPath, timeout: 180000 });
+      return await new BugreportzCommand(this.device.adb).exec({ timeout: 180000 });
     } else {
-      return await new GenerateBugReportCommand(this.device.adb).exec({ outputPath: bugreportPath, timeout: 180000 });
+      return await new BugreportCommand(this.device.adb).exec({ outputPath: bugreportPath, timeout: 180000 });
     }
   }
 
   public wasCleanupPerformed(): boolean {
     return this.cleanupPerformed;
+  }
+
+  private parseBugreportPath(input: string): string {
+    if (!input) return "";
+
+    const trimmedInput = input.trim();
+
+    // Caso A: Formato bugreportz (es: "OK:/data/user_de/0/.../file.zip")
+    // Cerchiamo OK: ovunque e prendiamo quello che segue
+    const okMatch = trimmedInput.match(/OK:\s*([^\s\r\n]+)/i);
+    if (okMatch && okMatch[1]) {
+      return okMatch[1].trim();
+    }
+
+    // Caso B: L'output è già un percorso (es: "/sdcard/bugreport-....txt")
+    // Se la stringa inizia con / e non contiene spazi (o prendiamo la prima parola), è il nostro path
+    if (trimmedInput.startsWith('/')) {
+      // Prendiamo solo la prima riga/parola per evitare residui della shell
+      return trimmedInput.split(/[\s\r\n]/)[0];
+    }
+
+    // Se arriviamo qui, logghiamo per capire cosa ha risposto la shell
+    this.logger.warn('Unrecognized bugreport output format', { rawOutput: trimmedInput });
+    return "";
   }
 }
