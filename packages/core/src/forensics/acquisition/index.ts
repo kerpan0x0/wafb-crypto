@@ -13,10 +13,6 @@ export type AcquisitionType =
   | 'env'
   | 'system_info'
   | 'selinux'
-  | 'databases'
-  | 'media'
-  | 'communications'
-  | 'browser'
   | 'mount'
   | 'network'
   | 'settings'
@@ -141,39 +137,6 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     estimatedDuration: 5,
     defaultEnabled: true
   },
-  databases: {
-    id: 'databases',
-    name: 'App Databases',
-    description: 'SQLite databases from installed applications (requires root)',
-    category: 'apps',
-    icon: '🗄️',
-    minSdkVersion: 14,
-    requiresRoot: true,
-    estimatedDuration: 60,
-    defaultEnabled: false
-  },
-  media: {
-    id: 'media',
-    name: 'Media Files',
-    description: 'Photos, videos, and audio files from device storage',
-    category: 'media',
-    icon: '🖼️',
-    minSdkVersion: 14,
-    requiresRoot: false,
-    estimatedDuration: 300,
-    defaultEnabled: false
-  },
-  communications: {
-    id: 'communications',
-    name: 'Communications',
-    description: 'SMS, MMS, call logs, and contacts',
-    category: 'communications',
-    icon: '💬',
-    minSdkVersion: 14,
-    requiresRoot: true,
-    estimatedDuration: 30,
-    defaultEnabled: false
-  },
   logs: {
     id: 'logs',
     name: 'System Log Files',
@@ -184,17 +147,6 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false,
     estimatedDuration: 30,
     defaultEnabled: true
-  },
-  browser: {
-    id: 'browser',
-    name: 'Browser Data',
-    description: 'Browser history, bookmarks, and cookies',
-    category: 'apps',
-    icon: '🌐',
-    minSdkVersion: 14,
-    requiresRoot: true,
-    estimatedDuration: 20,
-    defaultEnabled: false
   },
   network: {
     id: 'network',
