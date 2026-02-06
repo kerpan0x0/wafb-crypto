@@ -108,30 +108,6 @@ export class LogAcquirer extends Acquirer {
         }
     }
 
-    private parseFilesFromLs(lsOutput: string, basePath: string): string[] {
-        const files: string[] = [];
-        const lines = lsOutput.split('\n').filter(line => line.trim());
-
-        for (const line of lines) {
-            if (!line.trim() || line.endsWith(':')) continue;
-
-            const parts = line.trim().split(/\s+/);
-            if (parts.length === 0) continue;
-
-            if (parts[0].startsWith('-')) {
-                const fileName = parts[parts.length - 1];
-                if (fileName && fileName !== '.' && fileName !== '..') {
-                    const fullPath = basePath.endsWith('/')
-                        ? `${basePath}${fileName}`
-                        : `${basePath}/${fileName}`;
-                    files.push(fullPath);
-                }
-            }
-        }
-
-        return files;
-    }
-
     // TODO remove deviceInfo side effect
     private async getFiles(logFiles: string[], deviceInfo: DeviceProperties): Promise<LogData> {
 
@@ -222,7 +198,6 @@ export class LogAcquirer extends Acquirer {
         this.downloadBlob(zipBlob, fileName);
     }
 
-
     private async logsFileName(logFolders: string[]): Promise<string[]> {
         const result = [];
 
@@ -245,5 +220,30 @@ export class LogAcquirer extends Acquirer {
             }
         }
         return result;
+    }
+
+    // TODO move this replicated code (tmpAcquirer) to a utility function
+    private parseFilesFromLs(lsOutput: string, basePath: string): string[] {
+        const files: string[] = [];
+        const lines = lsOutput.split('\n').filter(line => line.trim());
+
+        for (const line of lines) {
+            if (!line.trim() || line.endsWith(':')) continue;
+
+            const parts = line.trim().split(/\s+/);
+            if (parts.length === 0) continue;
+
+            if (parts[0].startsWith('-')) {
+                const fileName = parts[parts.length - 1];
+                if (fileName && fileName !== '.' && fileName !== '..') {
+                    const fullPath = basePath.endsWith('/')
+                        ? `${basePath}${fileName}`
+                        : `${basePath}/${fileName}`;
+                    files.push(fullPath);
+                }
+            }
+        }
+
+        return files;
     }
 } 

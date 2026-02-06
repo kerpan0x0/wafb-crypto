@@ -14,6 +14,7 @@ import {
   SystemInfoAcquirer,
   ServicesAcquirer,
   LogAcquirer,
+  TmpAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
@@ -200,6 +201,10 @@ export function AcquisitionPage() {
           hashMethod: 'auto',
           timeout: 600000
         }
+      },
+      tmp: {
+        Class: TmpAcquirer,
+        options: {}
       }
     };
 

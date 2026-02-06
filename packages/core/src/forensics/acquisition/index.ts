@@ -21,6 +21,7 @@ export type AcquisitionType =
   | 'network'
   | 'settings'
   | 'process'
+  | 'tmp'
   | 'services'
   | 'files';
 
@@ -282,6 +283,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false,
     estimatedDuration: 180,
     defaultEnabled: true
+  },
+  tmp: {
+    id: 'tmp',
+    name: 'Temporary Files',
+    description: 'Acquisition of temporary files from the /data/local/tmp directory',
+    category: 'system',
+    icon: '🗑️',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 15,
+    defaultEnabled: false
   }
 };
 
@@ -300,3 +312,4 @@ export { ProcessAcquirer } from './process';
 export { ServicesAcquirer } from './services';
 export { FileAcquirer } from './files'
 export { LogAcquirer } from './logs';
+export { TmpAcquirer } from './tmpAcquirer';

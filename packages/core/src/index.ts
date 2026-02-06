@@ -89,6 +89,9 @@ export type { ServicesConfig } from './forensics/acquisition/services'
 export { FileAcquirer } from './forensics/acquisition/files'
 export type { FileAcquisitionConfig } from './forensics/acquisition/files'
 
+export { TmpAcquirer } from './forensics/acquisition/tmpAcquirer';
+export type { TmpAcquirerConfig } from './forensics/acquisition/tmpAcquirer'
+
 // ============================================================================
 // Utilities
 // ============================================================================
