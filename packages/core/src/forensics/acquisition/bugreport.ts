@@ -190,11 +190,15 @@ export class BugreportAcquirer extends Acquirer {
     const bugreportPath = `/sdcard/bugreport-${timestamp}.txt`;
 
     if (useZip) {
-      return await new BugreportzCommand(this.device.adb).exec({ timeout: 180000 });
+      return await new BugreportzCommand(this.device.adb).exec({
+        timeout: this.config.timeout || 180000,
+        idleTimeout: 180000
+      });
     } else {
       return await new BugreportCommand(this.device.adb).exec({
         outputPath: bugreportPath,
-        timeout: 180000,
+        timeout: this.config.timeout || 180000,
+        idleTimeout: 180000
       });
     }
   }

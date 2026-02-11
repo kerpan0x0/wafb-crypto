@@ -11,7 +11,7 @@ export class BugreportCommand implements ADBCommands<string> {
   constructor(private adb: Adb) { }
 
   async exec(options: BugreportOptions): Promise<string> {
-    await new ShellCommand(this.adb, `bugreport > ${options.outputPath}`).exec({ timeout: options.timeout });
+    await new ShellCommand(this.adb, `bugreport > ${options.outputPath}`).exec({ ...options });
     return options.outputPath;
   }
 }
@@ -20,6 +20,6 @@ export class BugreportzCommand implements ADBCommands<string> {
   constructor(private adb: Adb) { }
 
   async exec(options: CommandOptions): Promise<string> {
-    return await new ShellCommand(this.adb, "bugreportz").exec({ timeout: options.timeout });
+    return await new ShellCommand(this.adb, "bugreportz").exec({ ...options });
   }
 }
