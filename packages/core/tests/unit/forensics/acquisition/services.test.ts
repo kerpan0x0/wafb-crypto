@@ -336,14 +336,13 @@ describe('ServicesAcquirer', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle dumpsys -l command failure', async () => {
+    it('should fail when dumpsys -l command fails', async () => {
       vi.mocked(mockDevice.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
         new Error('dumpsys failed')
       );
-
       const result = await acquirer.acquire();
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(false);  // ✅ Ora false (fail-fast)
       expect(result.error).toContain('dumpsys failed');
     });
 

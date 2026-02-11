@@ -1,4 +1,4 @@
-import { GetPackageInfoCommand, ListPackageCommand } from '../../adb/commands';
+import { DumpsysCommand, PmCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
 import type {
@@ -47,9 +47,6 @@ export interface PackageInfoResult {
   permissions?: string[];
 }
 
-/**
- * Acquirer per lista pacchetti installati
- */
 export class PackagesAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
@@ -66,7 +63,6 @@ export class PackagesAcquirer extends Acquirer {
     try {
       this.logger.info('Starting packages acquisition');
 
-      // Step 1: Get device info
       this.notifyProgress(onProgress, 10, 'Reading device information...', 'running');
       const deviceInfo = await this.device.getProperties();
 
@@ -78,9 +74,8 @@ export class PackagesAcquirer extends Acquirer {
         deviceInfo
       );
 
-      // Step 2: List all packages
       this.notifyProgress(onProgress, 30, 'Listing installed packages...', 'running');
-      const output = await new ListPackageCommand(this.device.adb).exec({
+      const output = await new PmCommand(this.device.adb).exec({
         includeSystem: this.packagesConfig.includeSystem,
         timeout: this.config.timeout || 30000
       });
@@ -100,7 +95,6 @@ export class PackagesAcquirer extends Acquirer {
         'running'
       );
 
-      // Step 3: Get detailed info if requested
       const packages: PackageInfo[] = [];
 
       if (this.packagesConfig.includeDetails !== false) {
@@ -117,10 +111,7 @@ export class PackagesAcquirer extends Acquirer {
           const packageName = packageNames[i];
 
           try {
-            const output = await new GetPackageInfoCommand(this.device.adb).exec({
-              packageName,
-              timeout: 10000
-            });
+            const output = await new DumpsysCommand(this.device.adb).exec({ service: 'package', packageName, timeout: 100000  });
 
             const info = this.buildPackageInfoResult(output, packageName, this.packagesConfig.includePermissions || false);
 

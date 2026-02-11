@@ -1,272 +1,347 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { 
-  DumpsysListCommand, 
-  DumpsysActivityServicesCommand,
-  DumpsysServiceCommand 
-} from '../../../../src/adb/commands';
+/**
+ * @file dumpsysCommand.test.ts
+ * @description Tests for DumpsysCommand (exec() and service discovery only)
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DumpsysCommand } from '../../../../src/adb/commands/dumpsysCommand';
 import type { Adb } from '@yume-chan/adb';
 import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
 
+// Mock data constants
+const MOCK_BATTERY_OUTPUT = `Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  level: 85
+  scale: 100
+  temperature: 350
+  technology: Li-ion`;
 
-describe('DumpsysCommands', () => {
+const MOCK_PACKAGE_OUTPUT = `Packages:
+  Package [com.example.app] (12345678):
+    userId=10123
+    versionCode=100 minSdk=21 targetSdk=33
+    versionName=1.0.0`;
+
+const MOCK_MEMINFO_OUTPUT = `Total RAM: 8192 MB
+Free RAM: 4096 MB`;
+
+const MOCK_SERVICES_LIST = `activity
+alarm
+battery
+package
+wifi
+sensorservice`;
+
+const MOCK_ACTIVITY_OUTPUT = `ACTIVITY MANAGER ACTIVITIES
+  Stack #1:
+    Running activities:
+      TaskRecord{abc123 #1 A=com.example.app}`;
+
+describe('DumpsysCommand', () => {
   let mockAdb: Adb;
-
-  const MOCK_DUMPSYS_LIST = `Currently running services:
-  SurfaceFlinger
-  accessibility
-  account
-  activity
-  alarm
-  android.security.keystore
-  appops
-  audio
-  battery
-  bluetooth_manager
-  connectivity
-  device_policy
-  display
-  input
-  location
-  media.audio_policy
-  notification
-  package
-  power
-  statusbar
-  telephony.registry
-  user
-  wifi
-  window`;
-
-  const MOCK_ACTIVITY_SERVICES = `ACTIVITY MANAGER SERVICES (dumpsys activity services)
-  User 0:
-    ServiceRecord{abc1234 u0 com.android.systemui/.SystemUIService}
-      app=ProcessRecord{def5678 1234:com.android.systemui/u0a10}
-      packageName=com.android.systemui
-      processName=com.android.systemui
-      baseDir=/system/priv-app/SystemUI/SystemUI.apk
-      
-    ServiceRecord{xyz9999 u0 com.example.app/.MyService}
-      app=null
-      packageName=com.example.app
-      processName=com.example.app
-      baseDir=/data/app/com.example.app/base.apk`;
+  let command: DumpsysCommand;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAdb = createMockAdb() as unknown as Adb;
+    command = new DumpsysCommand(mockAdb);
   });
 
-  describe('DumpsysListCommand', () => {
-    it('should execute dumpsys -l command', async () => {
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_DUMPSYS_LIST)) as unknown as Adb;
-      const command = new DumpsysListCommand(mockAdb);
+  describe('Constructor', () => {
+    it('should create instance with Adb', () => {
+      expect(command).toBeInstanceOf(DumpsysCommand);
+    });
+  });
 
-      const result = await command.exec();
+  describe('exec() - Basic Execution', () => {
+    it('should execute dumpsys with service', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_BATTERY_OUTPUT)
+      );
 
-      expect(result).toBe(MOCK_DUMPSYS_LIST);
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys -l');
+      const output = await command.exec({ service: 'battery' });
+
+      expect(output).toBe(MOCK_BATTERY_OUTPUT);
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys battery');
     });
 
-    it('should return list of service names', async () => {
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_DUMPSYS_LIST)) as unknown as Adb;
-      const command = new DumpsysListCommand(mockAdb);
+    it('should execute dumpsys without service (plain dumpsys)', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_SERVICES_LIST)
+      );
 
-      const result = await command.exec();
+      const output = await command.exec({});
 
-      expect(result).toContain('SurfaceFlinger');
-      expect(result).toContain('activity');
-      expect(result).toContain('package');
-      expect(result).toContain('window');
+      expect(output).toBe(MOCK_SERVICES_LIST);
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys');
     });
 
-    it('should handle empty service list', async () => {
-      mockAdb = createMockAdb(createMockShellSocket('')) as unknown as Adb;
-      const command = new DumpsysListCommand(mockAdb);
+    it('should execute dumpsys with service and package name', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_PACKAGE_OUTPUT)
+      );
 
-      const result = await command.exec();
+      const output = await command.exec({
+        service: 'package',
+        packageName: 'com.example.app'
+      });
 
-      expect(result).toBe('');
+      expect(output).toBe(MOCK_PACKAGE_OUTPUT);
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        'dumpsys package com.example.app'
+      );
     });
 
-    it('should respect timeout option', async () => {
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_DUMPSYS_LIST)) as unknown as Adb;
-      const command = new DumpsysListCommand(mockAdb);
+    it('should execute dumpsys with service and args', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_ACTIVITY_OUTPUT)
+      );
 
-      await command.exec({ timeout: 5000 });
+      const output = await command.exec({
+        service: 'activity',
+        args: ['activities', 'top']
+      });
 
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys -l');
+      expect(output).toBe(MOCK_ACTIVITY_OUTPUT);
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        'dumpsys activity activities top'
+      );
     });
 
-    it('should handle command failure', async () => {
-      mockAdb = createMockAdb() as unknown as Adb;
+    it('should execute dumpsys with all parameters', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
+
+      await command.exec({
+        service: 'batterystats',
+        packageName: 'com.example.app',
+        args: ['--charged']
+      });
+
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        'dumpsys batterystats com.example.app --charged'
+      );
+    });
+
+    it('should use custom timeout', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_BATTERY_OUTPUT)
+      );
+
+      await command.exec({ service: 'battery', timeout: 5000 });
+
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+    });
+
+    it('should use default timeout of 30000ms', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_BATTERY_OUTPUT)
+      );
+
+      await command.exec({ service: 'battery' });
+
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+    });
+  });
+
+  describe('exec() - Error Handling', () => {
+    it('should propagate errors from shell execution', async () => {
       vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Command failed')
+        new Error('Command execution failed')
       );
-      const command = new DumpsysListCommand(mockAdb);
 
-      await expect(command.exec()).rejects.toThrow('Command failed');
+      await expect(
+        command.exec({ service: 'battery' })
+      ).rejects.toThrow('Command execution failed');
+    });
+
+    // Note: ShellCommand currently does not check exit codes, only stdout
+    // Exit code checking would need to be implemented in ShellCommand.exec()
+  });
+
+  describe('Service Listing with args', () => {
+    it('should list services with -l arg', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_SERVICES_LIST)
+      );
+
+      const services = await command.exec({ args: ['-l'] });
+
+      expect(services).toBe(MOCK_SERVICES_LIST);
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys -l');
+    });
+
+    it('should handle -l with custom timeout', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_SERVICES_LIST)
+      );
+
+      await command.exec({ args: ['-l'], timeout: 5000 });
+
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys -l');
+    });
+
+    it('should propagate errors when listing services', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockRejectedValue(
+        new Error('Failed to list services')
+      );
+
+      await expect(
+        command.exec({ args: ['-l'] })
+      ).rejects.toThrow('Failed to list services');
     });
   });
 
-  describe('DumpsysActivityServicesCommand', () => {
-    it('should execute dumpsys activity services command', async () => {
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_ACTIVITY_SERVICES)) as unknown as Adb;
-      const command = new DumpsysActivityServicesCommand(mockAdb);
+  describe('Edge Cases - Command Building', () => {
+    it('should build command with service only', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
 
-      const result = await command.exec();
+      await command.exec({ service: 'battery' });
 
-      expect(result).toBe(MOCK_ACTIVITY_SERVICES);
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys battery');
+    });
+
+    it('should build command with service and package', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
+
+      await command.exec({ service: 'package', packageName: 'com.example.app' });
+
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        'dumpsys package com.example.app'
+      );
+    });
+
+    it('should build command with service and args', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
+
+      await command.exec({ service: 'activity', args: ['services'] });
+
       expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
         'dumpsys activity services'
       );
     });
 
-    it('should return detailed service information', async () => {
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_ACTIVITY_SERVICES)) as unknown as Adb;
-      const command = new DumpsysActivityServicesCommand(mockAdb);
+    it('should build plain dumpsys command without service', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
 
-      const result = await command.exec();
+      await command.exec({});
 
-      expect(result).toContain('ServiceRecord');
-      expect(result).toContain('com.android.systemui');
-      expect(result).toContain('ProcessRecord');
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys');
     });
 
-    it('should handle empty output', async () => {
-      mockAdb = createMockAdb(createMockShellSocket('')) as unknown as Adb;
-      const command = new DumpsysActivityServicesCommand(mockAdb);
+    it('should handle undefined args gracefully', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
 
-      const result = await command.exec();
+      await command.exec({
+        service: 'battery',
+        args: undefined
+      });
 
-      expect(result).toBe('');
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys battery');
     });
 
-    it('should respect timeout option', async () => {
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_ACTIVITY_SERVICES)) as unknown as Adb;
-      const command = new DumpsysActivityServicesCommand(mockAdb);
+    it('should handle empty args array', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
 
-      await command.exec({ timeout: 10000 });
+      await command.exec({
+        service: 'battery',
+        args: []
+      });
 
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys battery');
+    });
+
+    it('should handle undefined packageName', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket('output')
+      );
+
+      await command.exec({
+        service: 'battery',
+        packageName: undefined
+      });
+
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys battery');
+    });
+  });
+
+  describe('Real-world Scenarios', () => {
+    it('should query battery service', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_BATTERY_OUTPUT)
+      );
+
+      const output = await command.exec({ service: 'battery' });
+
+      expect(output).toContain('level: 85');
+      expect(output).toContain('technology: Li-ion');
+    });
+
+    it('should query package info for specific package', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_PACKAGE_OUTPUT)
+      );
+
+      const output = await command.exec({
+        service: 'package',
+        packageName: 'com.example.app'
+      });
+
+      expect(output).toContain('com.example.app');
+      expect(output).toContain('versionName=1.0.0');
+    });
+
+    it('should query meminfo', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_MEMINFO_OUTPUT)
+      );
+
+      const output = await command.exec({ service: 'meminfo' });
+
+      expect(output).toContain('Total RAM');
+      expect(output).toContain('Free RAM');
+    });
+
+    it('should query activity with args', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_ACTIVITY_OUTPUT)
+      );
+
+      const output = await command.exec({
+        service: 'activity',
+        args: ['activities']
+      });
+
+      expect(output).toContain('ACTIVITY MANAGER');
       expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-        'dumpsys activity services'
+        'dumpsys activity activities'
       );
     });
 
-    it('should handle multiple users', async () => {
-      const multiUserOutput = `User 0:
-  ServiceRecord{abc u0 service1}
-User 10:
-  ServiceRecord{def u10 service2}`;
-
-      mockAdb = createMockAdb(createMockShellSocket(multiUserOutput)) as unknown as Adb;
-      const command = new DumpsysActivityServicesCommand(mockAdb);
-
-      const result = await command.exec();
-
-      expect(result).toContain('User 0:');
-      expect(result).toContain('User 10:');
-    });
-  });
-
-  describe('DumpsysServiceCommand', () => {
-    it('should execute dumpsys for specific service', async () => {
-      const mockOutput = 'Service: activity\nState: running';
-      mockAdb = createMockAdb(createMockShellSocket(mockOutput)) as unknown as Adb;
-      const command = new DumpsysServiceCommand(mockAdb);
-
-      const result = await command.exec({ service: 'activity' });
-
-      expect(result).toBe(mockOutput);
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys activity');
-    });
-
-    it('should throw error if service name not provided', async () => {
-      mockAdb = createMockAdb() as unknown as Adb;
-      const command = new DumpsysServiceCommand(mockAdb);
-
-      await expect(command.exec({})).rejects.toThrow('Service name is required');
-    });
-
-    it('should handle various service names', async () => {
-      const services = ['activity', 'package', 'battery', 'wifi', 'location'];
-
-      for (const service of services) {
-        mockAdb = createMockAdb(createMockShellSocket(`Service: ${service}`)) as unknown as Adb;
-        const command = new DumpsysServiceCommand(mockAdb);
-
-        await command.exec({ service });
-
-        expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(`dumpsys ${service}`);
-      }
-    });
-
-    it('should respect timeout option', async () => {
-      mockAdb = createMockAdb(createMockShellSocket('data')) as unknown as Adb;
-      const command = new DumpsysServiceCommand(mockAdb);
-
-      await command.exec({ service: 'activity', timeout: 5000 });
-
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys activity');
-    });
-
-    it('should handle service not found', async () => {
-      mockAdb = createMockAdb(createMockShellSocket('Can\'t find service: invalid')) as unknown as Adb;
-      const command = new DumpsysServiceCommand(mockAdb);
-
-      const result = await command.exec({ service: 'invalid' });
-
-      expect(result).toContain('Can\'t find service');
-    });
-
-    it('should handle complex service output', async () => {
-      const complexOutput = `Service: package
-  Current state: running
-  Process ID: 1234
-  Memory usage: 50MB
-  Active since: 2024-01-01 10:00:00`;
-
-      mockAdb = createMockAdb(createMockShellSocket(complexOutput)) as unknown as Adb;
-      const command = new DumpsysServiceCommand(mockAdb);
-
-      const result = await command.exec({ service: 'package' });
-
-      expect(result).toBe(complexOutput);
-      expect(result).toContain('Current state: running');
-      expect(result).toContain('Process ID: 1234');
-    });
-  });
-
-  describe('Integration', () => {
-    it('should work together to get service information', async () => {
-      // First, list all services
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_DUMPSYS_LIST)) as unknown as Adb;
-      const listCommand = new DumpsysListCommand(mockAdb);
-      const servicesList = await listCommand.exec();
-
-      expect(servicesList).toContain('activity');
-
-      // Then get detailed info
-      mockAdb = createMockAdb(createMockShellSocket(MOCK_ACTIVITY_SERVICES)) as unknown as Adb;
-      const activityCommand = new DumpsysActivityServicesCommand(mockAdb);
-      const details = await activityCommand.exec();
-
-      expect(details).toContain('ServiceRecord');
-    });
-
-    it('should handle sequential calls', async () => {
-      // Create new mock for each call to avoid stream exhaustion
-      mockAdb = createMockAdb() as unknown as Adb;
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(() => 
-        Promise.resolve(createMockShellSocket(MOCK_DUMPSYS_LIST))
+    it('should list available services', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
+        createMockShellSocket(MOCK_SERVICES_LIST)
       );
-      
-      const command = new DumpsysListCommand(mockAdb);
 
-      const result1 = await command.exec();
-      const result2 = await command.exec();
+      const output = await command.exec({ args: ['-l'] });
 
-      expect(result1).toBe(MOCK_DUMPSYS_LIST);
-      expect(result2).toBe(MOCK_DUMPSYS_LIST);
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledTimes(2);
+      expect(output).toContain('activity');
+      expect(output).toContain('battery');
+      expect(output).toContain('package');
     });
   });
 });

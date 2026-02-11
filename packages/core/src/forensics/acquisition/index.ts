@@ -19,7 +19,8 @@ export type AcquisitionType =
   | 'process'
   | 'tmp'
   | 'services'
-  | 'files';
+  | 'files'
+  | 'dumpsys';
 
 export type AcquisitionStatus =
   | 'pending'      // In attesa di esecuzione
@@ -246,6 +247,17 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     requiresRoot: false,
     estimatedDuration: 15,
     defaultEnabled: false
+  },
+  dumpsys: {
+    id: 'dumpsys',
+    name: 'Dumpsys',
+    description: 'Full diagnostic dump: detailed system service states, memory, battery, network diagnostics.',
+    category: 'system',
+    icon: '🔧',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 30,
+    defaultEnabled: false
   }
 };
 
@@ -265,3 +277,4 @@ export { ServicesAcquirer } from './services';
 export { FileAcquirer } from './files'
 export { LogAcquirer } from './logs';
 export { TmpAcquirer } from './tmpAcquirer';
+export { DumpsysAcquirer } from './dumpsys';

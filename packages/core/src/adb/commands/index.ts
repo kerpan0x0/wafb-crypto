@@ -4,6 +4,7 @@ export interface ADBCommands<Out> {
 
 export interface CommandOptions {
     timeout?: number;
+    idleTimeout?: number;
 }
 
 // +------------------------ Export Commands ------------------------------------------------
@@ -15,20 +16,13 @@ export {
     DeleteFileCommand,
 } from './fileCommand';
 export {
-    GetBatteryInfoCommand,
     GetNetworkInfoCommand,
     GetStorageInfoCommand,
-    GetMemoryInfoCommand,
-    GetSensorsCommand,
 } from './getSystemProperty';
-export { 
-  DumpsysListCommand, 
-  DumpsysActivityServicesCommand, 
-  DumpsysServiceCommand 
-} from './dumpsysCommand';
+export { DumpsysCommand } from './dumpsysCommand';
 export type { DumpsysOptions } from './dumpsysCommand';
 export { GetPropCommand } from './getDevicePropertyCommand';
-export { GetPackageInfoCommand, ListPackageCommand } from './getPackageInfoCommand';
+export { PmCommand } from './pmCommand';
 export { IsRootedCommand } from './isRootedCommand';
 export { EnvCommand } from './envCommand';
 export { GetLogcatCommand } from './logcatCommand';
@@ -41,6 +35,6 @@ export { TestFileCommand } from './testCommand';
 export { StatCommand, StatBatchCommand } from './statCommand';
 export type { StatOptions, StatBatchOptions } from './statCommand';
 export { FindCommand } from './findCommand';
-export { HashCommand, HashBatchCommand} from './hashCommand'
+export { HashCommand, HashBatchCommand } from './hashCommand'
 export type { HashOptions, HashBatchOptions } from './hashCommand'
 

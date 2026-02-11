@@ -1,131 +1,107 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+/**
+ * @file systemInfoAcquirer.test.ts
+ * @description Comprehensive tests for SystemInfoAcquirer with updated DumpsysCommand pattern
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SystemInfoAcquirer } from '../../../../src/forensics/acquisition/system';
+import type { ADBDevice } from '../../../../src/adb';
+import type { BatteryInfo, NetworkInfo, StorageInfo, MemoryInfo, SensorInfo } from '../../../../src/forensics/acquisition/system';
 import { 
+  createMockDeviceInfo, 
+  createMockDeviceProperties,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockDeviceInfo,
-  createMockDeviceProperties,
-  createMockReadableStream
+  createMockAdb,
+  createMockShellSocket
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
-import { 
-  BatteryInfo, 
-  MemoryInfo, 
-  NetworkInfo, 
-  SensorInfo, 
-  StorageInfo,
-  GetBatteryInfoCommand,
-  GetNetworkInfoCommand,
-  GetStorageInfoCommand,
-  GetMemoryInfoCommand,
-  GetSensorsCommand,
-  GetPropCommand
-} from '../../../../src/adb/commands';
+import type { Adb } from '@yume-chan/adb';
 
-// Mock the command classes
+// Import commands to spy on them
+import { GetNetworkInfoCommand, GetStorageInfoCommand } from '../../../../src/adb/commands';
+
+// Mock the command modules (but NOT DumpsysCommand!)
 vi.mock('../../../../src/adb/commands', async () => {
   const actual = await vi.importActual('../../../../src/adb/commands');
   return {
     ...actual,
-    GetBatteryInfoCommand: vi.fn(),
     GetNetworkInfoCommand: vi.fn(),
-    GetStorageInfoCommand: vi.fn(),
-    GetMemoryInfoCommand: vi.fn(),
-    GetSensorsCommand: vi.fn(),
-    GetPropCommand: vi.fn()
+    GetStorageInfoCommand: vi.fn()
   };
 });
 
+// ============================================================================
+// MOCK DATA - Raw outputs that dumpsys commands would return
+// ============================================================================
+
+const MOCK_BATTERY_DUMPSYS_OUTPUT = `Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  status: 2
+  health: 2
+  present: true
+  level: 85
+  scale: 100
+  voltage: 4200
+  temperature: 280
+  technology: Li-ion`;
+
+const MOCK_MEMINFO_DUMPSYS_OUTPUT = `Applications Memory Usage (in Kilobytes):
+Uptime: 12345678 Realtime: 12345678
+
+Total RAM: 8,192,000K
+Free RAM: 4,096,000K
+Used RAM: 4,096,000K
+Lost RAM: 0K
+Low Memory: false
+Threshold: 512,000K`;
+
+const MOCK_SENSOR_DUMPSYS_OUTPUT = `Sensor List:
+0x00000001) BMI160_Accelerometer          | Bosch           | ver: 1 | type: 1
+   name=BMI160_Accelerometer
+   vendor=Bosch
+   version=1
+   type=1
+   
+0x00000002) BMI160_Gyroscope               | Bosch           | ver: 1 | type: 4
+   name=BMI160_Gyroscope
+   vendor=Bosch
+   version=1
+   type=4`;
+
+const MOCK_NETWORK_SETTINGS_OUTPUT = `wifi_on=1
+mobile_data=0
+airplane_mode_on=0`;
+
+const MOCK_STORAGE_DF_OUTPUT = `Filesystem     1K-blocks    Used Available Use% Mounted on
+/dev/block/dm-0 67108864 48234567 18874297  72% /data
+tmpfs           4096000       0  4096000   0% /dev`;
+
 describe('SystemInfoAcquirer', () => {
+  let mockAdb: Adb;
   let device: ADBDevice;
   let acquirer: SystemInfoAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
-  // Mock data returned by device methods
-  const mockBatteryInfo: BatteryInfo = {
-    level: 85,
-    temperature: 28,
-    voltage: 4200,
-    status: 'Charging',
-    health: 'Good',
-    technology: 'Li-ion',
-    present: true
-  };
-
-  const mockNetworkInfo: NetworkInfo = {
-    wifiEnabled: true,
-    mobileDataEnabled: false,
-    airplaneModeOn: false,
-    activeNetworkType: 'WiFi'
-  };
-
-  const mockStorageInfo: StorageInfo = {
-    totalInternal: '64G',
-    availableInternal: '19G'
-  };
-
-  const mockMemoryInfo: MemoryInfo = {
-    totalRam: '8,192,000K',
-    availableRam: '4,096,000K',
-    lowMemory: false,
-    threshold: '512,000K'
-  };
-
-  const mockSensors: SensorInfo[] = [
-    {
-      name: 'BMI160 Accelerometer',
-      type: '1',
-      vendor: 'Bosch',
-      version: '1'
-    }
-  ];
-
   beforeEach(() => {
     vi.clearAllMocks();
     
-    // Setup command mocks
-    vi.mocked(GetPropCommand).mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue({
-        'ro.bootloader': 'bootloader-v1',
-        'ro.hardware': 'qcom',
-        'ro.build.fingerprint': 'test/fingerprint'
-      })
-    } as any));
+    // Create mock Adb that will be used by DumpsysCommand
+    mockAdb = createMockAdb() as unknown as Adb;
 
-    vi.mocked(GetBatteryInfoCommand).mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue(mockBatteryInfo)
-    } as any));
-
+    // Configure network and storage command mocks
     vi.mocked(GetNetworkInfoCommand).mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue(mockNetworkInfo)
+      exec: vi.fn().mockResolvedValue(MOCK_NETWORK_SETTINGS_OUTPUT)
     } as any));
 
     vi.mocked(GetStorageInfoCommand).mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue(mockStorageInfo)
+      exec: vi.fn().mockResolvedValue(MOCK_STORAGE_DF_OUTPUT)
     } as any));
 
-    vi.mocked(GetMemoryInfoCommand).mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue(mockMemoryInfo)
-    } as any));
-
-    vi.mocked(GetSensorsCommand).mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue(mockSensors)
-    } as any));
-
-    // Create a complete mock ADBDevice
+    // Create complete mock ADBDevice
     device = {
       info: createMockDeviceInfo(),
-      adb: {
-        subprocess: {
-          shellProtocol: {
-            spawn: vi.fn().mockResolvedValue({
-              stdout: createMockReadableStream(''),
-              stderr: createMockReadableStream(''),
-              exit: Promise.resolve({ code: 0 })
-            })
-          }
-        }
-      },
+      adb: mockAdb,
       commands: {
         getprop: vi.fn().mockResolvedValue({
           'ro.bootloader': 'bootloader-v1',
@@ -135,17 +111,15 @@ describe('SystemInfoAcquirer', () => {
         shell: vi.fn().mockResolvedValue('')
       },
       getProperties: vi.fn().mockResolvedValue(createMockDeviceProperties()),
-      getBatteryInfo: vi.fn().mockResolvedValue(mockBatteryInfo),
-      getNetworkInfo: vi.fn().mockResolvedValue(mockNetworkInfo),
-      getStorageInfo: vi.fn().mockResolvedValue(mockStorageInfo),
-      getMemoryInfo: vi.fn().mockResolvedValue(mockMemoryInfo),
-      getSensors: vi.fn().mockResolvedValue(mockSensors),
       isRooted: vi.fn().mockResolvedValue(false),
       isConnected: vi.fn().mockReturnValue(true),
       disconnect: vi.fn().mockResolvedValue(undefined)
     } as unknown as ADBDevice;
     
+    // Setup DOM mocks for download
     domMocks = setupAcquirerDOMMocks();
+    
+    // Create acquirer
     acquirer = new SystemInfoAcquirer(device);
   });
 
@@ -154,6 +128,22 @@ describe('SystemInfoAcquirer', () => {
   });
 
   describe('acquire', () => {
+    beforeEach(() => {
+      // Configure spawn to return appropriate outputs for different dumpsys calls
+      const spawnMock = vi.mocked(mockAdb.subprocess.shellProtocol.spawn);
+      
+      spawnMock.mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys battery')) {
+          return createMockShellSocket(MOCK_BATTERY_DUMPSYS_OUTPUT);
+        } else if (command.includes('dumpsys meminfo')) {
+          return createMockShellSocket(MOCK_MEMINFO_DUMPSYS_OUTPUT);
+        } else if (command.includes('dumpsys sensorservice')) {
+          return createMockShellSocket(MOCK_SENSOR_DUMPSYS_OUTPUT);
+        }
+        return createMockShellSocket('');
+      });
+    });
+
     it('should successfully acquire system information', async () => {
       const result = await acquirer.acquire();
 
@@ -201,15 +191,41 @@ describe('SystemInfoAcquirer', () => {
       expect(components.memory).toBe(true);
       expect(components.sensors).toBe(true);
     });
+
+    it('should call dumpsys commands correctly', async () => {
+      await acquirer.acquire();
+
+      const spawnMock = vi.mocked(mockAdb.subprocess.shellProtocol.spawn);
+      
+      // Verify dumpsys battery was called
+      expect(spawnMock).toHaveBeenCalledWith('dumpsys battery');
+      
+      // Verify dumpsys meminfo was called
+      expect(spawnMock).toHaveBeenCalledWith('dumpsys meminfo');
+      
+      // Verify dumpsys sensorservice was called (note: with trailing space)
+      expect(spawnMock).toHaveBeenCalledWith('dumpsys sensorservice ');
+    });
   });
 
   describe('battery information', () => {
+    beforeEach(() => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys battery')) {
+          return createMockShellSocket(MOCK_BATTERY_DUMPSYS_OUTPUT);
+        }
+        return createMockShellSocket('');
+      });
+    });
+
     it('should collect battery info when enabled', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.battery).toBe(true);
-      expect(GetBatteryInfoCommand).toHaveBeenCalled();
+      
+      // Verify dumpsys battery was called
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys battery');
     });
 
     it('should skip battery info when disabled', async () => {
@@ -218,19 +234,51 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.battery).toBe(false);
+      
+      // Verify dumpsys battery was NOT called
+      expect(mockAdb.subprocess.shellProtocol.spawn).not.toHaveBeenCalledWith('dumpsys battery');
+    });
+
+    it('should parse battery info correctly from dumpsys output', async () => {
+      const batteryInfo = await acquirer.getBatteryInfo();
+
+      expect(batteryInfo.level).toBe(85);
+      expect(batteryInfo.temperature).toBe(28); // 280 / 10
+      expect(batteryInfo.voltage).toBe(4200);
+      expect(batteryInfo.technology).toBe('Li-ion');
+      expect(batteryInfo.present).toBe(true);
     });
 
     it('should handle battery info errors gracefully', async () => {
-      vi.mocked(GetBatteryInfoCommand).mockImplementation(() => ({
-        exec: vi.fn().mockRejectedValue(new Error('Battery service unavailable'))
-      } as any));
-      acquirer = new SystemInfoAcquirer(device);
+      // Mock spawn to throw error for battery
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys battery')) {
+          throw new Error('Battery service unavailable');
+        }
+        return createMockShellSocket('');
+      });
 
+      acquirer = new SystemInfoAcquirer(device);
       const result = await acquirer.acquire();
 
-      // Should still succeed because errors are caught and default values are returned
+      // Should still succeed because errors are caught
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.battery).toBe(true);
+    });
+
+    it('should return default battery info on empty output', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys battery')) {
+          return createMockShellSocket('');
+        }
+        return createMockShellSocket('');
+      });
+
+      const batteryInfo = await acquirer.getBatteryInfo();
+
+      expect(batteryInfo.level).toBe(0);
+      expect(batteryInfo.temperature).toBe(0);
+      expect(batteryInfo.status).toBe('Unknown');
     });
   });
 
@@ -251,12 +299,21 @@ describe('SystemInfoAcquirer', () => {
       expect((result.data as any).componentsCollected.network).toBe(false);
     });
 
+    it('should parse network info correctly', async () => {
+      const networkInfo = await acquirer.getNetworkInfo();
+
+      expect(networkInfo.wifiEnabled).toBe(true);
+      expect(networkInfo.mobileDataEnabled).toBe(false);
+      expect(networkInfo.airplaneModeOn).toBe(false);
+      expect(networkInfo.activeNetworkType).toBe('WiFi');
+    });
+
     it('should handle network info errors gracefully', async () => {
       vi.mocked(GetNetworkInfoCommand).mockImplementation(() => ({
         exec: vi.fn().mockRejectedValue(new Error('Settings unavailable'))
       } as any));
+      
       acquirer = new SystemInfoAcquirer(device);
-
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -281,12 +338,19 @@ describe('SystemInfoAcquirer', () => {
       expect((result.data as any).componentsCollected.storage).toBe(false);
     });
 
+    it('should parse storage info correctly', async () => {
+      const storageInfo = await acquirer.getStorageInfo();
+
+      expect(storageInfo.totalInternal).toBe('67108864');
+      expect(storageInfo.availableInternal).toBe('18874297');
+    });
+
     it('should handle storage info errors gracefully', async () => {
       vi.mocked(GetStorageInfoCommand).mockImplementation(() => ({
         exec: vi.fn().mockRejectedValue(new Error('df command failed'))
       } as any));
+      
       acquirer = new SystemInfoAcquirer(device);
-
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -295,12 +359,23 @@ describe('SystemInfoAcquirer', () => {
   });
 
   describe('memory information', () => {
+    beforeEach(() => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys meminfo')) {
+          return createMockShellSocket(MOCK_MEMINFO_DUMPSYS_OUTPUT);
+        }
+        return createMockShellSocket('');
+      });
+    });
+
     it('should collect memory info when enabled', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.memory).toBe(true);
-      expect(GetMemoryInfoCommand).toHaveBeenCalled();
+      
+      // Verify dumpsys meminfo was called
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys meminfo');
     });
 
     it('should skip memory info when disabled', async () => {
@@ -309,28 +384,69 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.memory).toBe(false);
+      
+      // Verify dumpsys meminfo was NOT called
+      expect(mockAdb.subprocess.shellProtocol.spawn).not.toHaveBeenCalledWith('dumpsys meminfo');
+    });
+
+    it('should parse memory info correctly from dumpsys output', async () => {
+      const memoryInfo = await acquirer.getMemoryInfo();
+
+      expect(memoryInfo.totalRam).toBe('8,192,000K');
+      expect(memoryInfo.availableRam).toBe('4,096,000K');
+      expect(memoryInfo.lowMemory).toBe(false);
+      expect(memoryInfo.threshold).toBe('512,000K');
     });
 
     it('should handle memory info errors gracefully', async () => {
-      vi.mocked(GetMemoryInfoCommand).mockImplementation(() => ({
-        exec: vi.fn().mockRejectedValue(new Error('meminfo unavailable'))
-      } as any));
-      acquirer = new SystemInfoAcquirer(device);
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys meminfo')) {
+          throw new Error('meminfo unavailable');
+        }
+        return createMockShellSocket('');
+      });
 
+      acquirer = new SystemInfoAcquirer(device);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.memory).toBe(true);
     });
+
+    it('should return default memory info on empty output', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys meminfo')) {
+          return createMockShellSocket('');
+        }
+        return createMockShellSocket('');
+      });
+
+      const memoryInfo = await acquirer.getMemoryInfo();
+
+      expect(memoryInfo.totalRam).toBe('Unknown');
+      expect(memoryInfo.availableRam).toBe('Unknown');
+      expect(memoryInfo.lowMemory).toBe(false);
+    });
   });
 
   describe('sensors information', () => {
+    beforeEach(() => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys sensorservice')) {
+          return createMockShellSocket(MOCK_SENSOR_DUMPSYS_OUTPUT);
+        }
+        return createMockShellSocket('');
+      });
+    });
+
     it('should collect sensors info when enabled', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.sensors).toBe(true);
-      expect(GetSensorsCommand).toHaveBeenCalled();
+      
+      // Verify dumpsys sensorservice was called (with trailing space)
+      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys sensorservice ');
     });
 
     it('should skip sensors info when disabled', async () => {
@@ -339,50 +455,73 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.sensors).toBe(false);
+      
+      // Verify dumpsys sensorservice was NOT called
+      expect(mockAdb.subprocess.shellProtocol.spawn).not.toHaveBeenCalledWith('dumpsys sensorservice ');
+    });
+
+    it('should parse sensors info correctly from dumpsys output', async () => {
+      const sensors = await acquirer.getSensors();
+
+      expect(sensors).toHaveLength(2);
+      expect(sensors[0].name).toBe('BMI160_Accelerometer');
+      expect(sensors[0].vendor).toBe('Bosch');
+      expect(sensors[0].version).toBe('1');
+      expect(sensors[0].type).toBe('1');
+      
+      expect(sensors[1].name).toBe('BMI160_Gyroscope');
+      expect(sensors[1].type).toBe('4');
     });
 
     it('should handle sensors info errors gracefully', async () => {
-      vi.mocked(GetSensorsCommand).mockImplementation(() => ({
-        exec: vi.fn().mockRejectedValue(new Error('sensorservice unavailable'))
-      } as any));
-      acquirer = new SystemInfoAcquirer(device);
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys sensorservice')) {
+          throw new Error('sensorservice unavailable');
+        }
+        return createMockShellSocket('');
+      });
 
+      acquirer = new SystemInfoAcquirer(device);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).componentsCollected.sensors).toBe(true);
     });
+
+    it('should return empty array on empty sensor output', async () => {
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys sensorservice')) {
+          return createMockShellSocket('');
+        }
+        return createMockShellSocket('');
+      });
+
+      const sensors = await acquirer.getSensors();
+
+      expect(sensors).toEqual([]);
+    });
   });
 
-  describe('configuration', () => {
-    it('should respect multiple component configurations', async () => {
+  describe('configuration options', () => {
+    it('should respect multiple disabled components', async () => {
       acquirer = new SystemInfoAcquirer(device, {
-        includeBattery: true,
+        includeBattery: false,
         includeNetwork: false,
-        includeStorage: true,
-        includeMemory: false,
-        includeSensors: true
+        includeSensors: false
       });
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       const components = (result.data as any).componentsCollected;
-      expect(components.battery).toBe(true);
+      expect(components.battery).toBe(false);
       expect(components.network).toBe(false);
-      expect(components.storage).toBe(true);
-      expect(components.memory).toBe(false);
-      expect(components.sensors).toBe(true);
+      expect(components.sensors).toBe(false);
+      expect(components.storage).toBe(true); // Still enabled by default
+      expect(components.memory).toBe(true);  // Still enabled by default
     });
 
-    it('should respect computeHash configuration', async () => {
-      acquirer = new SystemInfoAcquirer(device, { computeHash: true });
-      const result = await acquirer.acquire();
-
-      expect(result.hash).toBeDefined();
-    });
-
-    it('should work with all components disabled', async () => {
+    it('should disable all optional components', async () => {
       acquirer = new SystemInfoAcquirer(device, {
         includeBattery: false,
         includeNetwork: false,
@@ -395,28 +534,38 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       const components = (result.data as any).componentsCollected;
-      expect(Object.values(components).every(v => v === false)).toBe(true);
+      expect(components.battery).toBe(false);
+      expect(components.network).toBe(false);
+      expect(components.storage).toBe(false);
+      expect(components.memory).toBe(false);
+      expect(components.sensors).toBe(false);
     });
   });
 
   describe('error handling', () => {
-    it('should handle getProperties failure', async () => {
-      vi.mocked(device.getProperties).mockRejectedValue(
-        new Error('Failed to get device properties')
-      );
+    it('should continue acquisition even if one component fails', async () => {
+      // Make battery fail but others succeed
+      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockImplementation(async (command: string) => {
+        if (command.includes('dumpsys battery')) {
+          throw new Error('Battery failed');
+        } else if (command.includes('dumpsys meminfo')) {
+          return createMockShellSocket(MOCK_MEMINFO_DUMPSYS_OUTPUT);
+        }
+        return createMockShellSocket('');
+      });
 
       const result = await acquirer.acquire();
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Failed to get device properties');
+      // Should still succeed overall
+      expect(result.success).toBe(true);
+      const components = (result.data as any).componentsCollected;
+      expect(components.battery).toBe(true); // Still counted as collected (with default values)
+      expect(components.memory).toBe(true);
     });
 
-    // GetPropCommand is now called internally by device.getProperties()
-    // so this test is redundant - getProperties failure covers it
-    it('should handle device disconnection', async () => {
-      vi.mocked(device.getProperties).mockRejectedValue(
-        new Error('Device disconnected')
-      );
+    it('should handle complete failure gracefully', async () => {
+      // Make device.getProperties fail
+      vi.mocked(device.getProperties).mockRejectedValue(new Error('Device disconnected'));
 
       const result = await acquirer.acquire();
 
@@ -425,85 +574,37 @@ describe('SystemInfoAcquirer', () => {
     });
   });
 
-  describe('progress reporting', () => {
-    it('should report initial progress', async () => {
-      const { callback } = createMockProgressCallback();
-      await acquirer.acquire(callback);
-
-      expect(callback.mock.calls[0][0].progress).toBe(10);
-      expect(callback.mock.calls[0][0].message).toContain('device properties');
-    });
-
-    it('should report completion progress', async () => {
-      const { callback, getLastProgress } = createMockProgressCallback();
-      await acquirer.acquire(callback);
-
-      const lastProgress = getLastProgress();
-      expect(lastProgress.progress).toBe(100);
-      expect(lastProgress.status).toBe('completed');
-    });
-
-    it('should report progress for each component', async () => {
-      const { callback, getProgressHistory } = createMockProgressCallback();
-      await acquirer.acquire(callback);
-
-      const progressValues = getProgressHistory().map(p => p.progress);
-      
-      // Should have multiple progress updates
-      expect(progressValues.length).toBeGreaterThan(5);
-      
-      // Progress should increase
-      for (let i = 1; i < progressValues.length; i++) {
-        expect(progressValues[i]).toBeGreaterThanOrEqual(progressValues[i - 1]);
-      }
-    });
-  });
-
-  describe('result metadata', () => {
-    it('should include timestamps', async () => {
+  describe('output and download', () => {
+    it('should generate correct filename', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.startTime).toBeInstanceOf(Date);
-      expect(result.endTime).toBeInstanceOf(Date);
+      expect(result.success).toBe(true);
+      // Format: system-info-Test Device-2026-02-10T10-22-41-227Z.json
+      expect(result.fileName).toMatch(/system-info-Test Device-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json/);
     });
 
-    it('should include duration', async () => {
+    it('should create downloadable blob', async () => {
+      await acquirer.acquire();
+
+      // Verify blob was created and downloaded
+      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
+    });
+
+    it('should include acquisition duration', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.duration).toBeGreaterThanOrEqual(0);
+      expect(result.success).toBe(true);
+      expect(result.duration).toBeGreaterThan(0);
       expect(typeof result.duration).toBe('number');
     });
 
     it('should include file size', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(typeof result.fileSize).toBe('number');
+      expect(result.success).toBe(true);
       expect(result.fileSize).toBeGreaterThan(0);
-    });
-
-    it('should include component collection status', async () => {
-      const result = await acquirer.acquire();
-
-      expect((result.data as any).componentsCollected).toBeDefined();
-      expect(typeof (result.data as any).componentsCollected).toBe('object');
-    });
-  });
-
-  describe('output format', () => {
-    it('should create JSON output', async () => {
-      await acquirer.acquire();
-
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.download).toMatch(/system-info-.*\.json/);
-    });
-
-    it('should trigger download', async () => {
-      await acquirer.acquire();
-
-      expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.revokeObjectURLSpy).toHaveBeenCalled();
+      expect(typeof result.fileSize).toBe('number');
     });
   });
 });

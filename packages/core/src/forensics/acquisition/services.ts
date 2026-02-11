@@ -5,10 +5,7 @@ import type {
   AcquisitionProgress,
   AcquisitionResult
 } from '.';
-import { 
-  DumpsysListCommand, 
-  DumpsysActivityServicesCommand 
-} from '../../adb/commands/dumpsysCommand';
+import { DumpsysCommand } from '../../adb/commands/';
 
 export interface ServicesConfig extends AcquisitionConfig {
   includeSystemServices?: boolean;
@@ -163,7 +160,8 @@ export class ServicesAcquirer extends Acquirer {
   }
 
   private async getServicesList(): Promise<ServiceInfo[]> {
-    const output = await new DumpsysListCommand(this.device.adb).exec({
+    const output = await new DumpsysCommand(this.device.adb).exec({
+      args: ['-l'],
       timeout: 30000
     });
 
@@ -172,10 +170,8 @@ export class ServicesAcquirer extends Acquirer {
 
   private async enrichServicesWithDetails(services: ServiceInfo[]): Promise<void> {
     try {
-      const activityOutput = await new DumpsysActivityServicesCommand(this.device.adb).exec({
-        timeout: 30000
-      });
-
+      const activityOutput = await new DumpsysCommand(this.device.adb).exec({ service: 'activity', args: ["services"], timeout: 300000 });
+ 
       this.parseServiceDetails(services, activityOutput);
     } catch (error) {
       this.logger.warn('Failed to get service details', error);

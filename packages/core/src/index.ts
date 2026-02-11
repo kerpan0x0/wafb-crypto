@@ -92,6 +92,9 @@ export type { FileAcquisitionConfig } from './forensics/acquisition/files'
 export { TmpAcquirer } from './forensics/acquisition/tmpAcquirer';
 export type { TmpAcquirerConfig } from './forensics/acquisition/tmpAcquirer'
 
+export { DumpsysAcquirer } from './forensics/acquisition/dumpsys'
+export type { DumpsysConfig } from './forensics/acquisition/dumpsys';
+
 // ============================================================================
 // Utilities
 // ============================================================================

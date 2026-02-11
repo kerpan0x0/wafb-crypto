@@ -15,6 +15,7 @@ import {
   ServicesAcquirer,
   LogAcquirer,
   TmpAcquirer,
+  DumpsysAcquirer
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
@@ -204,6 +205,10 @@ export function AcquisitionPage() {
       },
       tmp: {
         Class: TmpAcquirer,
+        options: {}
+      },
+      dumpsys: {
+        Class: DumpsysAcquirer,
         options: {}
       }
     };

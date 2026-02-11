@@ -3,39 +3,6 @@ import { Logger } from "../..";
 import { ADBCommands, CommandOptions } from ".";
 import { ShellCommand } from "./shellCommand";
 
-export class GetBatteryInfoCommand implements ADBCommands<string> {
-  private logger: Logger;
-
-  constructor(private adb: Adb) {
-    this.logger = new Logger('GetBatteryInfoCommand');
-  }
-
-  async exec(): Promise<string> {
-    try {
-      return await new ShellCommand(this.adb, 'dumpsys battery').exec();
-    } catch (error) {
-      this.logger.warn('Failed to get battery info', error);
-      return '';
-    }
-  }
-}
-
-export class GetMemoryInfoCommand implements ADBCommands<string> {
-  private logger: Logger;
-
-  constructor(private adb: Adb) {
-    this.logger = new Logger('GetMemoryInfoCommand');
-  }
-
-  async exec(): Promise<string> {
-    try {
-      return await new ShellCommand(this.adb, 'dumpsys meminfo').exec();
-    } catch (error) {
-      this.logger.warn('Failed to get memory info', error);
-      return '';
-    }
-  }
-}
 
 export class GetNetworkInfoCommand implements ADBCommands<string> {
   private logger: Logger;
@@ -66,23 +33,6 @@ export class GetStorageInfoCommand implements ADBCommands<string> {
 
     } catch (error) {
       this.logger.warn('Failed to get storage info', error);
-      return '';
-    }
-  }
-}
-
-export class GetSensorsCommand implements ADBCommands<string> {
-  private logger: Logger;
-
-  constructor(private adb: Adb) {
-    this.logger = new Logger('GetSensorsCommand');
-  }
-
-  async exec(): Promise<string> {
-    try {
-      return await new ShellCommand(this.adb, 'dumpsys sensorservice').exec();
-    } catch (error) {
-      this.logger.warn('Failed to get sensors info', error);
       return '';
     }
   }
