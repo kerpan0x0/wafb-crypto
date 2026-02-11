@@ -3,7 +3,7 @@ import { BugreportAcquirer } from '../../../../src/forensics/acquisition/bugrepo
 import {
   createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
-  createMockProgressCallback
+  createMockProgressCallback,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -29,7 +29,7 @@ describe('BugreportAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('bugreport');
-      expect(result.fileName).toMatch(/bugreport-.*\.zip/);
+      expect(result.fileName).toBe('bugreport.zip');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -66,7 +66,7 @@ describe('BugreportAcquirer', () => {
     it('should cleanup temporary files when configured', async () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        checkCommandExists: false
+        checkCommandExists: false,
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
 
@@ -98,7 +98,7 @@ describe('BugreportAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         checkCommandExists: false,
         shellOutput: '',
-        readFile: new TextEncoder().encode('mock bugreport content')
+        readFile: new TextEncoder().encode('mock bugreport content'),
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new BugreportAcquirer(device, { preferZip: false });
@@ -106,7 +106,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/bugreport-.*\.txt/);
+      expect(result.fileName).toBe('bugreport.txt');
     });
   });
 
@@ -134,9 +134,7 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should handle file read errors', async () => {
-      vi.mocked(device.adb.sync).mockRejectedValue(
-        new Error('Failed to read file')
-      );
+      vi.mocked(device.adb.sync).mockRejectedValue(new Error('Failed to read file'));
 
       const result = await acquirer.acquire();
 
@@ -149,7 +147,7 @@ describe('BugreportAcquirer', () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         checkCommandExists: false,
-        readFile: new Uint8Array()
+        readFile: new Uint8Array(),
       }) as unknown as ADBDevice;
       vi.mocked(device.adb.sync).mockRejectedValue(new Error('Read failed'));
       domMocks = setupAcquirerDOMMocks();
@@ -167,21 +165,25 @@ describe('BugreportAcquirer', () => {
       const mockDevice = createMockADBDeviceWithCommands({
         checkCommandExists: false,
         shellOutput: '',
-        readFile: new TextEncoder().encode('mock bugreport content')
+        readFile: new TextEncoder().encode('mock bugreport content'),
       }) as unknown as ADBDevice;
 
       // Get the original implementation before we mock it
-      const originalImpl = vi.fn(mockDevice.adb.subprocess.shellProtocol.spawn.getMockImplementation());
+      const originalImpl = vi.fn(
+        mockDevice.adb.subprocess.shellProtocol.spawn.getMockImplementation()
+      );
 
       // Mock spawn to fail ONLY on the rm command (cleanup)
-      mockDevice.adb.subprocess.shellProtocol.spawn = vi.fn().mockImplementation((command: string) => {
-        // Fail on rm command (which is the cleanup)
-        if (command.includes('rm ')) {
-          return Promise.reject(new Error('Cleanup failed'));
-        }
-        // For all other commands, use the original mock logic from test-helpers
-        return originalImpl(command);
-      });
+      mockDevice.adb.subprocess.shellProtocol.spawn = vi
+        .fn()
+        .mockImplementation((command: string) => {
+          // Fail on rm command (which is the cleanup)
+          if (command.includes('rm ')) {
+            return Promise.reject(new Error('Cleanup failed'));
+          }
+          // For all other commands, use the original mock logic from test-helpers
+          return originalImpl(command);
+        });
 
       domMocks = setupAcquirerDOMMocks();
 
@@ -272,7 +274,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/bugreport.*\.zip/);
+      expect(result.fileName).toMatch(/bugreport\.(zip|txt)/);
     });
 
     it('should handle bugreportz output with whitespace', async () => {
@@ -408,12 +410,12 @@ describe('BugreportAcquirer', () => {
       const progressValues = getProgressHistory().map(p => p.progress);
 
       // Should have progress at various stages
-      expect(progressValues).toContain(10);  // Device info
-      expect(progressValues).toContain(20);  // Connected
-      expect(progressValues).toContain(30);  // Checking support
-      expect(progressValues).toContain(40);  // Generating
-      expect(progressValues).toContain(70);  // Downloading
-      expect(progressValues).toContain(90);  // Preparing
+      expect(progressValues).toContain(10); // Device info
+      expect(progressValues).toContain(20); // Connected
+      expect(progressValues).toContain(30); // Checking support
+      expect(progressValues).toContain(40); // Generating
+      expect(progressValues).toContain(70); // Downloading
+      expect(progressValues).toContain(90); // Preparing
       expect(progressValues).toContain(100); // Complete
     });
 
@@ -483,88 +485,23 @@ describe('BugreportAcquirer', () => {
   // ==========================================================================
 
   describe('File Naming', () => {
-    it('should include device model in filename (with spaces)', async () => {
+    it('should use simple filename format', async () => {
       const result = await acquirer.acquire();
 
-      // generateFileName usa deviceInfo.model direttamente senza sanitizzazione
-      expect(result.fileName).toContain('Test Device');
+      expect(result.fileName).toBe('bugreport.zip');
     });
 
-    it('should include ISO timestamp in filename', async () => {
+    it('should use correct extension for zip format', async () => {
       const result = await acquirer.acquire();
 
-      // Should match pattern: bugreport-DeviceName-ISO8601.zip
-      // formato: bugreport-Test Device-2026-02-07T08-22-58-753Z.zip
-      expect(result.fileName).toMatch(/bugreport-.*-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.(zip|txt)/);
+      expect(result.fileName).toBe('bugreport.zip');
     });
 
-    it('should NOT sanitize device model name (spaces preserved)', async () => {
-      domMocks.cleanup();
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
-
-      // Override getProperties to return custom model
-      vi.mocked(device.getProperties).mockResolvedValue({
-        androidVersion: '13',
-        buildId: 'TP1A.220905.004',
-        model: 'Galaxy S23 Ultra',
-        manufacturer: 'Samsung',
-        brand: 'Samsung',
-        sdkVersion: 33,
-        serialNumber: 'TEST123'
-      });
-
-      domMocks = setupAcquirerDOMMocks();
-      acquirer = new BugreportAcquirer(device);
-
+    it('should use correct extension for text format', async () => {
+      acquirer = new BugreportAcquirer(device, { preferZip: false });
       const result = await acquirer.acquire();
 
-      // Spaces are NOT replaced - they stay in the filename
-      expect(result.fileName).toContain('Galaxy S23 Ultra');
-    });
-
-    it('should handle device model with unicode characters', async () => {
-      domMocks.cleanup();
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
-
-      vi.mocked(device.getProperties).mockResolvedValue({
-        androidVersion: '13',
-        buildId: 'TP1A.220905.004',
-        model: '小米 Redmi Note',
-        manufacturer: 'Xiaomi',
-        brand: 'Xiaomi',
-        sdkVersion: 33,
-        serialNumber: 'TEST123'
-      });
-
-      domMocks = setupAcquirerDOMMocks();
-      acquirer = new BugreportAcquirer(device);
-
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.fileName).toContain('小米 Redmi Note');
-    });
-
-    it('should use model from device properties', async () => {
-      domMocks.cleanup();
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
-
-      vi.mocked(device.getProperties).mockResolvedValue({
-        androidVersion: '13',
-        buildId: 'TP1A.220905.004',
-        model: 'Custom Device',
-        manufacturer: 'Custom Manufacturer',
-        brand: 'Custom',
-        sdkVersion: 33,
-        serialNumber: 'TEST123'
-      });
-
-      domMocks = setupAcquirerDOMMocks();
-      acquirer = new BugreportAcquirer(device);
-
-      const result = await acquirer.acquire();
-
-      expect(result.fileName).toContain('Custom Device');
+      expect(result.fileName).toBe('bugreport.txt');
     });
   });
 
@@ -633,9 +570,9 @@ describe('BugreportAcquirer', () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         getPropOutput: {
-          'ro.build.version.sdk': '33'
+          'ro.build.version.sdk': '33',
           // Missing model - getProperties returns default from mockDevice
-        }
+        },
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
 
@@ -699,7 +636,7 @@ describe('BugreportAcquirer', () => {
 
     it('should handle cleanup failures gracefully', async () => {
       const mockDevice = createMockADBDeviceWithCommands({
-        checkCommandExists: true
+        checkCommandExists: true,
       }) as unknown as ADBDevice;
 
       // Save original spawn
@@ -771,7 +708,7 @@ describe('BugreportAcquirer', () => {
       const outputs = [
         '  OK:/sdcard/report.zip  ',
         '\tOK:/sdcard/report.zip\n',
-        'OK: /sdcard/report.zip'
+        'OK: /sdcard/report.zip',
       ];
 
       outputs.forEach(output => {
@@ -785,39 +722,29 @@ describe('BugreportAcquirer', () => {
   // DOWNLOAD FUNCTIONALITY
   // ==========================================================================
 
-  describe('Download Trigger', () => {
-    it('should trigger browser download', async () => {
-      await acquirer.acquire();
+  describe('Blob Result', () => {
+    it('should return blob on successful acquisition', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
     });
 
-    it('should set correct download filename', async () => {
-      await acquirer.acquire();
+    it('should return blob with correct MIME type for zip', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.download).toMatch(/bugreport-.*\.(zip|txt)/);
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/zip');
     });
 
-    it('should cleanup blob URL after download', async () => {
-      await acquirer.acquire();
-
-      expect(domMocks.revokeObjectURLSpy).toHaveBeenCalled();
-    });
-
-    it('should create blob with correct MIME type for zip', async () => {
-      await acquirer.acquire();
-
-      const blobCall = domMocks.createObjectURLSpy.mock.calls[0][0];
-      expect(blobCall.type).toBe('application/zip');
-    });
-
-    it('should create blob with correct MIME type for text', async () => {
+    it('should return blob with correct MIME type for text', async () => {
       acquirer = new BugreportAcquirer(device, { preferZip: false });
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blobCall = domMocks.createObjectURLSpy.mock.calls[0][0];
-      expect(blobCall.type).toBe('text/plain');
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('text/plain');
     });
   });
 
@@ -837,7 +764,7 @@ describe('BugreportAcquirer', () => {
         manufacturer: 'LG',
         brand: 'Google',
         sdkVersion: 19,
-        serialNumber: 'TEST123'
+        serialNumber: 'TEST123',
       });
 
       domMocks = setupAcquirerDOMMocks();
@@ -847,8 +774,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/\.txt$/);
-      expect(result.fileName).toContain('Nexus 5');
+      expect(result.fileName).toBe('bugreport.txt');
     });
 
     it('should handle modern device with bugreportz', async () => {
@@ -862,7 +788,7 @@ describe('BugreportAcquirer', () => {
         manufacturer: 'Google',
         brand: 'Google',
         sdkVersion: 33,
-        serialNumber: 'TEST123'
+        serialNumber: 'TEST123',
       });
 
       domMocks = setupAcquirerDOMMocks();
@@ -871,8 +797,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/\.zip$/);
-      expect(result.fileName).toContain('Pixel 7');
+      expect(result.fileName).toBe('bugreport.zip');
     });
 
     it('should preserve parentheses and special chars in model name', async () => {
@@ -886,7 +811,7 @@ describe('BugreportAcquirer', () => {
         manufacturer: 'Samsung',
         brand: 'Samsung',
         sdkVersion: 33,
-        serialNumber: 'TEST123'
+        serialNumber: 'TEST123',
       });
 
       domMocks = setupAcquirerDOMMocks();
@@ -895,8 +820,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      // generateFileName does NOT sanitize - special chars are preserved
-      expect(result.fileName).toContain('Galaxy S23 Ultra 5G (SM-S918B)');
+      expect(result.fileName).toBe('bugreport.zip');
     });
   });
 
@@ -919,7 +843,7 @@ describe('BugreportAcquirer', () => {
       const largeContent = new Uint8Array(10 * 1024 * 1024); // 10MB
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        readFile: largeContent
+        readFile: largeContent,
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
 

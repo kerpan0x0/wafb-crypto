@@ -1,11 +1,7 @@
 import { DumpsysCommand, PmCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type {
-  AcquisitionConfig,
-  AcquisitionProgress,
-  AcquisitionResult
-} from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 
 export interface PackagesConfig extends AcquisitionConfig {
   includeSystem?: boolean;
@@ -55,9 +51,7 @@ export class PackagesAcquirer extends Acquirer {
     super(device, packagesConfig, 'packages');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -77,7 +71,7 @@ export class PackagesAcquirer extends Acquirer {
       this.notifyProgress(onProgress, 30, 'Listing installed packages...', 'running');
       const output = await new PmCommand(this.device.adb).exec({
         includeSystem: this.packagesConfig.includeSystem,
-        timeout: this.config.timeout || 30000
+        timeout: this.config.timeout || 30000,
       });
 
       const packageNames = output
@@ -88,22 +82,12 @@ export class PackagesAcquirer extends Acquirer {
 
       this.logger.info(`Found ${packageNames.length} packages`);
 
-      this.notifyProgress(
-        onProgress,
-        50,
-        `Found ${packageNames.length} packages`,
-        'running'
-      );
+      this.notifyProgress(onProgress, 50, `Found ${packageNames.length} packages`, 'running');
 
       const packages: PackageInfo[] = [];
 
       if (this.packagesConfig.includeDetails !== false) {
-        this.notifyProgress(
-          onProgress,
-          60,
-          'Gathering detailed package information...',
-          'running'
-        );
+        this.notifyProgress(onProgress, 60, 'Gathering detailed package information...', 'running');
 
         const progressStep = 30 / packageNames.length;
 
@@ -111,15 +95,23 @@ export class PackagesAcquirer extends Acquirer {
           const packageName = packageNames[i];
 
           try {
-            const output = await new DumpsysCommand(this.device.adb).exec({ service: 'package', packageName, timeout: 100000  });
+            const output = await new DumpsysCommand(this.device.adb).exec({
+              service: 'package',
+              packageName,
+              timeout: 100000,
+            });
 
-            const info = this.buildPackageInfoResult(output, packageName, this.packagesConfig.includePermissions || false);
+            const info = this.buildPackageInfoResult(
+              output,
+              packageName,
+              this.packagesConfig.includePermissions || false
+            );
 
             if (info) {
               // Aggiungi solo il campo isSystemApp (logica specifica)
               packages.push({
                 ...info,
-                isSystemApp: this.isSystemPackage(packageName)
+                isSystemApp: this.isSystemPackage(packageName),
               });
             } else {
               packages.push(this.createBasicPackageInfo(packageName));
@@ -156,7 +148,7 @@ export class PackagesAcquirer extends Acquirer {
         userPackages: userCount,
         packages,
         deviceInfo,
-        acquisitionTime: new Date().toISOString()
+        acquisitionTime: new Date().toISOString(),
       };
 
       // Step 5: Convert to JSON and create blob
@@ -164,9 +156,7 @@ export class PackagesAcquirer extends Acquirer {
       const jsonBytes = new TextEncoder().encode(jsonData);
 
       const blob = new Blob([jsonBytes], { type: 'application/json' });
-      const fileName = this.generateFileName('packages', 'json', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('packages', 'json');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -186,8 +176,9 @@ export class PackagesAcquirer extends Acquirer {
           totalPackages: packages.length,
           systemPackages: systemCount,
           userPackages: userCount,
-          deviceInfo
-        }
+          deviceInfo,
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -197,11 +188,10 @@ export class PackagesAcquirer extends Acquirer {
       this.logger.info('Packages acquisition completed', {
         fileName,
         totalPackages: packages.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -216,7 +206,7 @@ export class PackagesAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -233,7 +223,7 @@ export class PackagesAcquirer extends Acquirer {
       installLocation: 'Unknown',
       firstInstallTime: 'Unknown',
       lastUpdateTime: 'Unknown',
-      isSystemApp: this.isSystemPackage(packageName)
+      isSystemApp: this.isSystemPackage(packageName),
     };
   }
 
@@ -244,14 +234,17 @@ export class PackagesAcquirer extends Acquirer {
       'android.',
       'com.qualcomm.',
       'com.samsung.',
-      'com.sec.'
+      'com.sec.',
     ];
 
     return systemPrefixes.some(prefix => packageName.startsWith(prefix));
   }
 
-  private buildPackageInfoResult(output: string, packageName: string, includePermissions: boolean): PackageInfoResult | null {
-
+  private buildPackageInfoResult(
+    output: string,
+    packageName: string,
+    includePermissions: boolean
+  ): PackageInfoResult | null {
     if (!output || output.trim().length === 0) {
       return null;
     }
@@ -264,7 +257,7 @@ export class PackagesAcquirer extends Acquirer {
       firstInstallTime: this.extractField(output, 'firstInstallTime') || 'Unknown',
       lastUpdateTime: this.extractField(output, 'lastUpdateTime') || 'Unknown',
       targetSdk: this.extractNumber(output, 'targetSdk'),
-      minSdk: this.extractNumber(output, 'minSdk')
+      minSdk: this.extractNumber(output, 'minSdk'),
     };
 
     if (includePermissions) {

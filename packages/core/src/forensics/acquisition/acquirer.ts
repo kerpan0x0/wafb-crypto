@@ -2,7 +2,6 @@ import type { ADBDevice } from '../../adb';
 import { Logger } from '../../utils/logger';
 import { AcquisitionConfig, AcquisitionType, AcquisitionProgress } from '.';
 
-
 /** @internal */
 export abstract class Acquirer {
   protected logger: Logger;
@@ -27,20 +26,9 @@ export abstract class Acquirer {
         progress: Math.min(100, Math.max(0, progress)),
         message,
         status,
-        deviceInfo
+        deviceInfo,
       });
     }
-  }
-
-  protected downloadBlob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
   protected async computeHash(data: Uint8Array): Promise<string> {
@@ -54,8 +42,7 @@ export abstract class Acquirer {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  protected generateFileName(prefix: string, extension: string, deviceModel: string): string {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    return `${prefix}-${deviceModel}-${timestamp}.${extension}`;
+  protected generateFileName(prefix: string, extension: string): string {
+    return `${prefix}.${extension}`;
   }
 }

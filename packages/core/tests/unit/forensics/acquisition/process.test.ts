@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ProcessAcquirer } from '../../../../src/forensics/acquisition/process';
-import { 
+import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream
+  createMockReadableStream,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -21,11 +21,11 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     device = createMockADBDeviceWithProcesses({
-      psOutput: MOCK_PS_OUTPUT
+      psOutput: MOCK_PS_OUTPUT,
     }) as unknown as ADBDevice;
-    
+
     domMocks = setupAcquirerDOMMocks();
     acquirer = new ProcessAcquirer(device);
   });
@@ -40,7 +40,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('process');
-      expect(result.fileName).toMatch(/processes-.*\.json/);
+      expect(result.fileName).toBe('processes.json');
     });
 
     it('should parse all processes correctly', async () => {
@@ -72,20 +72,19 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
       expect(device.getProperties).toHaveBeenCalled();
     });
 
-    it('should trigger download on successful acquisition', async () => {
-      await acquirer.acquire();
+    it('should return blob on successful acquisition', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.download).toMatch(/processes-.*\.json/);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.fileName).toBe('processes.json');
     });
   });
 
   describe('Process Parsing', () => {
     it('should parse PID correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].pid).toBe(1);
@@ -93,10 +92,9 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     });
 
     it('should parse PPID correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].ppid).toBe(0);
@@ -104,10 +102,9 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     });
 
     it('should parse user correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].user).toBe('root');
@@ -115,10 +112,9 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     });
 
     it('should parse process name correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].name).toBe('init');
@@ -126,10 +122,9 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     });
 
     it('should parse memory info correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].vsz).toBeGreaterThan(0);
@@ -138,28 +133,26 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
     it('should parse SELinux context when enabled', async () => {
       acquirer = new ProcessAcquirer(device, { includeSELinuxContext: true });
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes.some((p: any) => p.selinuxContext)).toBe(true);
     });
 
     it('should handle process names with spaces', async () => {
-      const psWithSpaces = MOCK_PS_OUTPUT + '\n' +
-        'u:r:app:s0 u0_a456 9999 2000 123456 7890 0 0 S my app name';
+      const psWithSpaces =
+        MOCK_PS_OUTPUT + '\n' + 'u:r:app:s0 u0_a456 9999 2000 123456 7890 0 0 S my app name';
 
       device = createMockADBDeviceWithProcesses({
-        psOutput: psWithSpaces
+        psOutput: psWithSpaces,
       }) as unknown as ADBDevice;
       acquirer = new ProcessAcquirer(device);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const processWithSpaces = data.processes.find((p: any) => p.pid === 9999);
@@ -173,7 +166,7 @@ malformed line
 u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
 
       device = createMockADBDeviceWithProcesses({
-        psOutput: malformedPs
+        psOutput: malformedPs,
       }) as unknown as ADBDevice;
       acquirer = new ProcessAcquirer(device);
 
@@ -185,7 +178,7 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
 
     it('should handle empty process list', async () => {
       device = createMockADBDeviceWithProcesses({
-        psOutput: 'LABEL USER PID PPID VSZ RSS WCHAN ADDR S NAME'
+        psOutput: 'LABEL USER PID PPID VSZ RSS WCHAN ADDR S NAME',
       }) as unknown as ADBDevice;
       acquirer = new ProcessAcquirer(device);
 
@@ -198,10 +191,9 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
 
   describe('User ID Mapping', () => {
     it('should map root user to UID 0', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const rootProcess = data.processes.find((p: any) => p.user === 'root');
@@ -209,10 +201,9 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
     });
 
     it('should map system user to UID 1000', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const systemProcess = data.processes.find((p: any) => p.user === 'system');
@@ -220,10 +211,9 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
     });
 
     it('should parse app user format (u0_aXXX)', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const appProcess = data.processes.find((p: any) => p.user === 'u0_a123');
@@ -235,14 +225,13 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
 u:r:app:s0 custom_user 9999 1 12345 678 0 0 S custom_app`;
 
       device = createMockADBDeviceWithProcesses({
-        psOutput: customPs
+        psOutput: customPs,
       }) as unknown as ADBDevice;
       acquirer = new ProcessAcquirer(device);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].uid).toBe(-1);
@@ -253,14 +242,13 @@ u:r:app:s0 custom_user 9999 1 12345 678 0 0 S custom_app`;
 u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
       device = createMockADBDeviceWithProcesses({
-        psOutput: multiUserPs
+        psOutput: multiUserPs,
       }) as unknown as ADBDevice;
       acquirer = new ProcessAcquirer(device);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       // u1_a456 = 1*100000 + 10000 + 456 = 110456
@@ -270,30 +258,27 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
   describe('Process Classification', () => {
     it('should identify init as system process', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemProcesses).toBeGreaterThan(0);
     });
 
     it('should identify user apps correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.userProcesses).toBeGreaterThan(0);
     });
 
     it('should classify system_server as system process', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const systemServer = data.processes.find((p: any) => p.name === 'system_server');
@@ -302,10 +287,9 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     });
 
     it('should classify zygote processes as system', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const zygote = data.processes.find((p: any) => p.name.includes('zygote'));
@@ -313,10 +297,9 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     });
 
     it('should calculate correct system/user counts', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemProcesses + data.userProcesses).toBe(data.totalProcesses);
@@ -335,7 +318,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
     it('should exclude SELinux context when disabled', async () => {
       device = createMockADBDeviceWithProcesses({
-        psOutput: MOCK_PS_OUTPUT.replace(/u:r:\w+:s0\s+/g, '')
+        psOutput: MOCK_PS_OUTPUT.replace(/u:r:\w+:s0\s+/g, ''),
       }) as unknown as ADBDevice;
       acquirer = new ProcessAcquirer(device, { includeSELinuxContext: false });
 
@@ -431,9 +414,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     });
 
     it('should handle device disconnection', async () => {
-      device.getProperties = vi.fn().mockRejectedValue(
-        new Error('Device disconnected')
-      );
+      device.getProperties = vi.fn().mockRejectedValue(new Error('Device disconnected'));
 
       const result = await acquirer.acquire();
 
@@ -484,9 +465,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
       const result = await acquirer.acquire();
 
       expect(result.duration).toBeGreaterThanOrEqual(0);
-      expect(result.duration).toBe(
-        result.endTime.getTime() - result.startTime.getTime()
-      );
+      expect(result.duration).toBe(result.endTime.getTime() - result.startTime.getTime());
     });
 
     it('should include file size', async () => {
@@ -513,19 +492,17 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
   describe('Output Format', () => {
     it('should create valid JSON', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
 
       expect(() => JSON.parse(text)).not.toThrow();
     });
 
     it('should include all required fields', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data).toHaveProperty('totalProcesses');
@@ -538,10 +515,9 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     });
 
     it('should format process entries correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const process = data.processes[0];
@@ -555,23 +531,18 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
       expect(process).toHaveProperty('rss');
     });
 
-    it('should download file with correct blob type', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
+    it('should have correct blob type', async () => {
+      const result = await acquirer.acquire();
 
-      await acquirer.acquire();
-
-      expect(createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'application/json'
-        })
-      );
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/json');
     });
 
     it('should generate filename with device model', async () => {
       const result = await acquirer.acquire();
 
       expect(result.fileName).toBeDefined();
-      expect(result.fileName).toMatch(/processes-Test.*\.json/);
+      expect(result.fileName).toBe('processes.json');
     });
   });
 
@@ -581,7 +552,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
       expect(result.success).toBe(true);
       expect((result.data as any).totalProcesses).toBeGreaterThan(0);
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
     });
 
     it('should work with different device models', async () => {
@@ -592,23 +563,22 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
         sdkVersion: 34,
         serialNumber: 'XYZ789',
         buildId: 'BUILD123',
-        brand: 'Google'
+        brand: 'Google',
       };
       device.getProperties = vi.fn().mockResolvedValue(mockProperties);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toContain('Pixel 8');
+      expect(result.fileName).toBe('processes.json');
     });
 
     it('should capture acquisition timestamp', async () => {
       const beforeAcquisition = Date.now();
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
       const afterAcquisition = Date.now();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const timestamp = data.timestamp;
@@ -619,9 +589,11 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 });
 
 // Helper function to create mock device with process data
-function createMockADBDeviceWithProcesses(options: {
-  psOutput?: string;
-} = {}) {
+function createMockADBDeviceWithProcesses(
+  options: {
+    psOutput?: string;
+  } = {}
+) {
   const { psOutput = '' } = options;
 
   const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
@@ -630,7 +602,7 @@ function createMockADBDeviceWithProcesses(options: {
         stdout: createMockReadableStream(psOutput),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -646,7 +618,7 @@ function createMockADBDeviceWithProcesses(options: {
         ),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -654,7 +626,7 @@ function createMockADBDeviceWithProcesses(options: {
       stdout: createMockReadableStream(''),
       stderr: createMockReadableStream(''),
       stdin: new WritableStream(),
-      exit: Promise.resolve({ code: 0 })
+      exit: Promise.resolve({ code: 0 }),
     });
   });
 
@@ -662,11 +634,11 @@ function createMockADBDeviceWithProcesses(options: {
     adb: {
       subprocess: {
         shellProtocol: {
-          spawn: mockShellSpawn
-        }
+          spawn: mockShellSpawn,
+        },
       },
       sync: vi.fn(),
-      close: vi.fn().mockResolvedValue(undefined)
+      close: vi.fn().mockResolvedValue(undefined),
     } as any,
     getProperties: vi.fn().mockResolvedValue({
       androidVersion: '13',
@@ -675,16 +647,16 @@ function createMockADBDeviceWithProcesses(options: {
       manufacturer: 'Test Manufacturer',
       brand: 'Test',
       sdkVersion: 33,
-      serialNumber: 'TEST123'
+      serialNumber: 'TEST123',
     }),
     info: {
       productName: 'Test Device',
       manufacturerName: 'Test Manufacturer',
       serialNumber: 'TEST123',
-      vendorId: 0x18D1,
-      productId: 0x4EE7
+      vendorId: 0x18d1,
+      productId: 0x4ee7,
     },
     isConnected: vi.fn().mockReturnValue(true),
-    disconnect: vi.fn().mockResolvedValue(undefined)
+    disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

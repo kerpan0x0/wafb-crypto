@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RootBinariesAcquirer } from '../../../../src/forensics/acquisition/root-binaries';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream
+  createMockReadableStream,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -14,24 +14,24 @@ describe('RootBinariesAcquirer', () => {
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
   const mockRootBinaryPaths = {
-    'su': '/system/bin/su\n/system/xbin/su',
-    'busybox': '/system/bin/busybox',
-    'magisk': '/data/adb/magisk',
-    'magiskhide': '/data/adb/magisk/magiskhide',
-    'supersu': '',
+    su: '/system/bin/su\n/system/xbin/su',
+    busybox: '/system/bin/busybox',
+    magisk: '/data/adb/magisk',
+    magiskhide: '/data/adb/magisk/magiskhide',
+    supersu: '',
     'Superuser.apk': '',
     'KingoUser.apk': '',
     'SuperSu.apk': '',
-    'magiskinit': '/data/adb/magisk/magiskinit',
-    'magiskpolicy': '/data/adb/magisk/magiskpolicy',
-    'magiskboot': '/data/adb/magisk/magiskboot'
+    magiskinit: '/data/adb/magisk/magiskinit',
+    magiskpolicy: '/data/adb/magisk/magiskpolicy',
+    magiskboot: '/data/adb/magisk/magiskboot',
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
-    
+
     domMocks = setupAcquirerDOMMocks();
     acquirer = new RootBinariesAcquirer(device);
   });
@@ -64,11 +64,13 @@ describe('RootBinariesAcquirer', () => {
         'magiskhide',
         'magiskinit',
         'magiskpolicy',
-        'magiskboot'
+        'magiskboot',
       ];
 
       expectedBinaries.forEach(binary => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(`which -a ${binary}`);
+        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+          `which -a ${binary}`
+        );
       });
     });
 
@@ -95,7 +97,7 @@ describe('RootBinariesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.format).toBe('text');
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
     });
 
     it('should include device information in result', async () => {
@@ -112,7 +114,7 @@ describe('RootBinariesAcquirer', () => {
         stdout: createMockReadableStream(''),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
 
       const result = await acquirer.acquire();
@@ -122,15 +124,10 @@ describe('RootBinariesAcquirer', () => {
     });
 
     it('should download file with correct blob type', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
-      
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'application/json'
-        })
-      );
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/json');
     });
   });
 
@@ -146,7 +143,9 @@ describe('RootBinariesAcquirer', () => {
     });
 
     it('should handle shell command errors', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(new Error('Shell error'));
+      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
+        new Error('Shell error')
+      );
 
       const result = await acquirer.acquire();
 
@@ -186,17 +185,19 @@ describe('RootBinariesAcquirer', () => {
 
     it('should detect magisk binaries', async () => {
       const magiskBinaries = ['magisk', 'magiskhide', 'magiskinit', 'magiskpolicy', 'magiskboot'];
-      
+
       await acquirer.acquire();
 
       magiskBinaries.forEach(binary => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(`which -a ${binary}`);
+        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+          `which -a ${binary}`
+        );
       });
     });
 
     it('should detect SuperSU related files', async () => {
       const supersuFiles = ['supersu', 'Superuser.apk', 'SuperSu.apk'];
-      
+
       await acquirer.acquire();
 
       supersuFiles.forEach(file => {
@@ -207,7 +208,9 @@ describe('RootBinariesAcquirer', () => {
     it('should detect KingoRoot files', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('which -a KingoUser.apk');
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
+        'which -a KingoUser.apk'
+      );
     });
 
     it('should detect busybox', async () => {
@@ -258,7 +261,7 @@ describe('RootBinariesAcquirer', () => {
   describe('progress reporting', () => {
     it('should report initial progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -269,7 +272,7 @@ describe('RootBinariesAcquirer', () => {
 
     it('should report device connection progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -280,7 +283,7 @@ describe('RootBinariesAcquirer', () => {
 
     it('should report binary collection progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -291,7 +294,7 @@ describe('RootBinariesAcquirer', () => {
 
     it('should report download progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -302,7 +305,7 @@ describe('RootBinariesAcquirer', () => {
 
     it('should report completion', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -326,7 +329,7 @@ describe('RootBinariesAcquirer', () => {
         model: 'Pixel 7',
         manufacturer: 'Google',
         androidVersion: '14',
-        serialNumber: 'ABC123'
+        serialNumber: 'ABC123',
       };
       device.getProperties = vi.fn().mockResolvedValue(mockProperties);
 

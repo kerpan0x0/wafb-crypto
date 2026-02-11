@@ -1,10 +1,6 @@
 import type { ADBDevice, DeviceProperties } from '../../adb';
 import { Acquirer } from './acquirer';
-import type {
-  AcquisitionConfig,
-  AcquisitionProgress,
-  AcquisitionResult
-} from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../adb/commands';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
@@ -89,9 +85,7 @@ export class SystemInfoAcquirer extends Acquirer {
     super(device, systemConfig, 'system_info');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -119,7 +113,12 @@ export class SystemInfoAcquirer extends Acquirer {
 
       // Step 3: Get battery info (40-50%)
       if (this.systemConfig.includeBattery !== false) {
-        this.notifyProgress(onProgress, progressOffset, 'Reading battery information...', 'running');
+        this.notifyProgress(
+          onProgress,
+          progressOffset,
+          'Reading battery information...',
+          'running'
+        );
         try {
           systemInfoData.battery = await this.getBatteryInfo();
         } catch (error) {
@@ -131,7 +130,12 @@ export class SystemInfoAcquirer extends Acquirer {
 
       // Step 5: Get network info (50-60%)
       if (this.systemConfig.includeNetwork !== false) {
-        this.notifyProgress(onProgress, progressOffset, 'Reading network information...', 'running');
+        this.notifyProgress(
+          onProgress,
+          progressOffset,
+          'Reading network information...',
+          'running'
+        );
         try {
           systemInfoData.network = await this.getNetworkInfo();
         } catch (error) {
@@ -142,7 +146,12 @@ export class SystemInfoAcquirer extends Acquirer {
 
       // Step 6: Get storage info (60-70%)
       if (this.systemConfig.includeStorage !== false) {
-        this.notifyProgress(onProgress, progressOffset, 'Reading storage information...', 'running');
+        this.notifyProgress(
+          onProgress,
+          progressOffset,
+          'Reading storage information...',
+          'running'
+        );
         try {
           systemInfoData.storage = await this.getStorageInfo();
         } catch (error) {
@@ -164,7 +173,12 @@ export class SystemInfoAcquirer extends Acquirer {
 
       // Step 8: Get sensors (80-90%)
       if (this.systemConfig.includeSensors !== false) {
-        this.notifyProgress(onProgress, progressOffset, 'Reading sensors information...', 'running');
+        this.notifyProgress(
+          onProgress,
+          progressOffset,
+          'Reading sensors information...',
+          'running'
+        );
         try {
           systemInfoData.sensors = await this.getSensors();
         } catch (error) {
@@ -180,9 +194,7 @@ export class SystemInfoAcquirer extends Acquirer {
       const jsonBytes = new TextEncoder().encode(jsonData);
 
       const blob = new Blob([jsonBytes], { type: 'application/json' });
-      const fileName = this.generateFileName('system-info', 'json', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('system-info', 'json');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -205,9 +217,10 @@ export class SystemInfoAcquirer extends Acquirer {
             network: !!systemInfoData.network,
             storage: !!systemInfoData.storage,
             memory: !!systemInfoData.memory,
-            sensors: !!systemInfoData.sensors
-          }
-        }
+            sensors: !!systemInfoData.sensors,
+          },
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -217,11 +230,10 @@ export class SystemInfoAcquirer extends Acquirer {
       this.logger.info('System info acquisition completed', {
         fileName,
         fileSize: jsonBytes.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -236,7 +248,7 @@ export class SystemInfoAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -245,7 +257,10 @@ export class SystemInfoAcquirer extends Acquirer {
   // Adapters
   // ============================================================================
 
-  private buildSystemInfoData(deviceInfo: DeviceProperties, systemProps: DeviceProperties): SystemInfoData {
+  private buildSystemInfoData(
+    deviceInfo: DeviceProperties,
+    systemProps: DeviceProperties
+  ): SystemInfoData {
     return {
       device: {
         manufacturer: deviceInfo.manufacturer,
@@ -257,10 +272,10 @@ export class SystemInfoAcquirer extends Acquirer {
         serialNumber: deviceInfo.serialNumber,
         bootloader: deviceInfo.bootloader,
         hardware: deviceInfo.hardware,
-        fingerprint: deviceInfo.fingerprint
+        fingerprint: deviceInfo.fingerprint,
       },
       systemProperties: systemProps,
-      acquisitionTime: new Date().toISOString()
+      acquisitionTime: new Date().toISOString(),
     };
   }
 
@@ -272,7 +287,7 @@ export class SystemInfoAcquirer extends Acquirer {
       status: this.extractString(output, 'status') || 'Unknown',
       health: this.extractString(output, 'health') || '',
       technology: this.extractString(output, 'technology') || '',
-      present: this.extractString(output, 'present') === 'true'
+      present: this.extractString(output, 'present') === 'true',
     };
   }
 
@@ -289,12 +304,11 @@ export class SystemInfoAcquirer extends Acquirer {
   }
 
   private buildNetworkInfo(output: string): NetworkInfo {
-
     return {
       wifiEnabled: output.includes('wifi_on=1'),
       mobileDataEnabled: output.includes('mobile_data=1'),
       airplaneModeOn: output.includes('airplane_mode_on=1'),
-      activeNetworkType: this.extractActiveNetwork(output)
+      activeNetworkType: this.extractActiveNetwork(output),
     };
   }
 
@@ -314,7 +328,7 @@ export class SystemInfoAcquirer extends Acquirer {
       totalRam: totalMatch?.[1]?.trim() || 'Unknown',
       availableRam: freeMatch?.[1]?.trim() || 'Unknown',
       lowMemory: lowMemMatch?.[1] === 'true',
-      threshold: thresholdMatch?.[1]?.trim() || 'Unknown'
+      threshold: thresholdMatch?.[1]?.trim() || 'Unknown',
     };
   }
 
@@ -337,12 +351,11 @@ export class SystemInfoAcquirer extends Acquirer {
 
     return {
       totalInternal,
-      availableInternal
+      availableInternal,
     };
   }
 
   private buildSensorInfo(output: string): SensorInfo[] {
-
     const sensors: SensorInfo[] = [];
 
     const lines = output.split('\n');
@@ -405,7 +418,6 @@ export class SystemInfoAcquirer extends Acquirer {
     } catch (error) {
       this.logger.warn('Failed to get battery info', error);
       return this.buildBatteryinfo('');
-
     }
   }
 
@@ -441,7 +453,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getSensors(): Promise<SensorInfo[]> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'sensorservice ' })
+      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'sensorservice' });
       return this.buildSensorInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get sensors info', error);

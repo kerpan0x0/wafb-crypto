@@ -1,10 +1,6 @@
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type {
-  AcquisitionConfig,
-  AcquisitionProgress,
-  AcquisitionResult
-} from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 import { PsCommand } from '../../adb/commands';
 
 export interface ProcessConfig extends AcquisitionConfig {
@@ -49,7 +45,7 @@ export interface ProcessData {
 
 /**
  * Process Acquirer - Handles process acquisition and parsing
- * 
+ *
  * Architecture:
  * - Uses PsCommand for command execution (raw output)
  * - Contains parsing logic HERE (temporarily)
@@ -63,9 +59,7 @@ export class ProcessAcquirer extends Acquirer {
     super(device, processConfig, 'process');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -90,12 +84,7 @@ export class ProcessAcquirer extends Acquirer {
       this.logger.info(`Collected ${processes.length} processes`);
 
       // Step 3: Analyze processes (70%)
-      this.notifyProgress(
-        onProgress,
-        70,
-        `Analyzing ${processes.length} processes...`,
-        'running'
-      );
+      this.notifyProgress(onProgress, 70, `Analyzing ${processes.length} processes...`, 'running');
 
       const systemCount = this.countSystemProcesses(processes);
       const userCount = processes.length - systemCount;
@@ -110,16 +99,14 @@ export class ProcessAcquirer extends Acquirer {
         processes,
         deviceInfo,
         acquisitionTime: new Date().toISOString(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const jsonData = JSON.stringify(processData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
       const blob = new Blob([jsonBytes], { type: 'application/json' });
-      const fileName = this.generateFileName('processes', 'json', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('processes', 'json');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -139,8 +126,9 @@ export class ProcessAcquirer extends Acquirer {
           totalProcesses: processes.length,
           systemProcesses: systemCount,
           userProcesses: userCount,
-          deviceInfo
-        }
+          deviceInfo,
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -150,11 +138,10 @@ export class ProcessAcquirer extends Acquirer {
       this.logger.info('Process acquisition completed', {
         fileName,
         totalProcesses: processes.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -169,7 +156,7 @@ export class ProcessAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -187,7 +174,7 @@ export class ProcessAcquirer extends Acquirer {
     const options: any = {
       all: true,
       selinux: this.processConfig.includeSELinuxContext !== false,
-      threads: this.processConfig.includeThreads || false
+      threads: this.processConfig.includeThreads || false,
     };
 
     // Execute command - get RAW output
@@ -203,9 +190,9 @@ export class ProcessAcquirer extends Acquirer {
 
   /**
    * Parse raw PS output into ProcessInfo array
-   * 
+   *
    * TODO: Move this to ProcessAdapter class when adapter layer is ready
-   * 
+   *
    * @param output - Raw ps command output
    * @returns Array of parsed ProcessInfo
    */
@@ -233,15 +220,15 @@ export class ProcessAcquirer extends Acquirer {
 
   /**
    * Parse a single process line
-   * 
+   *
    * TODO: Move to ProcessAdapter
-   * 
+   *
    * Format: LABEL USER PID PPID VSZ RSS WCHAN ADDR S NAME
    * or:     USER PID PPID VSZ RSS WCHAN ADDR S NAME (without SELinux)
    */
   private parseProcessLine(line: string): ProcessInfo | null {
     const parts = line.split(/\s+/);
-    
+
     if (parts.length < 9) {
       return null;
     }
@@ -282,7 +269,7 @@ export class ProcessAcquirer extends Acquirer {
       vsz: Math.round(vsz / 1024), // Convert to KB
       rss: Math.round(rss / 1024), // Convert to KB
       wchan,
-      addr
+      addr,
     };
 
     if (selinuxContext) {
@@ -294,27 +281,27 @@ export class ProcessAcquirer extends Acquirer {
 
   /**
    * Map username to UID
-   * 
+   *
    * TODO: Move to ProcessAdapter or utility class
    */
   private getUserId(user: string): number {
     // Map common Android users to UIDs
     const userMap: Record<string, number> = {
-      'root': 0,
-      'system': 1000,
-      'radio': 1001,
-      'bluetooth': 1002,
-      'graphics': 1003,
-      'input': 1004,
-      'audio': 1005,
-      'camera': 1006,
-      'log': 1007,
-      'compass': 1008,
-      'mount': 1009,
-      'wifi': 1010,
-      'shell': 2000,
-      'cache': 2001,
-      'diag': 2002
+      root: 0,
+      system: 1000,
+      radio: 1001,
+      bluetooth: 1002,
+      graphics: 1003,
+      input: 1004,
+      audio: 1005,
+      camera: 1006,
+      log: 1007,
+      compass: 1008,
+      mount: 1009,
+      wifi: 1010,
+      shell: 2000,
+      cache: 2001,
+      diag: 2002,
     };
 
     if (userMap[user] !== undefined) {
@@ -359,7 +346,7 @@ export class ProcessAcquirer extends Acquirer {
       /^drmserver$/,
       /^mediaserver$/,
       /^sdcard$/,
-      /^adbd$/
+      /^adbd$/,
     ];
 
     return systemProcessPatterns.some(pattern => pattern.test(process.name));

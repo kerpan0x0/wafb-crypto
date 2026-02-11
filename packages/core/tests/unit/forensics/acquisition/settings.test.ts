@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SettingsAcquirer } from '../../../../src/forensics/acquisition/settings';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
-  createMockProgressCallback
+  createMockProgressCallback,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -47,16 +47,16 @@ user_setup_complete=1`;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Create mock device that returns different outputs based on namespace
     device = createMockADBDeviceWithCommands({
-      shellOutput: mockSettingsOutputGlobal
+      shellOutput: mockSettingsOutputGlobal,
     }) as unknown as ADBDevice;
-    
+
     // Override the spawn method to return different outputs based on namespace
     vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockImplementation((command: string) => {
       let output = mockSettingsOutputGlobal;
-      
+
       if (command.includes('settings list global')) {
         output = mockSettingsOutputGlobal;
       } else if (command.includes('settings list system')) {
@@ -78,16 +78,16 @@ user_setup_complete=1`;
                 }
                 return { done: true, value: undefined };
               },
-              releaseLock: vi.fn()
+              releaseLock: vi.fn(),
             };
-          }
+          },
         },
         stderr: new ReadableStream(),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       } as any);
     });
-    
+
     domMocks = setupAcquirerDOMMocks();
     acquirer = new SettingsAcquirer(device);
   });
@@ -127,7 +127,7 @@ user_setup_complete=1`;
 
     it('should call CmdCommand for each namespace', async () => {
       const spawnSpy = vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn');
-      
+
       await acquirer.acquire();
 
       // Wait for async map operations to complete
@@ -144,42 +144,33 @@ user_setup_complete=1`;
 
       expect(callback).toHaveBeenCalled();
       const progressHistory = getProgressHistory();
-      
+
       // Check that progress was reported at different stages
       expect(progressHistory.length).toBeGreaterThan(0);
       expect(progressHistory[0].progress).toBe(10);
       expect(progressHistory[0].message).toContain('Reading device information');
-      
+
       // Check final progress
       const lastProgress = progressHistory[progressHistory.length - 1];
       expect(lastProgress.progress).toBe(100);
       expect(lastProgress.status).toBe('completed');
     });
 
-    it('should download files for each namespace', async () => {
-      await acquirer.acquire();
+    it('should create a single combined blob for all namespaces', async () => {
+      const result = await acquirer.acquire();
 
-      // Wait for async map operations to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Should create 3 files (one for each namespace)
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
+      // Should produce a single blob containing data for all namespaces
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.fileSize).toBeGreaterThan(0);
     });
 
-    it('should create blobs with correct content type', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
-      
-      await acquirer.acquire();
+    it('should create blob with correct content type', async () => {
+      const result = await acquirer.acquire();
 
-      // Wait for async map operations to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      expect(createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'text/plain'
-        })
-      );
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/json');
     });
 
     it('should include device information in progress callback', async () => {
@@ -188,7 +179,7 @@ user_setup_complete=1`;
 
       const progressHistory = getProgressHistory();
       const progressWithDeviceInfo = progressHistory.find(p => p.deviceInfo !== undefined);
-      
+
       expect(progressWithDeviceInfo).toBeDefined();
       expect(progressWithDeviceInfo?.deviceInfo).toBeDefined();
     });
@@ -217,13 +208,13 @@ user_setup_complete=1`;
                   }
                   return { done: true, value: undefined };
                 },
-                releaseLock: vi.fn()
+                releaseLock: vi.fn(),
               };
-            }
+            },
           },
           stderr: new ReadableStream(),
           stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 })
+          exit: Promise.resolve({ code: 0 }),
         } as any);
       });
 
@@ -307,7 +298,7 @@ user_setup_complete=1`;
         manufacturer: 'Custom Manufacturer',
         brand: 'CustomBrand',
         sdkVersion: 34,
-        serialNumber: 'CUSTOM123'
+        serialNumber: 'CUSTOM123',
       });
 
       const { callback, getProgressHistory } = createMockProgressCallback();
@@ -315,8 +306,10 @@ user_setup_complete=1`;
 
       expect(result.success).toBe(true);
       const progressHistory = getProgressHistory();
-      const progressWithDeviceInfo = progressHistory.find(p => p.message.includes('Custom Test Device'));
-      
+      const progressWithDeviceInfo = progressHistory.find(p =>
+        p.message.includes('Custom Test Device')
+      );
+
       expect(progressWithDeviceInfo).toBeDefined();
     });
   });
@@ -355,7 +348,7 @@ user_setup_complete=1`;
       expect(result).toMatchObject({
         success: false,
         type: 'settings',
-        error: 'Test error'
+        error: 'Test error',
       });
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
@@ -369,8 +362,8 @@ user_setup_complete=1`;
         shellOutput: 'custom_setting=custom_value',
         getPropOutput: {
           'ro.build.version.release': '15',
-          'ro.product.model': 'Pixel 8 Pro'
-        }
+          'ro.product.model': 'Pixel 8 Pro',
+        },
       }) as unknown as ADBDevice;
 
       const customAcquirer = new SettingsAcquirer(customDevice);

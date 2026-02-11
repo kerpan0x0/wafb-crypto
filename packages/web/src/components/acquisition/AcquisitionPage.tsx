@@ -15,10 +15,11 @@ import {
   ServicesAcquirer,
   LogAcquirer,
   TmpAcquirer,
-  DumpsysAcquirer
+  DumpsysAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
-import type { AcquisitionProgress, AcquisitionType } from '@wafb/core';
+import type { AcquisitionProgress, AcquisitionType, AcquisitionResult } from '@wafb/core';
+import JSZip from 'jszip';
 
 export function AcquisitionPage() {
   const [device, setDevice] = useState<ADBDevice | null>(null);
@@ -41,7 +42,7 @@ export function AcquisitionPage() {
     getSelectedAcquisitions,
     getTotalProgress,
     canStartSession,
-    isSessionActive
+    isSessionActive,
   } = useAcquisitionStore();
 
   // Initialize acquisition types on mount
@@ -88,32 +89,41 @@ export function AcquisitionPage() {
 
     startSession();
     const selected = getSelectedAcquisitions();
+    const results: AcquisitionResult[] = [];
 
+    // Execute all acquisitions and collect results
     for (const type of selected) {
       try {
-        await executeAcquisition(type, device);
+        const result = await executeAcquisition(type, device);
+        results.push(result);
       } catch (err) {
         console.error(`Failed to execute ${type}:`, err);
       }
     }
 
+    // Create and download ZIP bundle with all acquisitions
+    await createAndDownloadZip(results);
+
     endSession();
   };
 
   // Execute single acquisition
-  const executeAcquisition = async (type: AcquisitionType, device: ADBDevice) => {
+  const executeAcquisition = async (
+    type: AcquisitionType,
+    device: ADBDevice
+  ): Promise<AcquisitionResult> => {
     const acquirerConfig = {
       bugreport: {
         Class: BugreportAcquirer,
-        options: { computeHash: true, cleanupAfter: true }
+        options: { computeHash: true, cleanupAfter: true },
       },
       logcat: {
         Class: LogcatAcquirer,
         options: {
           buffer: 'all',
           format: 'threadtime',
-          computeHash: true
-        }
+          computeHash: true,
+        },
       },
       packages: {
         Class: PackagesAcquirer,
@@ -121,8 +131,8 @@ export function AcquisitionPage() {
           includeSystem: true,
           includeDetails: true,
           includePermissions: true,
-          computeHash: true
-        }
+          computeHash: true,
+        },
       },
       system_info: {
         Class: SystemInfoAcquirer,
@@ -132,16 +142,16 @@ export function AcquisitionPage() {
           includeStorage: true,
           includeMemory: true,
           includeSensors: true,
-          computeHash: true
-        }
+          computeHash: true,
+        },
       },
       rootBinaries: {
         Class: RootBinariesAcquirer,
-        options: {}
+        options: {},
       },
       env: {
         Class: EnvAcquirer,
-        options: {}
+        options: {},
       },
       selinux: {
         Class: SELinuxAcquirer,
@@ -149,12 +159,12 @@ export function AcquisitionPage() {
           includeContexts: true,
           includeFileContexts: true,
           includeDenials: true,
-          maxDenialLines: 100
-        }
+          maxDenialLines: 100,
+        },
       },
       mount: {
         Class: MountAcquirer,
-        options: {}
+        options: {},
       },
       settings: {
         Class: SettingsAcquirer,
@@ -162,31 +172,31 @@ export function AcquisitionPage() {
           includeSecure: true,
           includeSystem: true,
           includeGlobal: true,
-          computeHash: true
-        }
+          computeHash: true,
+        },
       },
       process: {
         Class: ProcessAcquirer,
         options: {
           includeThreads: true,
           includeSELinuxContext: true,
-          includeMemoryInfo: true
-        }
+          includeMemoryInfo: true,
+        },
       },
       services: {
         Class: ServicesAcquirer,
         options: {
           includeSystemServices: true,
           includeUserServices: true,
-          includeServiceDetails: true
-        }
+          includeServiceDetails: true,
+        },
       },
       logs: {
         Class: LogAcquirer,
         options: {
           includeSystemLogs: true,
-          computeHash: true
-        }
+          computeHash: true,
+        },
       },
       files: {
         Class: FileAcquirer,
@@ -200,17 +210,17 @@ export function AcquisitionPage() {
           maxHashFileSize: 10 * 1024 * 1024,
           excludeHashPaths: ['/system', '/vendor', '/product', '/apex', '/proc'],
           hashMethod: 'auto',
-          timeout: 600000
-        }
+          timeout: 600000,
+        },
       },
       tmp: {
         Class: TmpAcquirer,
-        options: {}
+        options: {},
       },
       dumpsys: {
         Class: DumpsysAcquirer,
-        options: {}
-      }
+        options: { autoDownload: false },
+      },
     };
 
     const config = acquirerConfig[type as keyof typeof acquirerConfig];
@@ -224,18 +234,67 @@ export function AcquisitionPage() {
       });
 
       completeAcquisition(type, result);
+      return result;
     } else {
       // Gestione tipi non ancora implementati
       updateProgress(type, 0, 'Not implemented yet', 'skipped');
-      completeAcquisition(type, {
+      const result: AcquisitionResult = {
         success: false,
         type,
         startTime: new Date(),
         endTime: new Date(),
         duration: 0,
-        error: `Acquirer for ${type} not implemented`
-      });
+        error: `Acquirer for ${type} not implemented`,
+      };
+      completeAcquisition(type, result);
+      return result;
     }
+  };
+
+  // Create and download ZIP bundle
+  const createAndDownloadZip = async (results: AcquisitionResult[]) => {
+    const zip = new JSZip();
+    const sessionFolder = zip.folder(`wafb-acquisition-${new Date().toISOString().split('T')[0]}`);
+
+    if (!sessionFolder) {
+      console.error('Failed to create ZIP folder');
+      return;
+    }
+
+    // Add each acquisition result to the ZIP
+    for (const result of results) {
+      if (result.success && result.blob && result.fileName) {
+        sessionFolder.file(result.fileName, result.blob);
+      }
+    }
+
+    // Create manifest file with metadata
+    const manifest = {
+      acquisitionDate: new Date().toISOString(),
+      deviceInfo: deviceInfo,
+      acquisitions: results.map(r => ({
+        type: r.type,
+        success: r.success,
+        fileName: r.fileName,
+        fileSize: r.fileSize,
+        hash: r.hash,
+        duration: r.duration,
+        error: r.error,
+      })),
+    };
+
+    sessionFolder.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+    // Generate and download ZIP
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = zipUrl;
+    a.download = `wafb-acquisition-${deviceInfo?.model || 'device'}-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(zipUrl);
   };
 
   return (
@@ -290,8 +349,12 @@ export function AcquisitionPage() {
                 <div>
                   <h2 className="text-xl font-semibold mb-1">Connected Device</h2>
                   <div className="text-gray-600">
-                    <p>{deviceInfo?.manufacturer} {deviceInfo?.model}</p>
-                    <p className="text-sm">Android {deviceInfo?.androidVersion} • SDK {deviceInfo?.sdkVersion}</p>
+                    <p>
+                      {deviceInfo?.manufacturer} {deviceInfo?.model}
+                    </p>
+                    <p className="text-sm">
+                      Android {deviceInfo?.androidVersion} • SDK {deviceInfo?.sdkVersion}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -327,7 +390,7 @@ export function AcquisitionPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Array.from(acquisitions.values()).map((acq) => (
+                {Array.from(acquisitions.values()).map(acq => (
                   <div
                     key={acq.type}
                     onClick={() => !isSessionActive() && toggleAcquisition(acq.type)}
@@ -348,7 +411,7 @@ export function AcquisitionPage() {
                       <input
                         type="checkbox"
                         checked={acq.enabled}
-                        onChange={() => { }}
+                        onChange={() => {}}
                         className="w-5 h-5"
                         disabled={isSessionActive()}
                       />
@@ -371,11 +434,15 @@ export function AcquisitionPage() {
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all ${acq.status === 'completed' ? 'bg-green-500' :
-                              acq.status === 'failed' ? 'bg-red-500' :
-                                acq.status === 'running' ? 'bg-blue-500' :
-                                  'bg-gray-400'
-                              }`}
+                            className={`h-2 rounded-full transition-all ${
+                              acq.status === 'completed'
+                                ? 'bg-green-500'
+                                : acq.status === 'failed'
+                                  ? 'bg-red-500'
+                                  : acq.status === 'running'
+                                    ? 'bg-blue-500'
+                                    : 'bg-gray-400'
+                            }`}
                             style={{ width: `${acq.progress}%` }}
                           />
                         </div>
@@ -416,29 +483,42 @@ export function AcquisitionPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {session.acquisitions.map((acq: { type: AcquisitionType; status: string; progress: number }) => (
-                    <div key={acq.type} className="flex items-center justify-between text-sm">
-                      <span>{ACQUISITION_TYPES[acq.type].name}</span>
-                      <span className={`font-semibold ${acq.status === 'completed' ? 'text-green-600' :
-                        acq.status === 'failed' ? 'text-red-600' :
-                          acq.status === 'running' ? 'text-blue-600' :
-                            'text-gray-500'
-                        }`}>
-                        {acq.status === 'completed' ? '✓ Done' :
-                          acq.status === 'failed' ? '✗ Failed' :
-                            acq.status === 'running' ? `${acq.progress}%` :
-                              'Pending'}
-                      </span>
-                    </div>
-                  ))}
+                  {session.acquisitions.map(
+                    (acq: { type: AcquisitionType; status: string; progress: number }) => (
+                      <div key={acq.type} className="flex items-center justify-between text-sm">
+                        <span>{ACQUISITION_TYPES[acq.type].name}</span>
+                        <span
+                          className={`font-semibold ${
+                            acq.status === 'completed'
+                              ? 'text-green-600'
+                              : acq.status === 'failed'
+                                ? 'text-red-600'
+                                : acq.status === 'running'
+                                  ? 'text-blue-600'
+                                  : 'text-gray-500'
+                          }`}
+                        >
+                          {acq.status === 'completed'
+                            ? '✓ Done'
+                            : acq.status === 'failed'
+                              ? '✗ Failed'
+                              : acq.status === 'running'
+                                ? `${acq.progress}%`
+                                : 'Pending'}
+                        </span>
+                      </div>
+                    )
+                  )}
                 </div>
 
                 {session.status !== 'running' && (
                   <div className="mt-6 text-center">
                     <p className="text-lg font-semibold mb-2">
-                      {session.status === 'completed' ? '✓ Acquisition Completed!' :
-                        session.status === 'failed' ? '✗ Acquisition Failed' :
-                          'Acquisition Cancelled'}
+                      {session.status === 'completed'
+                        ? '✓ Acquisition Completed!'
+                        : session.status === 'failed'
+                          ? '✗ Acquisition Failed'
+                          : 'Acquisition Cancelled'}
                     </p>
                     <button
                       onClick={() => window.location.reload()}

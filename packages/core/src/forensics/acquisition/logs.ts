@@ -1,249 +1,251 @@
-import type { ADBDevice, DeviceProperties } from "../../adb";
-import { LsCommand, ReadFileCommand } from "../../adb/commands";
-import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig } from ".";
+import type { ADBDevice, DeviceProperties } from '../../adb';
+import { LsCommand, ReadFileCommand } from '../../adb/commands';
+import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig } from '.';
 
 export interface LogConfig extends AcquisitionConfig {
-    includeSystemLogs?: boolean;
+  includeSystemLogs?: boolean;
 }
 
 export interface LogData {
-    totalFiles: number;
-    successfulFiles: number;
-    failedFiles: number;
-    skippedFiles: number;
-    logs: Array<{
-        path: string;
-        data: string;
-        size: number;
-        success: boolean;
-        error?: string;
-    }>;
-    deviceInfo: any;
-    acquisitionTime: string;
+  totalFiles: number;
+  successfulFiles: number;
+  failedFiles: number;
+  skippedFiles: number;
+  logs: Array<{
+    path: string;
+    data: string;
+    size: number;
+    success: boolean;
+    error?: string;
+  }>;
+  deviceInfo: any;
+  acquisitionTime: string;
 }
 
 export class LogAcquirer extends Acquirer {
+  static readonly staticLogFiles = [
+    '/data/system/uiderrors.txt',
+    '/proc/kmsg',
+    '/proc/last_kmsg',
+    '/sys/fs/pstore/console-ramoops',
+  ];
 
-    static readonly staticLogFiles = [
-        '/data/system/uiderrors.txt',
-        '/proc/kmsg',
-        '/proc/last_kmsg',
-        '/sys/fs/pstore/console-ramoops',
-    ];
+  static readonly logFolders = ['/data/anr/', '/data/log/', '/sdcard/log/'];
 
-    static readonly logFolders = [
-        '/data/anr/',
-        '/data/log/',
-        '/sdcard/log/'
-    ];
+  constructor(
+    device: ADBDevice,
+    private logConfig: LogConfig = {}
+  ) {
+    super(device, logConfig, 'logs');
+  }
 
-    constructor(
-        device: ADBDevice,
-        private logConfig: LogConfig = {}
-    ) {
-        super(device, logConfig, 'logs');
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
+    const startTime = new Date();
+
+    try {
+      this.logger.info('Starting log acquisition');
+
+      this.notifyProgress(onProgress, 5, 'Reading device information...', 'running');
+      const deviceInfo = await this.device.getProperties();
+      this.notifyProgress(
+        onProgress,
+        10,
+        `Connected to ${deviceInfo.model}`,
+        'running',
+        deviceInfo
+      );
+
+      this.notifyProgress(onProgress, 15, 'Collecting system logs...', 'running');
+      const logFiles: string[] = [];
+      if (this.logConfig.includeSystemLogs !== false) {
+        logFiles.push(...LogAcquirer.staticLogFiles);
+      }
+
+      this.notifyProgress(onProgress, 25, 'Scanning log directories...', 'running');
+      logFiles.push(...(await this.logsFileName(LogAcquirer.logFolders)));
+
+      this.notifyProgress(onProgress, 45, 'Acquiring log files...', 'running');
+      const logData = await this.getFiles(logFiles, deviceInfo);
+
+      this.notifyProgress(onProgress, 70, 'Creating log archive...', 'running');
+      const { blob, fileName } = await this.buildLogsZip(logData);
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      this.notifyProgress(onProgress, 100, 'Log acquisition completed!', 'completed');
+
+      const result: AcquisitionResult = {
+        success: true,
+        type: 'logs',
+        fileName,
+        fileSize: blob.size,
+        startTime,
+        endTime,
+        duration,
+        data: logData,
+        blob,
+      };
+
+      if (this.config.computeHash) {
+        const zipBytes = new Uint8Array(await blob.arrayBuffer());
+        result.hash = await this.computeHash(zipBytes);
+      }
+
+      return result;
+    } catch (error) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      this.logger.error('Log acquisition failed', { error: errorMessage });
+      this.notifyProgress(onProgress, 100, `Log acquisition failed: ${errorMessage}`, 'failed');
+
+      return {
+        success: false,
+        type: 'logs',
+        startTime,
+        endTime,
+        duration,
+        error: errorMessage,
+      };
     }
+  }
 
-    async acquire(
-        onProgress?: (progress: AcquisitionProgress) => void
-    ): Promise<AcquisitionResult> {
-        const startTime = new Date();
+  // TODO remove deviceInfo side effect
+  private async getFiles(logFiles: string[], deviceInfo: DeviceProperties): Promise<LogData> {
+    const result: LogData = {
+      totalFiles: logFiles.length,
+      successfulFiles: 0,
+      failedFiles: 0,
+      skippedFiles: 0,
+      logs: [],
+      deviceInfo,
+      acquisitionTime: new Date().toISOString(),
+    };
 
-        try {
-            this.logger.info('Starting log acquisition');
+    this.logger.info(`Found ${logFiles.length} log files to acquire`);
 
-            this.notifyProgress(onProgress, 5, 'Reading device information...', 'running');
-            const deviceInfo = await this.device.getProperties();
-            this.notifyProgress(onProgress, 10, `Connected to ${deviceInfo.model}`, 'running', deviceInfo);
+    for (const logFile of logFiles) {
+      try {
+        this.logger.debug(`Pulling: ${logFile}`);
 
-            this.notifyProgress(onProgress, 15, 'Collecting system logs...', 'running');
-            const logFiles: string[] = [];
-            if (this.logConfig.includeSystemLogs !== false) {
-                logFiles.push(...LogAcquirer.staticLogFiles);
-            }
+        const fileData = await new ReadFileCommand(this.device.adb).exec({
+          path: logFile,
+        });
+        const logContent = new TextDecoder('utf-8', { fatal: false }).decode(fileData);
 
-            this.notifyProgress(onProgress, 25, 'Scanning log directories...', 'running');
-            logFiles.push(...await this.logsFileName(LogAcquirer.logFolders));
+        result.logs.push({
+          path: logFile,
+          data: logContent,
+          size: fileData.length,
+          success: true,
+        });
+        result.successfulFiles++;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
 
-            this.notifyProgress(onProgress, 45, 'Acquiring log files...', 'running');
-            const logData = await this.getFiles(logFiles, deviceInfo);
-
-            this.notifyProgress(onProgress, 70, 'Downloading log archive...', 'running');
-            this.downloadLogs(logData);
-
-            const endTime = new Date();
-            const duration = endTime.getTime() - startTime.getTime();
-
-            this.notifyProgress(onProgress, 100, 'Log acquisition completed!', 'completed');
-
-            const result: AcquisitionResult = {
-                success: true,
-                type: 'logs',
-                fileName: logFiles.join(' '),
-                fileSize: logData.logs.reduce((acc, log) => acc + log.size, 0),
-                startTime,
-                endTime,
-                duration,
-                data: logData
-            };
-
-            return result;
-
-        } catch (error) {
-            const endTime = new Date();
-            const duration = endTime.getTime() - startTime.getTime();
-            const errorMessage = error instanceof Error ? error.message : String(error);
-
-            this.logger.error('Log acquisition failed', { error: errorMessage });
-            this.notifyProgress(onProgress, 100, `Log acquisition failed: ${errorMessage}`, 'failed');
-
-            return {
-                success: false,
-                type: 'logs',
-                startTime,
-                endTime,
-                duration,
-                error: errorMessage
-            };
+        if (errorMessage.toLowerCase().includes('permission denied')) {
+          this.logger.debug(`Permission denied for ${logFile}`);
+          result.skippedFiles++;
+        } else {
+          this.logger.error(`Failed to pull log file ${logFile}: ${errorMessage}`);
+          result.logs.push({
+            path: logFile,
+            data: '',
+            size: 0,
+            success: false,
+            error: errorMessage,
+          });
+          result.failedFiles++;
         }
+      }
+    }
+    return result;
+  }
+
+  private async buildLogsZip(logData: LogData): Promise<{ blob: Blob; fileName: string }> {
+    const JSZip = await import('jszip');
+    const zip = new JSZip.default();
+
+    for (const logEntry of logData.logs) {
+      if (logEntry.success && logEntry.data) {
+        const normalizedPath = logEntry.path.startsWith('/')
+          ? logEntry.path.slice(1)
+          : logEntry.path;
+        const zipPath = `logs/${normalizedPath}`;
+
+        zip.file(zipPath, logEntry.data);
+      }
     }
 
-    // TODO remove deviceInfo side effect
-    private async getFiles(logFiles: string[], deviceInfo: DeviceProperties): Promise<LogData> {
+    const metadata = {
+      deviceInfo: logData.deviceInfo,
+      acquisitionTime: logData.acquisitionTime,
+      totalFiles: logData.totalFiles,
+      successfulFiles: logData.successfulFiles,
+      failedFiles: logData.failedFiles,
+      skippedFiles: logData.skippedFiles,
+      summary: logData.logs.map(log => ({
+        path: log.path,
+        size: log.size,
+        success: log.success,
+        error: log.error,
+      })),
+    };
+    zip.file('logs/acquisition-metadata.json', JSON.stringify(metadata, null, 2));
 
-        const result: LogData = {
-            totalFiles: logFiles.length,
-            successfulFiles: 0,
-            failedFiles: 0,
-            skippedFiles: 0,
-            logs: [],
-            deviceInfo,
-            acquisitionTime: new Date().toISOString()
-        };
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const fileName = this.generateFileName('logs', 'zip');
 
-        this.logger.info(`Found ${logFiles.length} log files to acquire`);
+    return { blob: zipBlob, fileName };
+  }
 
-        for (const logFile of logFiles) {
-            try {
-                this.logger.debug(`Pulling: ${logFile}`);
+  private async logsFileName(logFolders: string[]): Promise<string[]> {
+    const result = [];
 
-                const fileData = await new ReadFileCommand(this.device.adb).exec({
-                    path: logFile
-                });
-                const logContent = new TextDecoder('utf-8', { fatal: false }).decode(fileData);
+    for (const logFolder of logFolders) {
+      try {
+        const lsOutput = await new LsCommand(this.device.adb).exec({
+          path: logFolder,
+          recursive: true,
+        });
 
-                result.logs.push({
-                    path: logFile,
-                    data: logContent,
-                    size: fileData.length,
-                    success: true
-                });
-                result.successfulFiles++;
-
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-
-                if (errorMessage.toLowerCase().includes('permission denied')) {
-                    this.logger.debug(`Permission denied for ${logFile}`);
-                    result.skippedFiles++;
-                } else {
-                    this.logger.error(`Failed to pull log file ${logFile}: ${errorMessage}`);
-                    result.logs.push({
-                        path: logFile,
-                        data: '',
-                        size: 0,
-                        success: false,
-                        error: errorMessage
-                    });
-                    result.failedFiles++;
-                }
-            }
+        if (lsOutput && lsOutput.trim()) {
+          const files = this.parseFilesFromLs(lsOutput, logFolder);
+          if (files.length > 0) {
+            result.push(...files);
+            this.logger.debug(`Files in ${logFolder}: ${files.length}`);
+          }
         }
-        return result;
+      } catch (error) {
+        this.logger.debug(`Impossible to get files from ${logFolder}`, error);
+      }
     }
+    return result;
+  }
 
-    private async downloadLogs(logData: LogData): Promise<void> {
-        const JSZip = await import('jszip');
-        const zip = new JSZip.default();
+  // TODO move this replicated code (tmpAcquirer) to a utility function
+  private parseFilesFromLs(lsOutput: string, basePath: string): string[] {
+    const files: string[] = [];
+    const lines = lsOutput.split('\n').filter(line => line.trim());
 
-        for (const logEntry of logData.logs) {
-            if (logEntry.success && logEntry.data) {
-                const normalizedPath = logEntry.path.startsWith('/') ? logEntry.path.slice(1) : logEntry.path;
-                const zipPath = `logs/${normalizedPath}`;
+    for (const line of lines) {
+      if (!line.trim() || line.endsWith(':')) continue;
 
-                zip.file(zipPath, logEntry.data);
-            }
+      const parts = line.trim().split(/\s+/);
+      if (parts.length === 0) continue;
+
+      if (parts[0].startsWith('-')) {
+        const fileName = parts[parts.length - 1];
+        if (fileName && fileName !== '.' && fileName !== '..') {
+          const fullPath = basePath.endsWith('/')
+            ? `${basePath}${fileName}`
+            : `${basePath}/${fileName}`;
+          files.push(fullPath);
         }
-
-        const metadata = {
-            deviceInfo: logData.deviceInfo,
-            acquisitionTime: logData.acquisitionTime,
-            totalFiles: logData.totalFiles,
-            successfulFiles: logData.successfulFiles,
-            failedFiles: logData.failedFiles,
-            skippedFiles: logData.skippedFiles,
-            summary: logData.logs.map(log => ({
-                path: log.path,
-                size: log.size,
-                success: log.success,
-                error: log.error
-            }))
-        };
-        zip.file('logs/acquisition-metadata.json', JSON.stringify(metadata, null, 2));
-
-        // TODO add hash computation 
-
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const fileName = this.generateFileName('logs', 'zip', logData.deviceInfo.model || 'unknown');
-        this.downloadBlob(zipBlob, fileName);
+      }
     }
 
-    private async logsFileName(logFolders: string[]): Promise<string[]> {
-        const result = [];
-
-        for (const logFolder of logFolders) {
-            try {
-                const lsOutput = await new LsCommand(this.device.adb).exec({
-                    path: logFolder,
-                    recursive: true
-                });
-
-                if (lsOutput && lsOutput.trim()) {
-                    const files = this.parseFilesFromLs(lsOutput, logFolder);
-                    if (files.length > 0) {
-                        result.push(...files);
-                        this.logger.debug(`Files in ${logFolder}: ${files.length}`);
-                    }
-                }
-            } catch (error) {
-                this.logger.debug(`Impossible to get files from ${logFolder}`, error);
-            }
-        }
-        return result;
-    }
-
-    // TODO move this replicated code (tmpAcquirer) to a utility function
-    private parseFilesFromLs(lsOutput: string, basePath: string): string[] {
-        const files: string[] = [];
-        const lines = lsOutput.split('\n').filter(line => line.trim());
-
-        for (const line of lines) {
-            if (!line.trim() || line.endsWith(':')) continue;
-
-            const parts = line.trim().split(/\s+/);
-            if (parts.length === 0) continue;
-
-            if (parts[0].startsWith('-')) {
-                const fileName = parts[parts.length - 1];
-                if (fileName && fileName !== '.' && fileName !== '..') {
-                    const fullPath = basePath.endsWith('/')
-                        ? `${basePath}${fileName}`
-                        : `${basePath}/${fileName}`;
-                    files.push(fullPath);
-                }
-            }
-        }
-
-        return files;
-    }
-} 
+    return files;
+  }
+}

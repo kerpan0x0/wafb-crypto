@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MountAcquirer } from '../../../../src/forensics/acquisition/mount';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
-  createMockProgressCallback
+  createMockProgressCallback,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -32,15 +32,15 @@ sysfs /sys sysfs rw,relatime 0 0
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     device = createMockADBDeviceWithCommands({
-      shellOutput: mockMountOutput
+      shellOutput: mockMountOutput,
     }) as unknown as ADBDevice;
-    
+
     // Mock shell spawn to return different outputs for different commands
     const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
       let output = '';
-      
+
       if (command === 'mount') {
         output = mockMountOutput;
       } else if (command === 'cat /proc/mounts') {
@@ -62,18 +62,18 @@ sysfs /sys sysfs rw,relatime 0 0
                 }
                 return { done: true, value: undefined };
               },
-              releaseLock: vi.fn()
+              releaseLock: vi.fn(),
             };
-          }
+          },
         },
         stderr: new ReadableStream(),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     });
 
     device.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-    
+
     domMocks = setupAcquirerDOMMocks();
     acquirer = new MountAcquirer(device);
   });
@@ -89,9 +89,9 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should create acquirer with custom config', () => {
-      const customAcquirer = new MountAcquirer(device, { 
+      const customAcquirer = new MountAcquirer(device, {
         computeHash: true,
-        timeout: 30000
+        timeout: 30000,
       });
       expect(customAcquirer).toBeDefined();
     });
@@ -144,7 +144,7 @@ sysfs /sys sysfs rw,relatime 0 0
 
       const history = getProgressHistory();
       expect(history.length).toBeGreaterThan(0);
-      
+
       // Check for specific progress stages
       const progressValues = history.map((p: any) => p.progress);
       expect(progressValues).toContain(10); // Reading device info
@@ -175,25 +175,17 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should download file with correct blob type', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
-      
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'application/json'
-        })
-      );
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/json');
     });
 
-    it('should generate filename with device model', async () => {
+    it('should generate simple filename', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBeDefined();
-      expect(result.fileName).toMatch(/mounts.*\.json$/);
-      // Should include device model in filename
-      expect(result.fileName).toContain('Test');
+      expect(result.fileName).toBe('mounts.json');
     });
 
     it('should include device information in result', async () => {
@@ -205,9 +197,9 @@ sysfs /sys sysfs rw,relatime 0 0
 
     it('should handle empty mount output', async () => {
       const emptyDevice = createMockADBDeviceWithCommands({
-        shellOutput: ''
+        shellOutput: '',
       }) as unknown as ADBDevice;
-      
+
       const mockShellSpawn = vi.fn().mockImplementation(() => {
         return Promise.resolve({
           stdout: {
@@ -222,13 +214,13 @@ sysfs /sys sysfs rw,relatime 0 0
                   }
                   return { done: true, value: undefined };
                 },
-                releaseLock: vi.fn()
+                releaseLock: vi.fn(),
               };
-            }
+            },
           },
           stderr: new ReadableStream(),
           stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 })
+          exit: Promise.resolve({ code: 0 }),
         });
       });
 
@@ -243,9 +235,9 @@ sysfs /sys sysfs rw,relatime 0 0
 
     it('should handle mount output with duplicate entries', async () => {
       const duplicateDevice = createMockADBDeviceWithCommands({
-        shellOutput: mockMountOutput
+        shellOutput: mockMountOutput,
       }) as unknown as ADBDevice;
-      
+
       // Mock both mount and proc mount to return the same output
       const mockShellSpawn = vi.fn().mockImplementation(() => {
         return Promise.resolve({
@@ -261,13 +253,13 @@ sysfs /sys sysfs rw,relatime 0 0
                   }
                   return { done: true, value: undefined };
                 },
-                releaseLock: vi.fn()
+                releaseLock: vi.fn(),
               };
-            }
+            },
           },
           stderr: new ReadableStream(),
           stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 })
+          exit: Promise.resolve({ code: 0 }),
         });
       });
 
@@ -284,10 +276,10 @@ sysfs /sys sysfs rw,relatime 0 0
 
     it('should handle mount command failure gracefully', async () => {
       const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-      
+
       const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Command failed'));
       failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-      
+
       acquirer = new MountAcquirer(failingDevice);
 
       const result = await acquirer.acquire();
@@ -299,10 +291,10 @@ sysfs /sys sysfs rw,relatime 0 0
 
     it('should report failure in progress callback on error', async () => {
       const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-      
+
       const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Mount acquisition failed'));
       failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-      
+
       acquirer = new MountAcquirer(failingDevice);
 
       const { callback, getLastProgress } = createMockProgressCallback();
@@ -322,29 +314,20 @@ sysfs /sys sysfs rw,relatime 0 0
       expect(result.endTime.getTime() - result.startTime.getTime()).toBe(result.duration);
     });
 
-    it('should trigger file download', async () => {
-      await acquirer.acquire();
+    it('should return blob on successful acquisition', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
     });
 
     it('should create JSON output with proper formatting', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
-      let capturedBlob: Blob | null = null;
-      
-      createObjectURLSpy.mockImplementation((blob: Blob) => {
-        capturedBlob = blob;
-        return 'blob:mock-url';
-      });
+      const result = await acquirer.acquire();
 
-      await acquirer.acquire();
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/json');
 
-      expect(capturedBlob).not.toBeNull();
-      expect(capturedBlob?.type).toBe('application/json');
-      
       // Verify JSON is valid
-      const text = await capturedBlob!.text();
+      const text = await result.blob!.text();
       const parsed = JSON.parse(text);
       expect(Array.isArray(parsed)).toBe(true);
     });
@@ -355,9 +338,9 @@ sysfs /sys sysfs rw,relatime 0 0
       
       
       `;
-      
+
       const messyDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-      
+
       const mockShellSpawn = vi.fn().mockImplementation(() => {
         return Promise.resolve({
           stdout: {
@@ -372,13 +355,13 @@ sysfs /sys sysfs rw,relatime 0 0
                   }
                   return { done: true, value: undefined };
                 },
-                releaseLock: vi.fn()
+                releaseLock: vi.fn(),
               };
-            }
+            },
           },
           stderr: new ReadableStream(),
           stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 })
+          exit: Promise.resolve({ code: 0 }),
         });
       });
 
@@ -416,7 +399,7 @@ sysfs /sys sysfs rw,relatime 0 0
       const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
       const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Test error'));
       failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-      
+
       acquirer = new MountAcquirer(failingDevice);
       const result = await acquirer.acquire();
 

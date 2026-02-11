@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SELinuxAcquirer } from '../../../../src/forensics/acquisition/selinux';
 import type { SELinuxConfig } from '../../../../src/forensics/acquisition/selinux';
-import {
-  setupAcquirerDOMMocks,
-  createMockProgressCallback
-} from '../../../helpers/test-helpers';
+import { setupAcquirerDOMMocks, createMockProgressCallback } from '../../../helpers/test-helpers';
 
 describe('SELinuxAcquirer', () => {
   let acquirer: SELinuxAcquirer;
@@ -25,7 +22,7 @@ u:r:system_server:s0               system  1234      1 3456789  98765 0         
 u:r:surfaceflinger:s0              system  2345      1  123456   5678 0                   0 S surfaceflinger`,
       fileContexts: `u:object_r:system_file:s0 /system/bin/app_process
 u:object_r:system_file:s0 /system/bin/linker`,
-      denials: `01-01 10:00:00.000  123  456 W audit: type=1400 audit(1234567890.123:456): avc: denied { read } for pid=1234 comm="untrusted_app" name="test" dev="sda" ino=12345 scontext=u:r:untrusted_app:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=0`
+      denials: `01-01 10:00:00.000  123  456 W audit: type=1400 audit(1234567890.123:456): avc: denied { read } for pid=1234 comm="untrusted_app" name="test" dev="sda" ino=12345 scontext=u:r:untrusted_app:s0 tcontext=u:object_r:system_file:s0 tclass=file permissive=0`,
     });
 
     acquirer = new SELinuxAcquirer(mockDevice);
@@ -76,7 +73,7 @@ u:object_r:system_file:s0 /system/bin/linker`,
 
     it('should detect Permissive mode', async () => {
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        getenforce: 'Permissive'
+        getenforce: 'Permissive',
       });
       acquirer = new SELinuxAcquirer(mockDevice);
 
@@ -87,7 +84,7 @@ u:object_r:system_file:s0 /system/bin/linker`,
 
     it('should handle unknown mode gracefully', async () => {
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        getenforce: 'InvalidMode'
+        getenforce: 'InvalidMode',
       });
       acquirer = new SELinuxAcquirer(mockDevice);
 
@@ -121,7 +118,7 @@ u:object_r:system_file:s0 /system/bin/linker`,
 
     it('should handle ps command failure gracefully', async () => {
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        throwOnPs: true
+        throwOnPs: true,
       });
       acquirer = new SELinuxAcquirer(mockDevice);
 
@@ -132,93 +129,87 @@ u:object_r:system_file:s0 /system/bin/linker`,
     });
   });
 
-describe('File Contexts', () => {
-  it('should collect file contexts when enabled', async () => {
-    const config: SELinuxConfig = { includeFileContexts: true };
-    acquirer = new SELinuxAcquirer(mockDevice, config);
+  describe('File Contexts', () => {
+    it('should collect file contexts when enabled', async () => {
+      const config: SELinuxConfig = { includeFileContexts: true };
+      acquirer = new SELinuxAcquirer(mockDevice, config);
 
-    const result = await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-    expect(result.success).toBe(true);
-    expect(result.data?.fileContextsCount).toBeGreaterThan(0);
-  });
+      expect(result.success).toBe(true);
+      expect(result.data?.fileContextsCount).toBeGreaterThan(0);
+    });
 
-  it('should format file contexts as separate lines', async () => {
-    // Create a mock with realistic file context output
-    mockDevice = createMockADBDeviceWithSELinuxCommands({
-      fileContexts: `u:object_r:system_file:s0 bin
+    it('should format file contexts as separate lines', async () => {
+      // Create a mock with realistic file context output
+      mockDevice = createMockADBDeviceWithSELinuxCommands({
+        fileContexts: `u:object_r:system_file:s0 bin
 u:object_r:system_file:s0 lib
-u:object_r:system_file:s0 etc`
+u:object_r:system_file:s0 etc`,
+      });
+
+      acquirer = new SELinuxAcquirer(mockDevice);
+      const result = await acquirer.acquire();
+
+      expect(result.success).toBe(true);
+
+      // Blob should be present in the result
+      expect(result.blob).toBeInstanceOf(Blob);
+
+      // Read blob content
+      const text = await result.blob!.text();
+      const data = JSON.parse(text);
+
+      // Check that fileContexts is an array of strings
+      expect(Array.isArray(data.fileContexts)).toBe(true);
+
+      // Each entry should be a separate string, not one big string with \n
+      const hasProperLines = data.fileContexts.some((line: string) => {
+        return line.includes('u:object_r:system_file:s0') && !line.includes('\n');
+      });
+      expect(hasProperLines).toBe(true);
     });
-    
-    acquirer = new SELinuxAcquirer(mockDevice);
-    const result = await acquirer.acquire();
 
-    expect(result.success).toBe(true);
-    
-    // Download blob should have been created
-    expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
-    
-    // Get the blob that was created
-    const blobCall = domMocks.createObjectURLSpy.mock.calls[0];
-    const blob = blobCall[0] as Blob;
-    
-    // Read blob content
-    const text = await blob.text();
-    const data = JSON.parse(text);
-    
-    // Check that fileContexts is an array of strings
-    expect(Array.isArray(data.fileContexts)).toBe(true);
-    
-    // Each entry should be a separate string, not one big string with \n
-    const hasProperLines = data.fileContexts.some((line: string) => {
-      return line.includes('u:object_r:system_file:s0') && !line.includes('\n');
+    it('should include path headers in file contexts', async () => {
+      mockDevice = createMockADBDeviceWithSELinuxCommands({
+        fileContexts: `u:object_r:system_file:s0 bin`,
+      });
+
+      acquirer = new SELinuxAcquirer(mockDevice);
+      const result = await acquirer.acquire();
+
+      expect(result.success).toBe(true);
+
+      const text = await result.blob!.text();
+      const data = JSON.parse(text);
+
+      // Should have path headers like "# /system"
+      const hasHeaders = data.fileContexts.some((line: string) => line.startsWith('# /'));
+      expect(hasHeaders).toBe(true);
     });
-    expect(hasProperLines).toBe(true);
-  });
 
-  it('should include path headers in file contexts', async () => {
-    mockDevice = createMockADBDeviceWithSELinuxCommands({
-      fileContexts: `u:object_r:system_file:s0 bin`
+    it('should skip file contexts when disabled', async () => {
+      const config: SELinuxConfig = { includeFileContexts: false };
+      acquirer = new SELinuxAcquirer(mockDevice, config);
+
+      const result = await acquirer.acquire();
+
+      expect(result.success).toBe(true);
+      expect(result.data?.fileContextsCount).toBe(0);
     });
-    
-    acquirer = new SELinuxAcquirer(mockDevice);
-    const result = await acquirer.acquire();
 
-    expect(result.success).toBe(true);
-    
-    const blobCall = domMocks.createObjectURLSpy.mock.calls[0];
-    const blob = blobCall[0] as Blob;
-    const text = await blob.text();
-    const data = JSON.parse(text);
-    
-    // Should have path headers like "# /system"
-    const hasHeaders = data.fileContexts.some((line: string) => line.startsWith('# /'));
-    expect(hasHeaders).toBe(true);
-  });
+    it('should handle empty output for non-existent paths', async () => {
+      mockDevice = createMockADBDeviceWithSELinuxCommands({
+        fileContexts: '', // Empty output
+      });
 
-  it('should skip file contexts when disabled', async () => {
-    const config: SELinuxConfig = { includeFileContexts: false };
-    acquirer = new SELinuxAcquirer(mockDevice, config);
+      acquirer = new SELinuxAcquirer(mockDevice);
+      const result = await acquirer.acquire();
 
-    const result = await acquirer.acquire();
-
-    expect(result.success).toBe(true);
-    expect(result.data?.fileContextsCount).toBe(0);
-  });
-
-  it('should handle empty output for non-existent paths', async () => {
-    mockDevice = createMockADBDeviceWithSELinuxCommands({
-      fileContexts: '' // Empty output
+      expect(result.success).toBe(true);
+      // Should still succeed but with 0 contexts
     });
-    
-    acquirer = new SELinuxAcquirer(mockDevice);
-    const result = await acquirer.acquire();
-
-    expect(result.success).toBe(true);
-    // Should still succeed but with 0 contexts
   });
-});
 
   describe('SELinux Denials', () => {
     it('should collect denials when enabled', async () => {
@@ -244,16 +235,18 @@ u:object_r:system_file:s0 etc`
     it('should respect maxDenialLines limit', async () => {
       const config: SELinuxConfig = {
         includeDenials: true,
-        maxDenialLines: 10
+        maxDenialLines: 10,
       };
 
       // Create device with many denials
-      const manyDenials = Array(50).fill(
-        '01-01 10:00:00.000  123  456 W audit: type=1400 audit(1234567890.123:456): avc: denied { read } for pid=1234'
-      ).join('\n');
+      const manyDenials = Array(50)
+        .fill(
+          '01-01 10:00:00.000  123  456 W audit: type=1400 audit(1234567890.123:456): avc: denied { read } for pid=1234'
+        )
+        .join('\n');
 
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        denials: manyDenials
+        denials: manyDenials,
       });
 
       acquirer = new SELinuxAcquirer(mockDevice, config);
@@ -312,7 +305,7 @@ u:object_r:system_file:s0 etc`
   describe('Error Handling', () => {
     it('should handle getenforce command failure', async () => {
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        throwOnGetenforce: true
+        throwOnGetenforce: true,
       });
       acquirer = new SELinuxAcquirer(mockDevice);
 
@@ -324,7 +317,7 @@ u:object_r:system_file:s0 etc`
 
     it('should handle file read failures gracefully', async () => {
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        throwOnFileRead: true
+        throwOnFileRead: true,
       });
       acquirer = new SELinuxAcquirer(mockDevice);
 
@@ -336,7 +329,7 @@ u:object_r:system_file:s0 etc`
 
     it('should report acquisition failure on critical error', async () => {
       mockDevice = createMockADBDeviceWithSELinuxCommands({
-        throwOnDeviceInfo: true
+        throwOnDeviceInfo: true,
       });
       acquirer = new SELinuxAcquirer(mockDevice);
 
@@ -374,31 +367,31 @@ u:object_r:system_file:s0 etc`
     it('should generate valid filename', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toMatch(/^selinux-.*\.json$/);
-      expect(result.fileName).toContain('Test Device');
+      expect(result.fileName).toBe('selinux.json');
     });
 
     it('should create downloadable blob', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(domMocks.createObjectURLSpy).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
     });
   });
 });
 
 // Helper function to create mock device with SELinux command responses
-function createMockADBDeviceWithSELinuxCommands(options: {
-  getenforce?: string;
-  policyVersion?: string;
-  processContexts?: string;
-  fileContexts?: string;
-  denials?: string;
-  throwOnGetenforce?: boolean;
-  throwOnFileRead?: boolean;
-  throwOnPs?: boolean;
-  throwOnDeviceInfo?: boolean;
-} = {}) {
+function createMockADBDeviceWithSELinuxCommands(
+  options: {
+    getenforce?: string;
+    policyVersion?: string;
+    processContexts?: string;
+    fileContexts?: string;
+    denials?: string;
+    throwOnGetenforce?: boolean;
+    throwOnFileRead?: boolean;
+    throwOnPs?: boolean;
+    throwOnDeviceInfo?: boolean;
+  } = {}
+) {
   const {
     getenforce = 'Enforcing',
     policyVersion = '30',
@@ -408,7 +401,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
     throwOnGetenforce = false,
     throwOnFileRead = false,
     throwOnPs = false,
-    throwOnDeviceInfo = false
+    throwOnDeviceInfo = false,
   } = options;
 
   const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
@@ -421,7 +414,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
         stdout: createMockReadableStream(getenforce),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -434,7 +427,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
         stdout: createMockReadableStream(processContexts),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -444,7 +437,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
         stdout: createMockReadableStream(fileContexts),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -454,7 +447,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
         stdout: createMockReadableStream(denials),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -472,7 +465,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
         ),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     }
 
@@ -481,7 +474,7 @@ function createMockADBDeviceWithSELinuxCommands(options: {
       stdout: createMockReadableStream(''),
       stderr: createMockReadableStream(''),
       stdin: new WritableStream(),
-      exit: Promise.resolve({ code: 0 })
+      exit: Promise.resolve({ code: 0 }),
     });
   });
 
@@ -491,23 +484,27 @@ function createMockADBDeviceWithSELinuxCommands(options: {
     }
 
     return Promise.resolve({
-      read: vi.fn().mockReturnValue(
-        createMockReadableStream(
-          new TextEncoder().encode(`androidboot.selinux=enforcing policy_version=${policyVersion}`)
-        )
-      ),
-      dispose: vi.fn().mockResolvedValue(undefined)
+      read: vi
+        .fn()
+        .mockReturnValue(
+          createMockReadableStream(
+            new TextEncoder().encode(
+              `androidboot.selinux=enforcing policy_version=${policyVersion}`
+            )
+          )
+        ),
+      dispose: vi.fn().mockResolvedValue(undefined),
     });
   });
 
   const mockAdb = {
     subprocess: {
       shellProtocol: {
-        spawn: mockShellSpawn
-      }
+        spawn: mockShellSpawn,
+      },
     },
     sync: mockSync,
-    close: vi.fn().mockResolvedValue(undefined)
+    close: vi.fn().mockResolvedValue(undefined),
   };
 
   return {
@@ -523,25 +520,23 @@ function createMockADBDeviceWithSELinuxCommands(options: {
         manufacturer: 'Test Manufacturer',
         brand: 'Test',
         sdkVersion: 33,
-        serialNumber: 'TEST123'
+        serialNumber: 'TEST123',
       });
     }),
     info: {
       productName: 'Test Device',
       manufacturerName: 'Test Manufacturer',
       serialNumber: 'TEST123',
-      vendorId: 0x18D1,
-      productId: 0x4EE7
+      vendorId: 0x18d1,
+      productId: 0x4ee7,
     },
     isConnected: vi.fn().mockReturnValue(true),
-    disconnect: vi.fn().mockResolvedValue(undefined)
+    disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }
 
 function createMockReadableStream(content: string | Uint8Array) {
-  const data = typeof content === 'string'
-    ? new TextEncoder().encode(content)
-    : content;
+  const data = typeof content === 'string' ? new TextEncoder().encode(content) : content;
 
   return {
     getReader: () => {
@@ -554,8 +549,8 @@ function createMockReadableStream(content: string | Uint8Array) {
           }
           return { done: true, value: undefined };
         },
-        releaseLock: vi.fn()
+        releaseLock: vi.fn(),
       };
-    }
+    },
   };
 }

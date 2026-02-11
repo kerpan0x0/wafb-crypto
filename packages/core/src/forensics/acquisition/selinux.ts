@@ -64,9 +64,7 @@ export class SELinuxAcquirer extends Acquirer {
     super(device, selinuxConfig, 'selinux');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -97,7 +95,7 @@ export class SELinuxAcquirer extends Acquirer {
         mode,
         policy,
         deviceInfo,
-        acquisitionTime: new Date().toISOString()
+        acquisitionTime: new Date().toISOString(),
       };
 
       let progressOffset = 50;
@@ -121,12 +119,7 @@ export class SELinuxAcquirer extends Acquirer {
 
       // Step 5: Get file contexts (70-85%)
       if (this.selinuxConfig.includeFileContexts !== false) {
-        this.notifyProgress(
-          onProgress,
-          progressOffset,
-          'Collecting file contexts...',
-          'running'
-        );
+        this.notifyProgress(onProgress, progressOffset, 'Collecting file contexts...', 'running');
         try {
           selinuxData.fileContexts = await this.getFileContexts();
         } catch (error) {
@@ -137,12 +130,7 @@ export class SELinuxAcquirer extends Acquirer {
 
       // Step 6: Get SELinux denials (85-95%)
       if (this.selinuxConfig.includeDenials !== false) {
-        this.notifyProgress(
-          onProgress,
-          progressOffset,
-          'Analyzing SELinux denials...',
-          'running'
-        );
+        this.notifyProgress(onProgress, progressOffset, 'Analyzing SELinux denials...', 'running');
         try {
           selinuxData.denials = await this.getSELinuxDenials();
         } catch (error) {
@@ -158,9 +146,7 @@ export class SELinuxAcquirer extends Acquirer {
       const jsonBytes = new TextEncoder().encode(jsonData);
 
       const blob = new Blob([jsonBytes], { type: 'application/json' });
-      const fileName = this.generateFileName('selinux', 'json', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('selinux', 'json');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -182,8 +168,9 @@ export class SELinuxAcquirer extends Acquirer {
           processContextsCount: selinuxData.processContexts?.length || 0,
           fileContextsCount: selinuxData.fileContexts?.length || 0,
           denialsCount: selinuxData.denials?.length || 0,
-          deviceInfo
-        }
+          deviceInfo,
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -193,11 +180,10 @@ export class SELinuxAcquirer extends Acquirer {
       this.logger.info('SELinux acquisition completed', {
         fileName,
         mode: mode.current,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -212,7 +198,7 @@ export class SELinuxAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -240,7 +226,7 @@ export class SELinuxAcquirer extends Acquirer {
       // Try to get configured mode from kernel cmdline
       let config = 'Unknown';
       try {
-        const decoder = new TextDecoder("utf-8");
+        const decoder = new TextDecoder('utf-8');
         const output = await new ReadFileCommand(this.device.adb).exec({ path: '/proc/cmdline' });
         const cmdlineOutput = decoder.decode(output);
 
@@ -274,8 +260,10 @@ export class SELinuxAcquirer extends Acquirer {
 
   private async getSELinuxPolicy(): Promise<SELinuxPolicy> {
     try {
-      const decoder = new TextDecoder("utf-8");
-      const output = await new ReadFileCommand(this.device.adb).exec({ path: '/sys/fs/selinux/policyvers' });
+      const decoder = new TextDecoder('utf-8');
+      const output = await new ReadFileCommand(this.device.adb).exec({
+        path: '/sys/fs/selinux/policyvers',
+      });
       const outputStr = decoder.decode(output);
       const version = outputStr.trim();
 
@@ -284,8 +272,7 @@ export class SELinuxAcquirer extends Acquirer {
       try {
         const props = await this.device.getProperties();
 
-        policyVersion = props.policyVersion ||
-          `Version ${version}`;  // Fallback to just the version number
+        policyVersion = props.policyVersion || `Version ${version}`; // Fallback to just the version number
 
         policyVersion = policyVersion.trim();
       } catch (error) {
@@ -302,9 +289,7 @@ export class SELinuxAcquirer extends Acquirer {
 
   private async getProcessContexts(): Promise<ProcessContext[]> {
     try {
-      const output = await new PsCommand(
-        this.device.adb,
-      ).exec({ selinux: true, timeout: 10000 });
+      const output = await new PsCommand(this.device.adb).exec({ selinux: true, timeout: 10000 });
 
       const contexts: ProcessContext[] = [];
       const lines = output.split('\n').slice(1); // Skip header
@@ -319,7 +304,7 @@ export class SELinuxAcquirer extends Acquirer {
           contexts.push({
             pid: parts[2],
             process: parts[parts.length - 1],
-            context: parts[0]
+            context: parts[0],
           });
         }
       }
@@ -346,7 +331,7 @@ export class SELinuxAcquirer extends Acquirer {
       '/sdcard',
       '/proc',
       '/sys',
-      '/dev'
+      '/dev',
     ];
 
     const contexts: string[] = [];
@@ -356,7 +341,7 @@ export class SELinuxAcquirer extends Acquirer {
         const output = await new LsCommand(this.device.adb).exec({
           selinux: true,
           path: path,
-          timeout: 5000
+          timeout: 5000,
         });
 
         if (output.trim()) {
@@ -379,7 +364,9 @@ export class SELinuxAcquirer extends Acquirer {
     }
 
     const pathCount = contexts.filter(line => line.startsWith('# /')).length;
-    this.logger.info(`Collected file contexts for ${pathCount} paths, ${contexts.length} total lines`);
+    this.logger.info(
+      `Collected file contexts for ${pathCount} paths, ${contexts.length} total lines`
+    );
 
     return contexts;
   }
@@ -391,11 +378,16 @@ export class SELinuxAcquirer extends Acquirer {
     try {
       const maxLines = this.selinuxConfig.maxDenialLines || 500;
       const pattern = /avc.*denied/i;
-      const logcatOutput = await new GetLogcatCommand(this.device.adb).exec({ dump: true, buffer: "all", timeout: 15000 })
+      const logcatOutput = await new GetLogcatCommand(this.device.adb).exec({
+        dump: true,
+        buffer: 'all',
+        timeout: 15000,
+      });
 
-      const lines = logcatOutput.split('\n')
+      const lines = logcatOutput
+        .split('\n')
         .filter((line: string) => pattern.test(line))
-        .slice(-maxLines)
+        .slice(-maxLines);
 
       const denials: SELinuxDenial[] = [];
 
@@ -451,7 +443,7 @@ export class SELinuxAcquirer extends Acquirer {
         target,
         class: className,
         permission,
-        raw: line.trim()
+        raw: line.trim(),
       };
     } catch (error) {
       this.logger.debug('Failed to parse denial line', { line, error });

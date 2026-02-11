@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PackagesAcquirer } from '../../../../src/forensics/acquisition/packages';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
-  createMockProgressCallback
+  createMockProgressCallback,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -29,7 +29,7 @@ describe('PackagesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('packages');
-      expect(result.fileName).toMatch(/packages-.*\.json/);
+      expect(result.fileName).toBe('packages.json');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -77,8 +77,8 @@ describe('PackagesAcquirer', () => {
     });
 
     it('should handle empty package list', async () => {
-      device = createMockADBDeviceWithCommands({ 
-        listPackages: [] 
+      device = createMockADBDeviceWithCommands({
+        listPackages: [],
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device);
 
@@ -92,7 +92,7 @@ describe('PackagesAcquirer', () => {
   describe('package classification', () => {
     it('should identify system packages correctly', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['com.android.vending', 'com.example.app']
+        listPackages: ['com.android.vending', 'com.example.app'],
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device);
 
@@ -105,7 +105,7 @@ describe('PackagesAcquirer', () => {
 
     it('should identify Samsung system packages', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['com.sec.android.app.launcher', 'com.example.app']
+        listPackages: ['com.sec.android.app.launcher', 'com.example.app'],
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device);
 
@@ -126,8 +126,8 @@ describe('PackagesAcquirer', () => {
           versionCode: '250',
           installLocation: '/data/app',
           firstInstallTime: '2024-01-01',
-          lastUpdateTime: '2024-01-15'
-        }
+          lastUpdateTime: '2024-01-15',
+        },
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device, { includeDetails: true });
 
@@ -140,7 +140,7 @@ describe('PackagesAcquirer', () => {
 
     it('should extract installation times', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['app1', 'app2']
+        listPackages: ['app1', 'app2'],
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device, { includeDetails: true });
 
@@ -153,7 +153,7 @@ describe('PackagesAcquirer', () => {
 
     it('should extract SDK versions', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['app1', 'app2']
+        listPackages: ['app1', 'app2'],
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device, { includeDetails: true });
 
@@ -167,7 +167,7 @@ describe('PackagesAcquirer', () => {
     it('should handle missing detailed info gracefully', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-        getPackageInfo: null
+        getPackageInfo: null,
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device, { includeDetails: true });
 
@@ -180,11 +180,11 @@ describe('PackagesAcquirer', () => {
   describe('permissions extraction', () => {
     it('should extract permissions when configured', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['app1', 'app2']
+        listPackages: ['app1', 'app2'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device, { 
+      acquirer = new PackagesAcquirer(device, {
         includeDetails: true,
-        includePermissions: true 
+        includePermissions: true,
       });
 
       await acquirer.acquire();
@@ -195,11 +195,11 @@ describe('PackagesAcquirer', () => {
 
     it('should not extract permissions when not configured', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['app1', 'app2']
+        listPackages: ['app1', 'app2'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device, { 
+      acquirer = new PackagesAcquirer(device, {
         includeDetails: true,
-        includePermissions: false 
+        includePermissions: false,
       });
 
       await acquirer.acquire();
@@ -223,7 +223,7 @@ describe('PackagesAcquirer', () => {
 
     it('should continue when dumpsys fails for a package', async () => {
       device = createMockADBDeviceWithCommands({
-        listPackages: ['com.android.vending', 'com.example.app']
+        listPackages: ['com.android.vending', 'com.example.app'],
       }) as unknown as ADBDevice;
 
       acquirer = new PackagesAcquirer(device, { includeDetails: true });
@@ -289,8 +289,8 @@ describe('PackagesAcquirer', () => {
     });
 
     it('should respect includeDetails config', async () => {
-      device = createMockADBDeviceWithCommands({ 
-        listPackages: ['app1'] 
+      device = createMockADBDeviceWithCommands({
+        listPackages: ['app1'],
       }) as unknown as ADBDevice;
       acquirer = new PackagesAcquirer(device, { includeDetails: false });
 

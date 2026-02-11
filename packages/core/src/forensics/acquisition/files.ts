@@ -6,7 +6,7 @@ import {
   HashBatchCommand,
   HashCommand,
   ReadFileCommand,
-  StatBatchCommand
+  StatBatchCommand,
 } from '../../adb/commands';
 
 export interface FileAcquisitionConfig extends AcquisitionConfig {
@@ -68,15 +68,10 @@ export class FileAcquirer extends Acquirer {
     '/data/log/',
     '/tmp/',
     '/',
-    '/data/data/'
+    '/data/data/',
   ];
 
-  private readonly EXCLUDED_PATHS = [
-    '/proc',
-    '/sys',
-    '/dev',
-    '/acct',
-  ];
+  private readonly EXCLUDED_PATHS = ['/proc', '/sys', '/dev', '/acct'];
 
   constructor(
     device: ADBDevice,
@@ -91,14 +86,14 @@ export class FileAcquirer extends Acquirer {
     if (this.fileConfig.parallelScans === undefined) this.fileConfig.parallelScans = 3;
     if (this.fileConfig.computeFileHashes === undefined) this.fileConfig.computeFileHashes = false;
     if (this.fileConfig.hashAlgorithms === undefined) this.fileConfig.hashAlgorithms = ['sha256'];
-    if (this.fileConfig.maxHashFileSize === undefined) this.fileConfig.maxHashFileSize = 10 * 1024 * 1024;
-    if (this.fileConfig.excludeHashPaths === undefined) this.fileConfig.excludeHashPaths = ['/system', '/vendor', '/product', '/apex'];
+    if (this.fileConfig.maxHashFileSize === undefined)
+      this.fileConfig.maxHashFileSize = 10 * 1024 * 1024;
+    if (this.fileConfig.excludeHashPaths === undefined)
+      this.fileConfig.excludeHashPaths = ['/system', '/vendor', '/product', '/apex'];
     if (this.fileConfig.hashMethod === undefined) this.fileConfig.hashMethod = 'auto';
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -115,12 +110,19 @@ export class FileAcquirer extends Acquirer {
         deviceInfo
       );
 
-      if (this.fileConfig.computeFileHashes &&
-        (this.fileConfig.hashMethod === 'device' || this.fileConfig.hashMethod === 'auto')) {
+      if (
+        this.fileConfig.computeFileHashes &&
+        (this.fileConfig.hashMethod === 'device' || this.fileConfig.hashMethod === 'auto')
+      ) {
         await this.testDeviceHashSupport();
       }
 
-      this.notifyProgress(onProgress, 15, 'Collecting list of files... This might take a while...', 'running');
+      this.notifyProgress(
+        onProgress,
+        15,
+        'Collecting list of files... This might take a while...',
+        'running'
+      );
 
       const foldersToScan = [...this.DEFAULT_FOLDERS];
 
@@ -151,16 +153,16 @@ export class FileAcquirer extends Acquirer {
         timestamp: new Date().toISOString(),
         downloadedFiles: this.fileConfig.downloadFiles || false,
         hashingEnabled: this.fileConfig.computeFileHashes || false,
-        hashAlgorithms: this.fileConfig.computeFileHashes ? (this.fileConfig.hashAlgorithms || []) : []
+        hashAlgorithms: this.fileConfig.computeFileHashes
+          ? this.fileConfig.hashAlgorithms || []
+          : [],
       };
 
       const outputJson = JSON.stringify(outputData, null, 2);
       const outputBytes = new TextEncoder().encode(outputJson);
 
       const blob = new Blob([outputBytes], { type: 'application/json' });
-      const fileName = this.generateFileName('files', 'json', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('files', 'json');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -181,8 +183,9 @@ export class FileAcquirer extends Acquirer {
           filesHashed: this.filesHashed,
           totalBytesHashed: this.totalBytesHashed,
           downloadedFiles: this.fileConfig.downloadFiles || false,
-          hashAlgorithms: this.fileConfig.computeFileHashes ? this.fileConfig.hashAlgorithms : []
-        }
+          hashAlgorithms: this.fileConfig.computeFileHashes ? this.fileConfig.hashAlgorithms : [],
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -194,11 +197,10 @@ export class FileAcquirer extends Acquirer {
         totalFiles: this.fileDetails.length,
         totalSize: this.totalBytesScanned,
         filesHashed: this.filesHashed,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -213,7 +215,7 @@ export class FileAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -230,13 +232,15 @@ export class FileAcquirer extends Acquirer {
         const output = await hashCmd.exec({
           path: '/system/build.prop',
           algorithm: algo,
-          timeout: 5000
+          timeout: 5000,
         });
 
         const isSupported = this.parseHashOutput(output) !== null;
         this.deviceHashSupport.set(algo, isSupported);
 
-        this.logger.debug(`Device ${isSupported ? 'supports' : 'does not support'} ${algo} hashing`);
+        this.logger.debug(
+          `Device ${isSupported ? 'supports' : 'does not support'} ${algo} hashing`
+        );
       } catch (error) {
         this.deviceHashSupport.set(algo, false);
         this.logger.debug(`Device does not support ${algo} hashing`);
@@ -316,10 +320,7 @@ export class FileAcquirer extends Acquirer {
     }
   }
 
-  private async computeHashBatchOnDevice(
-    files: FileDetail[],
-    algorithms: string[]
-  ): Promise<void> {
+  private async computeHashBatchOnDevice(files: FileDetail[], algorithms: string[]): Promise<void> {
     if (files.length === 0) {
       return;
     }
@@ -348,15 +349,18 @@ export class FileAcquirer extends Acquirer {
         const totalSize = batch.reduce((sum, file) => sum + file.size, 0);
         const estimatedTime = Math.max(30000, Math.min(180000, totalSize / 1024 + 30000));
 
-        this.logger.debug(`Hashing batch of ${batch.length} files (total size: ${totalSize} bytes)`, {
-          batchSize,
-          estimatedTimeout: estimatedTime
-        });
+        this.logger.debug(
+          `Hashing batch of ${batch.length} files (total size: ${totalSize} bytes)`,
+          {
+            batchSize,
+            estimatedTimeout: estimatedTime,
+          }
+        );
 
         const hashBatchCmd = new HashBatchCommand(this.device.adb);
         const rawOutput = await hashBatchCmd.exec({
           files: hashRequests,
-          timeout: estimatedTime
+          timeout: estimatedTime,
         });
 
         const results = this.parseBatchHashOutput(rawOutput, batch);
@@ -382,10 +386,11 @@ export class FileAcquirer extends Acquirer {
         if (consecutiveSuccesses >= 3 && batchSize < maxBatchSize) {
           const oldSize = batchSize;
           batchSize = Math.min(maxBatchSize, batchSize + 1);
-          this.logger.debug(`Increasing hash batch size from ${oldSize} to ${batchSize} after ${consecutiveSuccesses} successes`);
+          this.logger.debug(
+            `Increasing hash batch size from ${oldSize} to ${batchSize} after ${consecutiveSuccesses} successes`
+          );
           consecutiveSuccesses = 0;
         }
-
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
 
@@ -401,7 +406,7 @@ export class FileAcquirer extends Acquirer {
               batchSize,
               fileCount: batch.length,
               samplePath: batch[0]?.path.substring(0, 100),
-              totalSize: batch.reduce((sum, f) => sum + f.size, 0)
+              totalSize: batch.reduce((sum, f) => sum + f.size, 0),
             }
           );
 
@@ -417,7 +422,7 @@ export class FileAcquirer extends Acquirer {
           error: errorMsg.substring(0, 200),
           batchSize,
           fileCount: batch.length,
-          skippedFiles: batch.map(f => f.path.substring(0, 50))
+          skippedFiles: batch.map(f => f.path.substring(0, 50)),
         });
 
         // Skip this batch and continue with next files
@@ -426,7 +431,9 @@ export class FileAcquirer extends Acquirer {
       }
     }
 
-    this.logger.info(`Completed adaptive hash batching: ${this.filesHashed} files hashed (${this.totalBytesHashed} bytes)`);
+    this.logger.info(
+      `Completed adaptive hash batching: ${this.filesHashed} files hashed (${this.totalBytesHashed} bytes)`
+    );
   }
 
   private parseBatchHashOutput(output: string, files: FileDetail[]): Map<string, string> {
@@ -479,12 +486,14 @@ export class FileAcquirer extends Acquirer {
         const readCmd = new ReadFileCommand(this.device.adb);
         const fileData = await readCmd.exec({
           path: file.path,
-          timeout: 30000
+          timeout: 30000,
         });
 
         for (const algo of algorithms) {
           if (algo === 'md5') {
-            this.logger.warn(`MD5 not supported in browser SubtleCrypto, skipping for ${file.path}`);
+            this.logger.warn(
+              `MD5 not supported in browser SubtleCrypto, skipping for ${file.path}`
+            );
             continue;
           }
 
@@ -494,7 +503,6 @@ export class FileAcquirer extends Acquirer {
 
         this.filesHashed++;
         this.totalBytesHashed += file.size;
-
       } catch (error) {
         this.logger.warn(`Failed to hash file in browser: ${file.path}`, { error });
       }
@@ -503,9 +511,9 @@ export class FileAcquirer extends Acquirer {
 
   private async computeHashInBrowser(data: Uint8Array, algorithm: string): Promise<string> {
     const algoMap: Record<string, string> = {
-      'sha1': 'SHA-1',
-      'sha256': 'SHA-256',
-      'sha512': 'SHA-512'
+      sha1: 'SHA-1',
+      sha256: 'SHA-256',
+      sha512: 'SHA-512',
       // Note: MD5 not supported by SubtleCrypto
     };
 
@@ -537,7 +545,7 @@ export class FileAcquirer extends Acquirer {
       const batch = folders.slice(i, i + concurrency);
 
       await Promise.all(
-        batch.map(async (folder) => {
+        batch.map(async folder => {
           await this.scanFolder(folder);
 
           completedFolders++;
@@ -571,7 +579,7 @@ export class FileAcquirer extends Acquirer {
         path: folder,
         type: 'f',
         excludePaths: this.EXCLUDED_PATHS,
-        timeout: 120000
+        timeout: 120000,
       });
 
       if (!output || output.trim() === '') {
@@ -587,7 +595,6 @@ export class FileAcquirer extends Acquirer {
       this.logger.debug(`Found ${filePaths.length} files in ${folder}`);
 
       await this.collectMetadataBatch(filePaths);
-
     } catch (error) {
       this.logger.warn(`Failed to scan folder ${folder}`, { error });
     }
@@ -610,7 +617,7 @@ export class FileAcquirer extends Acquirer {
         const statBatchCmd = new StatBatchCommand(this.device.adb);
         const output = await statBatchCmd.exec({
           paths: batch,
-          timeout: 120000
+          timeout: 120000,
         });
 
         this.parseBatchStatOutput(batch, output);
@@ -636,10 +643,11 @@ export class FileAcquirer extends Acquirer {
         // Gradually increase batch size on success
         if (consecutiveSuccesses >= 5 && batchSize < maxBatchSize) {
           batchSize = Math.min(15, batchSize + 2);
-          this.logger.debug(`Increasing batch size to ${batchSize} after ${consecutiveSuccesses} successes`);
+          this.logger.debug(
+            `Increasing batch size to ${batchSize} after ${consecutiveSuccesses} successes`
+          );
           consecutiveSuccesses = 0;
         }
-
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
 
@@ -652,7 +660,7 @@ export class FileAcquirer extends Acquirer {
             `Batch stat timeout with size ${batchSize}, reducing to ${newBatchSize}`,
             {
               error: errorMsg.substring(0, 200),
-              samplePath: batch[0]?.substring(0, 100)
+              samplePath: batch[0]?.substring(0, 100),
             }
           );
 
@@ -665,7 +673,7 @@ export class FileAcquirer extends Acquirer {
 
         // Non-timeout error, skip batch and continue
         this.logger.warn(`Failed to stat batch starting at index ${i}`, {
-          error: errorMsg.substring(0, 200)
+          error: errorMsg.substring(0, 200),
         });
         i += batchSize;
         consecutiveSuccesses = 0;
@@ -713,9 +721,18 @@ export class FileAcquirer extends Acquirer {
     }
 
     const [
-      sizeStr, typeStr, mtimeStr, atimeStr, ctimeStr,
-      octalPerms, humanPerms, owner, group,
-      uidStr, gidStr, inodeStr
+      sizeStr,
+      typeStr,
+      mtimeStr,
+      atimeStr,
+      ctimeStr,
+      octalPerms,
+      humanPerms,
+      owner,
+      group,
+      uidStr,
+      gidStr,
+      inodeStr,
     ] = parts;
 
     const size = parseInt(sizeStr, 10);
@@ -736,11 +753,19 @@ export class FileAcquirer extends Acquirer {
     }
 
     return {
-      path, size, type: typeStr,
-      mtime, atime, ctime,
+      path,
+      size,
+      type: typeStr,
+      mtime,
+      atime,
+      ctime,
       permissionsOctal: octalPerms,
       permissionsHuman: humanPerms,
-      owner, group, uid, gid, inode
+      owner,
+      group,
+      uid,
+      gid,
+      inode,
     };
   }
 
@@ -755,7 +780,9 @@ export class FileAcquirer extends Acquirer {
     this.totalBytesScanned += detail.size;
   }
 
-  private async downloadAllFiles(onProgress?: (progress: AcquisitionProgress) => void): Promise<void> {
+  private async downloadAllFiles(
+    onProgress?: (progress: AcquisitionProgress) => void
+  ): Promise<void> {
     this.logger.info('Downloading files (optional feature)...');
 
     let downloadedCount = 0;
@@ -781,12 +808,11 @@ export class FileAcquirer extends Acquirer {
         const readCmd = new ReadFileCommand(this.device.adb);
         await readCmd.exec({
           path: file.path,
-          timeout: 30000
+          timeout: 30000,
         });
 
         downloadedCount++;
         downloadedSize += file.size;
-
       } catch (error) {
         this.logger.warn(`Failed to download file: ${file.path}`, { error });
       }

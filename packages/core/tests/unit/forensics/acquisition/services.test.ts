@@ -4,9 +4,8 @@ import type { ServicesConfig } from '../../../../src/forensics/acquisition/servi
 import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream
+  createMockReadableStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
 
 describe('ServicesAcquirer', () => {
   let acquirer: ServicesAcquirer;
@@ -48,7 +47,7 @@ describe('ServicesAcquirer', () => {
     domMocks = setupAcquirerDOMMocks();
     mockDevice = createMockADBDeviceWithServicesCommands({
       dumpsysList: MOCK_DUMPSYS_LIST,
-      activityServices: MOCK_ACTIVITY_SERVICES
+      activityServices: MOCK_ACTIVITY_SERVICES,
     });
     acquirer = new ServicesAcquirer(mockDevice);
   });
@@ -63,7 +62,7 @@ describe('ServicesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('services');
-      expect(result.fileName).toMatch(/^services-.*\.json$/);
+      expect(result.fileName).toBe('services.json');
       expect(result.fileSize).toBeGreaterThan(0);
     });
 
@@ -96,20 +95,20 @@ describe('ServicesAcquirer', () => {
       expect(mockDevice.getProperties).toHaveBeenCalled();
     });
 
-    it('should trigger download on successful acquisition', async () => {
-      await acquirer.acquire();
+    it('should return blob on successful acquisition', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.download).toMatch(/services-.*\.json/);
+      expect(result.blob).toBeDefined();
+      expect(result.blob).toBeInstanceOf(Blob);
     });
   });
 
   describe('Service Parsing', () => {
     it('should parse service names from dumpsys -l', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      expect(result.blob).toBeInstanceOf(Blob);
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.services.some((s: any) => s.name === 'activity')).toBe(true);
@@ -117,10 +116,9 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should skip header line from dumpsys -l', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.services.some((s: any) => s.name.includes('Currently running'))).toBe(false);
@@ -130,10 +128,9 @@ describe('ServicesAcquirer', () => {
       const config: ServicesConfig = { includeServiceDetails: true };
       acquirer = new ServicesAcquirer(mockDevice, config);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.runningServices).toBeGreaterThan(0);
@@ -143,10 +140,9 @@ describe('ServicesAcquirer', () => {
       const config: ServicesConfig = { includeServiceDetails: true };
       acquirer = new ServicesAcquirer(mockDevice, config);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       // Should have at least some services marked as stopped
@@ -157,10 +153,9 @@ describe('ServicesAcquirer', () => {
       const config: ServicesConfig = { includeServiceDetails: true };
       acquirer = new ServicesAcquirer(mockDevice, config);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       // Some services should have PID and user info
@@ -171,10 +166,9 @@ describe('ServicesAcquirer', () => {
 
   describe('Service Classification', () => {
     it('should classify android.* as system services', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemServices).toBeGreaterThan(0);
@@ -183,14 +177,13 @@ describe('ServicesAcquirer', () => {
     it('should classify com.android.* as system services', async () => {
       mockDevice = createMockADBDeviceWithServicesCommands({
         dumpsysList: 'com.android.systemui\ncom.example.app',
-        activityServices: ''
+        activityServices: '',
       });
       acquirer = new ServicesAcquirer(mockDevice);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemServices).toBe(1);
@@ -198,10 +191,9 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should calculate correct counts', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemServices + data.userServices).toBe(data.totalServices);
@@ -237,15 +229,14 @@ describe('ServicesAcquirer', () => {
       const config: ServicesConfig = { includeSystemServices: false };
       acquirer = new ServicesAcquirer(mockDevice, config);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       // Should only have user services
-      const hasSystemServices = data.services.some((s: any) =>
-        s.name.startsWith('android.') || s.name.startsWith('com.android.')
+      const hasSystemServices = data.services.some(
+        (s: any) => s.name.startsWith('android.') || s.name.startsWith('com.android.')
       );
       expect(hasSystemServices).toBe(false);
     });
@@ -254,16 +245,13 @@ describe('ServicesAcquirer', () => {
       const config: ServicesConfig = { includeUserServices: false };
       acquirer = new ServicesAcquirer(mockDevice, config);
 
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       // Should only have system services
-      const hasUserServices = data.services.some((s: any) =>
-        s.name.includes('com.example')
-      );
+      const hasUserServices = data.services.some((s: any) => s.name.includes('com.example'));
       expect(hasUserServices).toBe(false);
     });
 
@@ -347,9 +335,7 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should handle device disconnection', async () => {
-      mockDevice.getProperties = vi.fn().mockRejectedValue(
-        new Error('Device disconnected')
-      );
+      mockDevice.getProperties = vi.fn().mockRejectedValue(new Error('Device disconnected'));
 
       const result = await acquirer.acquire();
 
@@ -378,7 +364,7 @@ describe('ServicesAcquirer', () => {
             stdout: createMockReadableStream(MOCK_DUMPSYS_LIST),
             stderr: createMockReadableStream(''),
             stdin: new WritableStream(),
-            exit: Promise.resolve({ code: 0 })
+            exit: Promise.resolve({ code: 0 }),
           });
         }
         return Promise.reject(new Error('Activity services failed'));
@@ -405,9 +391,7 @@ describe('ServicesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.duration).toBeGreaterThanOrEqual(0);
-      expect(result.duration).toBe(
-        result.endTime.getTime() - result.startTime.getTime()
-      );
+      expect(result.duration).toBe(result.endTime.getTime() - result.startTime.getTime());
     });
 
     it('should include file size', async () => {
@@ -436,19 +420,18 @@ describe('ServicesAcquirer', () => {
 
   describe('Output Format', () => {
     it('should create valid JSON', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      expect(result.blob).toBeInstanceOf(Blob);
+      const text = await result.blob!.text();
 
       expect(() => JSON.parse(text)).not.toThrow();
     });
 
     it('should include all required fields', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       expect(data).toHaveProperty('totalServices');
@@ -463,10 +446,9 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should format service entries correctly', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       const data = JSON.parse(text);
 
       const service = data.services[0];
@@ -474,32 +456,29 @@ describe('ServicesAcquirer', () => {
       expect(service).toHaveProperty('state');
     });
 
-    it('should download file with correct blob type', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
+    it('should return blob with correct type', async () => {
+      const result = await acquirer.acquire();
 
-      await acquirer.acquire();
-
-      expect(createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'application/json'
-        })
-      );
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('application/json');
     });
 
     it('should generate filename with device model', async () => {
       const result = await acquirer.acquire();
 
       expect(result.fileName).toBeDefined();
-      expect(result.fileName).toMatch(/services-Test.*\.json/);
+      expect(result.fileName).toBe('services.json');
     });
   });
 });
 
 // Helper function to create mock device with services data
-function createMockADBDeviceWithServicesCommands(options: {
-  dumpsysList?: string;
-  activityServices?: string;
-} = {}) {
+function createMockADBDeviceWithServicesCommands(
+  options: {
+    dumpsysList?: string;
+    activityServices?: string;
+  } = {}
+) {
   const { dumpsysList = '', activityServices = '' } = options;
 
   const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
@@ -522,7 +501,7 @@ function createMockADBDeviceWithServicesCommands(options: {
       stdout: createMockReadableStream(output),
       stderr: createMockReadableStream(''),
       stdin: new WritableStream(),
-      exit: Promise.resolve({ code: 0 })
+      exit: Promise.resolve({ code: 0 }),
     });
   });
 
@@ -530,11 +509,11 @@ function createMockADBDeviceWithServicesCommands(options: {
     adb: {
       subprocess: {
         shellProtocol: {
-          spawn: mockShellSpawn
-        }
+          spawn: mockShellSpawn,
+        },
       },
       sync: vi.fn(),
-      close: vi.fn().mockResolvedValue(undefined)
+      close: vi.fn().mockResolvedValue(undefined),
     } as any,
     getProperties: vi.fn().mockResolvedValue({
       androidVersion: '13',
@@ -543,16 +522,16 @@ function createMockADBDeviceWithServicesCommands(options: {
       manufacturer: 'Test Manufacturer',
       brand: 'Test',
       sdkVersion: 33,
-      serialNumber: 'TEST123'
+      serialNumber: 'TEST123',
     }),
     info: {
       productName: 'Test Device',
       manufacturerName: 'Test Manufacturer',
       serialNumber: 'TEST123',
-      vendorId: 0x18D1,
-      productId: 0x4EE7
+      vendorId: 0x18d1,
+      productId: 0x4ee7,
     },
     isConnected: vi.fn().mockReturnValue(true),
-    disconnect: vi.fn().mockResolvedValue(undefined)
+    disconnect: vi.fn().mockResolvedValue(undefined),
   };
 }

@@ -1,10 +1,6 @@
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type {
-  AcquisitionConfig,
-  AcquisitionProgress,
-  AcquisitionResult
-} from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 import { DumpsysCommand } from '../../adb/commands/';
 
 export interface ServicesConfig extends AcquisitionConfig {
@@ -43,9 +39,7 @@ export class ServicesAcquirer extends Acquirer {
     super(device, servicesConfig, 'services' as any);
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -68,12 +62,7 @@ export class ServicesAcquirer extends Acquirer {
       this.logger.info(`Collected ${services.length} services`);
 
       if (this.servicesConfig.includeServiceDetails !== false) {
-        this.notifyProgress(
-          onProgress,
-          70,
-          `Analyzing ${services.length} services...`,
-          'running'
-        );
+        this.notifyProgress(onProgress, 70, `Analyzing ${services.length} services...`, 'running');
 
         await this.enrichServicesWithDetails(services);
       }
@@ -94,16 +83,14 @@ export class ServicesAcquirer extends Acquirer {
         services,
         deviceInfo,
         acquisitionTime: new Date().toISOString(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       const jsonData = JSON.stringify(servicesData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
       const blob = new Blob([jsonBytes], { type: 'application/json' });
-      const fileName = this.generateFileName('services', 'json', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('services', 'json');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -124,8 +111,9 @@ export class ServicesAcquirer extends Acquirer {
           stoppedServices: stoppedCount,
           systemServices: systemCount,
           userServices: userCount,
-          deviceInfo
-        }
+          deviceInfo,
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -135,11 +123,10 @@ export class ServicesAcquirer extends Acquirer {
       this.logger.info('Services acquisition completed', {
         fileName,
         totalServices: services.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -154,7 +141,7 @@ export class ServicesAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -162,7 +149,7 @@ export class ServicesAcquirer extends Acquirer {
   private async getServicesList(): Promise<ServiceInfo[]> {
     const output = await new DumpsysCommand(this.device.adb).exec({
       args: ['-l'],
-      timeout: 30000
+      timeout: 30000,
     });
 
     return this.parseServicesList(output);
@@ -170,8 +157,12 @@ export class ServicesAcquirer extends Acquirer {
 
   private async enrichServicesWithDetails(services: ServiceInfo[]): Promise<void> {
     try {
-      const activityOutput = await new DumpsysCommand(this.device.adb).exec({ service: 'activity', args: ["services"], timeout: 300000 });
- 
+      const activityOutput = await new DumpsysCommand(this.device.adb).exec({
+        service: 'activity',
+        args: ['services'],
+        timeout: 300000,
+      });
+
       this.parseServiceDetails(services, activityOutput);
     } catch (error) {
       this.logger.warn('Failed to get service details', error);
@@ -190,14 +181,14 @@ export class ServicesAcquirer extends Acquirer {
       }
 
       const serviceName = trimmed;
-      
+
       if (!this.shouldIncludeService(serviceName)) {
         continue;
       }
 
       services.push({
         name: serviceName,
-        state: 'unknown'
+        state: 'unknown',
       });
     }
 
@@ -210,13 +201,13 @@ export class ServicesAcquirer extends Acquirer {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      
+
       // Look for service entries like "ServiceRecord{...}"
       const serviceMatch = line.match(/ServiceRecord\{[a-f0-9]+ u\d+ ([^\}\/]+)\/([^\}]+)\}/);
       if (serviceMatch) {
         const packageName = serviceMatch[1];
         const className = serviceMatch[2];
-        
+
         // Find matching service in our list
         currentService = services.find(s => s.name.includes(packageName)) || null;
         if (currentService) {
@@ -253,15 +244,15 @@ export class ServicesAcquirer extends Acquirer {
 
   private shouldIncludeService(serviceName: string): boolean {
     const isSystem = this.isSystemService(serviceName);
-    
+
     if (isSystem && this.servicesConfig.includeSystemServices === false) {
       return false;
     }
-    
+
     if (!isSystem && this.servicesConfig.includeUserServices === false) {
       return false;
     }
-    
+
     return true;
   }
 
@@ -291,7 +282,7 @@ export class ServicesAcquirer extends Acquirer {
       /^display$/,
       /^user$/,
       /^account$/,
-      /^permission$/
+      /^permission$/,
     ];
 
     return systemPatterns.some(pattern => pattern.test(serviceName));

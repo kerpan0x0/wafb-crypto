@@ -3,11 +3,9 @@ import { Acquirer } from './acquirer';
 import { EnvCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 
-export interface EnvConfig extends AcquisitionConfig {
-}
+export interface EnvConfig extends AcquisitionConfig {}
 
 export class EnvAcquirer extends Acquirer {
-
   constructor(
     protected device: ADBDevice,
     protected config: EnvConfig = {}
@@ -15,9 +13,7 @@ export class EnvAcquirer extends Acquirer {
     super(device, config, 'env');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -55,19 +51,19 @@ export class EnvAcquirer extends Acquirer {
       this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
       // Step 4: Create blob and trigger download
-      const blob = new Blob(
-        [env],
-        { type: 'application/text' }
-      );
+      const blob = new Blob([env], { type: 'application/text' });
 
       const fileName = `env.txt`;
-
-      this.downloadBlob(blob, fileName);
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      this.notifyProgress(onProgress, 100, 'Environment variables downloaded successfully!', 'completed');
+      this.notifyProgress(
+        onProgress,
+        100,
+        'Environment variables downloaded successfully!',
+        'completed'
+      );
 
       // Step 5: Build result
       const result: AcquisitionResult = {
@@ -81,7 +77,8 @@ export class EnvAcquirer extends Acquirer {
         data: {
           format: 'text',
           deviceInfo: deviceInfo,
-        }
+        },
+        blob,
       };
 
       // Compute hash if requested
@@ -92,11 +89,10 @@ export class EnvAcquirer extends Acquirer {
       this.logger.info('Environment variables acquisition completed', {
         fileName,
         fileSize: env.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -114,7 +110,7 @@ export class EnvAcquirer extends Acquirer {
         error: errorMessage,
         data: {
           format: 'text',
-        }
+        },
       };
     }
   }

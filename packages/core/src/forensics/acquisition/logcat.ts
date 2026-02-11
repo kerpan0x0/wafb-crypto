@@ -1,11 +1,7 @@
 import { GetLogcatCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type {
-  AcquisitionConfig,
-  AcquisitionProgress,
-  AcquisitionResult
-} from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 
 export interface LogcatConfig extends AcquisitionConfig {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';
@@ -44,18 +40,16 @@ export class LogcatAcquirer extends Acquirer {
     super(device, logcatConfig, 'logcat');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
-    
+
     try {
       this.logger.info('Starting logcat acquisition');
-      
+
       // Step 1: Get device info
       this.notifyProgress(onProgress, 10, 'Reading device information...', 'running');
       const deviceInfo = await this.device.getProperties();
-      
+
       this.notifyProgress(
         onProgress,
         20,
@@ -72,47 +66,40 @@ export class LogcatAcquirer extends Acquirer {
         'Acquiring system logs (this may take 10-30 seconds)...',
         'running'
       );
-      
-      const logOutput = await new GetLogcatCommand(this.device.adb).exec({   
+
+      const logOutput = await new GetLogcatCommand(this.device.adb).exec({
         buffer: this.logcatConfig.buffer,
         maxLines: this.logcatConfig.maxLines,
         filter: this.logcatConfig.filter,
-        dump: this.logcatConfig.dumpMode !== false // default true
+        dump: this.logcatConfig.dumpMode !== false, // default true
       });
 
       this.notifyProgress(onProgress, 70, 'Processing log data...', 'running');
 
       // Step 3: Analyze logs
       const stats = this.analyzeLogcat(logOutput);
-      
+
       this.logger.info('Logcat stats', stats);
-      
-      this.notifyProgress(
-        onProgress,
-        80,
-        `Processed ${stats.totalLines} log lines`,
-        'running'
-      );
+
+      this.notifyProgress(onProgress, 80, `Processed ${stats.totalLines} log lines`, 'running');
 
       // Step 4: Create output file
       this.notifyProgress(onProgress, 90, 'Preparing export...', 'running');
-      
+
       const logcatData: LogcatData = {
         stats,
         buffer: this.logcatConfig.buffer || 'all',
         format: this.logcatConfig.format || 'threadtime',
         deviceInfo,
-        acquisitionTime: new Date().toISOString()
+        acquisitionTime: new Date().toISOString(),
       };
 
       // Create combined output with metadata + logs
       const combinedOutput = this.formatOutput(logcatData, logOutput);
       const logBytes = new TextEncoder().encode(combinedOutput);
-      
+
       const blob = new Blob([logBytes], { type: 'text/plain' });
-      const fileName = this.generateFileName('logcat', 'txt', deviceInfo.model);
-      
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('logcat', 'txt');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -133,8 +120,9 @@ export class LogcatAcquirer extends Acquirer {
           errorCount: stats.errorCount,
           warningCount: stats.warningCount,
           buffer: this.logcatConfig.buffer || 'all',
-          deviceInfo
-        }
+          deviceInfo,
+        },
+        blob,
       };
 
       // Compute hash if requested
@@ -145,16 +133,15 @@ export class LogcatAcquirer extends Acquirer {
       this.logger.info('Logcat acquisition completed', {
         fileName,
         totalLines: stats.totalLines,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       this.logger.error('Logcat acquisition failed', error);
       this.notifyProgress(onProgress, 0, `Error: ${errorMessage}`, 'failed');
 
@@ -164,14 +151,14 @@ export class LogcatAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
 
   private formatOutput(data: LogcatData, logOutput: string): string {
     const metadataJson = JSON.stringify(data, null, 2);
-    
+
     return `# Logcat Acquisition Metadata
 # Device: ${data.deviceInfo.model}
 # Time: ${data.acquisitionTime}
@@ -196,14 +183,14 @@ ${logOutput}`;
    */
   private analyzeLogcat(logOutput: string): LogcatStats {
     const lines = logOutput.split('\n').filter(line => line.trim().length > 0);
-    
+
     const stats: LogcatStats = {
       totalLines: lines.length,
       errorCount: 0,
       warningCount: 0,
       infoCount: 0,
       debugCount: 0,
-      verboseCount: 0
+      verboseCount: 0,
     };
 
     let firstTimestamp: string | null = null;
@@ -237,7 +224,7 @@ ${logOutput}`;
     if (firstTimestamp && lastTimestamp) {
       stats.timeRange = {
         start: firstTimestamp,
-        end: lastTimestamp
+        end: lastTimestamp,
       };
     }
 

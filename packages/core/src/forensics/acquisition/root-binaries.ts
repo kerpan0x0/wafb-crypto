@@ -3,11 +3,9 @@ import { Acquirer } from './acquirer';
 import { RootBinariesCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 
-export interface RootBinariesConfig extends AcquisitionConfig {
-}
+export interface RootBinariesConfig extends AcquisitionConfig {}
 
 export class RootBinariesAcquirer extends Acquirer {
-
   constructor(
     protected device: ADBDevice,
     protected config: RootBinariesConfig = {}
@@ -15,23 +13,22 @@ export class RootBinariesAcquirer extends Acquirer {
     super(device, config, 'rootBinaries');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     const root_binaries = [
-      "su",
-      "busybox",
-      "supersu",
-      "Superuser.apk",
-      "KingoUser.apk",
-      "SuperSu.apk",
-      "magisk",
-      "magiskhide",
-      "magiskinit",
-      "magiskpolicy",
-      "magiskboot"];
+      'su',
+      'busybox',
+      'supersu',
+      'Superuser.apk',
+      'KingoUser.apk',
+      'SuperSu.apk',
+      'magisk',
+      'magiskhide',
+      'magiskinit',
+      'magiskpolicy',
+      'magiskboot',
+    ];
 
     try {
       this.logger.info('Starting root binaries acquisition');
@@ -59,24 +56,14 @@ export class RootBinariesAcquirer extends Acquirer {
       const rootBinaries = await this.getAvailableRootBinaries(root_binaries);
 
       // Step 3: Download file
-      this.notifyProgress(
-        onProgress,
-        70,
-        `Downloading root binaries from device...`,
-        'running'
-      );
+      this.notifyProgress(onProgress, 70, `Downloading root binaries from device...`, 'running');
 
       this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
       // Step 4: Create blob and trigger download
-      const blob = new Blob(
-        [rootBinaries],
-        { type: 'application/json' }
-      );
+      const blob = new Blob([rootBinaries], { type: 'application/json' });
 
       const fileName = `root_binaries.json`;
-
-      this.downloadBlob(blob, fileName);
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -95,7 +82,8 @@ export class RootBinariesAcquirer extends Acquirer {
         data: {
           format: 'text',
           deviceInfo: deviceInfo,
-        }
+        },
+        blob,
       };
 
       // Compute hash if requested
@@ -106,11 +94,10 @@ export class RootBinariesAcquirer extends Acquirer {
       this.logger.info('Root binaries acquisition completed', {
         fileName,
         fileSize: rootBinaries.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -128,7 +115,7 @@ export class RootBinariesAcquirer extends Acquirer {
         error: errorMessage,
         data: {
           format: 'text',
-        }
+        },
       };
     }
   }

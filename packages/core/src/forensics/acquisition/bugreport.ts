@@ -1,17 +1,13 @@
-import { 
-  WhichCommand, 
-  DeleteFileCommand, 
-  BugreportCommand, 
-  BugreportzCommand, 
-  ReadFileCommand 
+import {
+  WhichCommand,
+  DeleteFileCommand,
+  BugreportCommand,
+  BugreportzCommand,
+  ReadFileCommand,
 } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type {
-  AcquisitionConfig,
-  AcquisitionProgress,
-  AcquisitionResult
-} from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
 
 export interface BugreportConfig extends AcquisitionConfig {
   preferZip?: boolean;
@@ -28,9 +24,7 @@ export class BugreportAcquirer extends Acquirer {
     super(device, bugreportConfig, 'bugreport');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
     let bugreportPath: string | null = null;
     let useZip = false;
@@ -69,7 +63,7 @@ export class BugreportAcquirer extends Acquirer {
       );
 
       const bugreportOut = await this.generateBugreport(useZip);
-      bugreportPath = this.parseBugreportPath(bugreportOut)
+      bugreportPath = this.parseBugreportPath(bugreportOut);
 
       // Step 4: Download file
       this.notifyProgress(
@@ -79,23 +73,18 @@ export class BugreportAcquirer extends Acquirer {
         'running'
       );
 
-      const bugreportData = await new ReadFileCommand(this.device.adb).exec({ path: bugreportPath });
+      const bugreportData = await new ReadFileCommand(this.device.adb).exec({
+        path: bugreportPath,
+      });
 
       this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
       // Step 5: Create blob and trigger download
-      const blob = new Blob(
-        [bugreportData.buffer as ArrayBuffer],
-        { type: useZip ? 'application/zip' : 'text/plain' }
-      );
+      const blob = new Blob([bugreportData.buffer as ArrayBuffer], {
+        type: useZip ? 'application/zip' : 'text/plain',
+      });
 
-      const fileName = this.generateFileName(
-        'bugreport',
-        useZip ? 'zip' : 'txt',
-        deviceInfo.model
-      );
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('bugreport', useZip ? 'zip' : 'txt');
 
       // Step 6: Cleanup
       await this.performCleanup(bugreportPath, useZip);
@@ -117,8 +106,9 @@ export class BugreportAcquirer extends Acquirer {
         data: {
           format: useZip ? 'zip' : 'text',
           deviceInfo: deviceInfo,
-          cleanupPerformed: this.cleanupPerformed
-        }
+          cleanupPerformed: this.cleanupPerformed,
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -128,11 +118,10 @@ export class BugreportAcquirer extends Acquirer {
       this.logger.info('Bugreport acquisition completed', {
         fileName,
         fileSize: bugreportData.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -154,8 +143,8 @@ export class BugreportAcquirer extends Acquirer {
         duration,
         error: errorMessage,
         data: {
-          cleanupPerformed: this.cleanupPerformed
-        }
+          cleanupPerformed: this.cleanupPerformed,
+        },
       };
     }
   }
@@ -183,7 +172,7 @@ export class BugreportAcquirer extends Acquirer {
       this.cleanupPerformed = false;
       this.logger.error('Failed to cleanup bugreport file from device', {
         path: bugreportPath,
-        error: err
+        error: err,
       });
     }
   }
@@ -203,7 +192,10 @@ export class BugreportAcquirer extends Acquirer {
     if (useZip) {
       return await new BugreportzCommand(this.device.adb).exec({ timeout: 180000 });
     } else {
-      return await new BugreportCommand(this.device.adb).exec({ outputPath: bugreportPath, timeout: 180000 });
+      return await new BugreportCommand(this.device.adb).exec({
+        outputPath: bugreportPath,
+        timeout: 180000,
+      });
     }
   }
 
@@ -212,7 +204,7 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private parseBugreportPath(input: string): string {
-    if (!input) return "";
+    if (!input) return '';
 
     const trimmedInput = input.trim();
 
@@ -232,6 +224,6 @@ export class BugreportAcquirer extends Acquirer {
 
     // Se arriviamo qui, logghiamo per capire cosa ha risposto la shell
     this.logger.warn('Unrecognized bugreport output format', { rawOutput: trimmedInput });
-    return "";
+    return '';
   }
 }

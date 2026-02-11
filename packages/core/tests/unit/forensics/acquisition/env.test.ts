@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EnvAcquirer } from '../../../../src/forensics/acquisition/env';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
-  createMockProgressCallback
+  createMockProgressCallback,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -25,11 +25,11 @@ LD_LIBRARY_PATH=/system/lib`;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     device = createMockADBDeviceWithCommands({
-      shellOutput: mockEnvOutput
+      shellOutput: mockEnvOutput,
     }) as unknown as ADBDevice;
-    
+
     domMocks = setupAcquirerDOMMocks();
     acquirer = new EnvAcquirer(device);
   });
@@ -48,10 +48,10 @@ LD_LIBRARY_PATH=/system/lib`;
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
-      it('should call env command', async () => {
+    it('should call env command', async () => {
       await acquirer.acquire();
 
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -73,15 +73,10 @@ LD_LIBRARY_PATH=/system/lib`;
     });
 
     it('should download file with correct blob type', async () => {
-      const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
-      
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'application/text'
-        })
-      );
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob.type).toBe('application/text');
     });
 
     it('should include device information in result', async () => {
@@ -95,7 +90,7 @@ LD_LIBRARY_PATH=/system/lib`;
     it('should handle empty environment variables', async () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: ''
+        shellOutput: '',
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -112,11 +107,11 @@ LD_LIBRARY_PATH=/system/lib`;
       expect(result.fileName).toBe('env.txt');
     });
 
-    it('should trigger download on successful acquisition', async () => {
-      await acquirer.acquire();
+    it('should return blob on successful acquisition', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.download).toBe('env.txt');
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.fileName).toBe('env.txt');
     });
   });
 
@@ -132,7 +127,9 @@ LD_LIBRARY_PATH=/system/lib`;
     });
 
     it('should handle shell command errors', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(new Error('Shell command failed'));
+      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
+        new Error('Shell command failed')
+      );
 
       const result = await acquirer.acquire();
 
@@ -175,7 +172,7 @@ LD_LIBRARY_PATH=/system/lib`;
     it('should handle PATH variable', async () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: 'PATH=/system/bin:/system/xbin'
+        shellOutput: 'PATH=/system/bin:/system/xbin',
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -189,7 +186,7 @@ LD_LIBRARY_PATH=/system/lib`;
     it('should handle ANDROID_DATA variable', async () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: 'ANDROID_DATA=/data'
+        shellOutput: 'ANDROID_DATA=/data',
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -205,7 +202,7 @@ VAR2=value2
 VAR3=value3`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: multiLineEnv
+        shellOutput: multiLineEnv,
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -218,7 +215,7 @@ VAR3=value3`;
     it('should handle environment variables with special characters', async () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: 'PATH=/system/bin:/system/xbin:$HOME'
+        shellOutput: 'PATH=/system/bin:/system/xbin:$HOME',
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -231,7 +228,7 @@ VAR3=value3`;
     it('should handle environment variables with spaces', async () => {
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: 'DESCRIPTION=Android System Variables'
+        shellOutput: 'DESCRIPTION=Android System Variables',
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -283,7 +280,7 @@ VAR3=value3`;
   describe('progress reporting', () => {
     it('should report initial progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -294,7 +291,7 @@ VAR3=value3`;
 
     it('should report device connection progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -305,7 +302,7 @@ VAR3=value3`;
 
     it('should report environment variable collection progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -316,7 +313,7 @@ VAR3=value3`;
 
     it('should report download progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -327,7 +324,7 @@ VAR3=value3`;
 
     it('should report preparation progress', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -338,7 +335,7 @@ VAR3=value3`;
 
     it('should report completion', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -352,10 +349,10 @@ VAR3=value3`;
       const { callback, getProgressHistory } = createMockProgressCallback();
       const mockProperties = {
         model: 'Pixel 8',
-        manufacturer: 'Google'
+        manufacturer: 'Google',
       };
       device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-      
+
       await acquirer.acquire(callback);
 
       const history = getProgressHistory();
@@ -377,7 +374,7 @@ VAR3=value3`;
         model: 'Galaxy S23',
         manufacturer: 'Samsung',
         androidVersion: '14',
-        serialNumber: 'XYZ789'
+        serialNumber: 'XYZ789',
       };
       device.getProperties = vi.fn().mockResolvedValue(mockProperties);
 
@@ -390,7 +387,7 @@ VAR3=value3`;
       const mockProperties = {
         model: 'OnePlus 12',
         manufacturer: 'OnePlus',
-        androidVersion: '14'
+        androidVersion: '14',
       };
       device.getProperties = vi.fn().mockResolvedValue(mockProperties);
 
@@ -408,10 +405,10 @@ ANDROID_ROOT=/system
 ANDROID_STORAGE=/storage
 EXTERNAL_STORAGE=/sdcard
 BOOTCLASSPATH=/system/framework/core.jar`;
-      
+
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: standardEnv
+        shellOutput: standardEnv,
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -427,10 +424,10 @@ BOOTCLASSPATH=/system/framework/core.jar`;
 HOME=/data
 TMPDIR=/data/local/tmp
 SHELL=/system/bin/sh`;
-      
+
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: shellEnv
+        shellOutput: shellEnv,
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
@@ -443,10 +440,10 @@ SHELL=/system/bin/sh`;
     it('should handle library paths', async () => {
       const libEnv = `LD_LIBRARY_PATH=/system/lib:/vendor/lib
 LD_PRELOAD=/system/lib/libpreload.so`;
-      
+
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
-        shellOutput: libEnv
+        shellOutput: libEnv,
       }) as unknown as ADBDevice;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);

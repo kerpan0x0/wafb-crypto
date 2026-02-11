@@ -3,7 +3,7 @@ import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '
 import type { ADBDevice } from '../../adb/device';
 import { DumpsysCommand } from '../../adb/commands';
 
-export interface DumpsysConfig extends AcquisitionConfig { }
+export interface DumpsysConfig extends AcquisitionConfig {}
 
 export class DumpsysAcquirer extends Acquirer {
   constructor(
@@ -13,9 +13,7 @@ export class DumpsysAcquirer extends Acquirer {
     super(device, dumpsysConfig, 'dumpsys');
   }
 
-  async acquire(
-    onProgress?: (progress: AcquisitionProgress) => void
-  ): Promise<AcquisitionResult> {
+  async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const startTime = new Date();
 
     try {
@@ -45,22 +43,15 @@ export class DumpsysAcquirer extends Acquirer {
       const dumpsysOutput = await new DumpsysCommand(this.device.adb).exec({ timeout });
 
       this.logger.info('Dumpsys collection completed', {
-        outputSize: dumpsysOutput.length
+        outputSize: dumpsysOutput.length,
       });
 
-      this.notifyProgress(
-        onProgress,
-        90,
-        'Processing dumpsys output...',
-        'running'
-      );
+      this.notifyProgress(onProgress, 90, 'Processing dumpsys output...', 'running');
 
-      // Step 3: Convert to blob and create download
+      // Step 3: Convert to blob
       const textBytes = new TextEncoder().encode(dumpsysOutput);
       const blob = new Blob([textBytes], { type: 'text/plain' });
-      const fileName = this.generateFileName('dumpsys', 'txt', deviceInfo.model);
-
-      this.downloadBlob(blob, fileName);
+      const fileName = this.generateFileName('dumpsys', 'txt');
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -79,8 +70,9 @@ export class DumpsysAcquirer extends Acquirer {
         data: {
           deviceInfo,
           outputSize: dumpsysOutput.length,
-          lines: dumpsysOutput.split('\n').length
-        }
+          lines: dumpsysOutput.split('\n').length,
+        },
+        blob,
       };
 
       if (this.config.computeHash) {
@@ -90,11 +82,10 @@ export class DumpsysAcquirer extends Acquirer {
       this.logger.info('Dumpsys acquisition completed', {
         fileName,
         fileSize: textBytes.length,
-        duration
+        duration,
       });
 
       return result;
-
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -109,7 +100,7 @@ export class DumpsysAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }

@@ -7,7 +7,7 @@ import {
   createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream
+  createMockReadableStream,
 } from '../../../helpers/test-helpers';
 
 // ============================================================================
@@ -53,7 +53,7 @@ describe('DumpsysAcquirer', () => {
           stdout: createMockReadableStream(MOCK_DUMPSYS_OUTPUT),
           stderr: createMockReadableStream(''),
           stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 })
+          exit: Promise.resolve({ code: 0 }),
         });
       }
       // Fallback to default behaviour for other commands (getprop, etc.)
@@ -61,7 +61,7 @@ describe('DumpsysAcquirer', () => {
         stdout: createMockReadableStream(''),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
     });
 
@@ -85,7 +85,7 @@ describe('DumpsysAcquirer', () => {
     it('should create instance with custom config', () => {
       const customAcquirer = new DumpsysAcquirer(device, {
         timeout: 60000,
-        computeHash: true
+        computeHash: true,
       });
       expect(customAcquirer).toBeInstanceOf(DumpsysAcquirer);
     });
@@ -101,8 +101,7 @@ describe('DumpsysAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('dumpsys');
-      expect(result.fileName).toMatch(/^dumpsys-.*\.txt$/);
-      expect(result.fileName).toContain('Test Device');
+      expect(result.fileName).toBe('dumpsys.txt');
       expect(result.fileSize).toBeGreaterThan(0);
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
@@ -133,16 +132,13 @@ describe('DumpsysAcquirer', () => {
       expect(result.data?.lines).toBe(MOCK_DUMPSYS_OUTPUT.split('\n').length);
     });
 
-    it('should trigger download with correct blob type', async () => {
-      await acquirer.acquire();
+    it('should return blob with correct type in result', async () => {
+      const result = await acquirer.acquire();
 
-      expect(domMocks.createObjectURLSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'text/plain'
-        })
-      );
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
-      expect(domMocks.mockAnchor.download).toMatch(/dumpsys-.*\.txt/);
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('text/plain');
+      expect(result.blob!.size).toBeGreaterThan(0);
     });
   });
 
@@ -246,9 +242,7 @@ describe('DumpsysAcquirer', () => {
     });
 
     it('should handle device disconnection', async () => {
-      vi.spyOn(device, 'getProperties').mockRejectedValue(
-        new Error('Device disconnected')
-      );
+      vi.spyOn(device, 'getProperties').mockRejectedValue(new Error('Device disconnected'));
 
       const result = await acquirer.acquire();
 
@@ -338,24 +332,23 @@ describe('DumpsysAcquirer', () => {
   describe('output format', () => {
     it('should generate filename with correct pattern', async () => {
       const result = await acquirer.acquire();
-      expect(result.fileName).toMatch(/^dumpsys-Test Device-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.txt$/);
+      expect(result.fileName).toBe('dumpsys.txt');
     });
 
     it('should create blob with UTF-8 encoded content', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      expect(blob.type).toBe('text/plain');
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.blob!.type).toBe('text/plain');
 
-      const text = await blob.text();
+      const text = await result.blob!.text();
       expect(text).toBe(MOCK_DUMPSYS_OUTPUT);
     });
 
     it('should not modify or parse the dumpsys output', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      const blob = domMocks.createObjectURLSpy.mock.calls[0][0] as Blob;
-      const text = await blob.text();
+      const text = await result.blob!.text();
       expect(text).toBe(MOCK_DUMPSYS_OUTPUT); // raw, unchanged
     });
   });
@@ -371,7 +364,7 @@ describe('DumpsysAcquirer', () => {
         stdout: createMockReadableStream(''),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
 
       const result = await acquirer.acquire();
@@ -388,7 +381,7 @@ describe('DumpsysAcquirer', () => {
         stdout: createMockReadableStream(largeOutput),
         stderr: createMockReadableStream(''),
         stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 })
+        exit: Promise.resolve({ code: 0 }),
       });
 
       const result = await acquirer.acquire();
@@ -405,14 +398,13 @@ describe('DumpsysAcquirer', () => {
         manufacturer: 'Google',
         brand: 'google',
         sdkVersion: 33,
-        serialNumber: 'TEST123'
+        serialNumber: 'TEST123',
       });
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      // generateFileName does NOT sanitize special characters, they are preserved
-      expect(result.fileName).toContain('Pixel 6 (🐧)');
+      expect(result.fileName).toBe('dumpsys.txt');
     });
   });
 });

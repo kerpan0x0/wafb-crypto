@@ -23,11 +23,11 @@ export type AcquisitionType =
   | 'dumpsys';
 
 export type AcquisitionStatus =
-  | 'pending'      // In attesa di esecuzione
-  | 'running'      // In esecuzione
-  | 'completed'    // Completata con successo
-  | 'failed'       // Fallita
-  | 'skipped';     // Saltata
+  | 'pending' // In attesa di esecuzione
+  | 'running' // In esecuzione
+  | 'completed' // Completata con successo
+  | 'failed' // Fallita
+  | 'skipped'; // Saltata
 
 export interface AcquisitionConfig {
   timeout?: number;
@@ -52,6 +52,7 @@ export interface AcquisitionResult {
   endTime: Date;
   duration: number;
   data?: unknown;
+  blob?: Blob; // Blob data for bundling into ZIP
   error?: string;
 }
 
@@ -86,13 +87,14 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
   bugreport: {
     id: 'bugreport',
     name: 'Bugreport',
-    description: 'Complete system diagnostic report including logs, configurations, and system state',
+    description:
+      'Complete system diagnostic report including logs, configurations, and system state',
     category: 'system',
     icon: '📋',
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 120,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   packages: {
     id: 'packages',
@@ -103,7 +105,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 10,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   logcat: {
     id: 'logcat',
@@ -114,7 +116,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 5,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   selinux: {
     id: 'selinux',
@@ -125,7 +127,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 15,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   system_info: {
     id: 'system_info',
@@ -136,18 +138,19 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 5,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   logs: {
     id: 'logs',
     name: 'System Log Files',
-    description: 'Collection of system log files from various locations (kernel logs, ANR, system logs)',
+    description:
+      'Collection of system log files from various locations (kernel logs, ANR, system logs)',
     category: 'logs',
     icon: '📄',
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 30,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   network: {
     id: 'network',
@@ -158,7 +161,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 5,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   rootBinaries: {
     id: 'rootBinaries',
@@ -169,7 +172,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false, // TODO check if this should be true
     estimatedDuration: 120,
-    defaultEnabled: false
+    defaultEnabled: false,
   },
   env: {
     id: 'env',
@@ -180,7 +183,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 5,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   mount: {
     id: 'mount',
@@ -191,7 +194,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 5,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   settings: {
     id: 'settings',
@@ -202,12 +205,13 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 10,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   process: {
     id: 'process',
     name: 'Running Processes',
-    description: 'Snapshot of all running processes with PID, memory usage, CPU info, and SELinux contexts',
+    description:
+      'Snapshot of all running processes with PID, memory usage, CPU info, and SELinux contexts',
     category: 'system',
     icon: '🔄',
     minSdkVersion: 14,
@@ -229,13 +233,14 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
   files: {
     id: 'files',
     name: 'File Listing',
-    description: 'Complete file system listing with forensic metadata (timestamps, permissions, ownership)',
+    description:
+      'Complete file system listing with forensic metadata (timestamps, permissions, ownership)',
     category: 'system',
     icon: '📁',
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 180,
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   tmp: {
     id: 'tmp',
@@ -246,22 +251,23 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 15,
-    defaultEnabled: false
+    defaultEnabled: false,
   },
   dumpsys: {
     id: 'dumpsys',
     name: 'Dumpsys',
-    description: 'Full diagnostic dump: detailed system service states, memory, battery, network diagnostics.',
+    description:
+      'Full diagnostic dump: detailed system service states, memory, battery, network diagnostics.',
     category: 'system',
     icon: '🔧',
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 30,
-    defaultEnabled: false
-  }
+    defaultEnabled: false,
+  },
 };
 
-// Export Acquirers 
+// Export Acquirers
 export { Acquirer } from './acquirer';
 export { BugreportAcquirer } from './bugreport';
 export { PackagesAcquirer } from './packages';
@@ -270,11 +276,11 @@ export { RootBinariesAcquirer } from './root-binaries';
 export { EnvAcquirer } from './env';
 export { MountAcquirer } from './mount';
 export { SystemInfoAcquirer } from './system';
-export { SELinuxAcquirer } from './selinux'
+export { SELinuxAcquirer } from './selinux';
 export { SettingsAcquirer } from './settings';
 export { ProcessAcquirer } from './process';
 export { ServicesAcquirer } from './services';
-export { FileAcquirer } from './files'
+export { FileAcquirer } from './files';
 export { LogAcquirer } from './logs';
 export { TmpAcquirer } from './tmpAcquirer';
 export { DumpsysAcquirer } from './dumpsys';

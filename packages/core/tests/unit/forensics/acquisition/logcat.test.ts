@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LogcatAcquirer } from '../../../../src/forensics/acquisition/logcat';
-import { 
-  createMockADBDeviceWithCommands, 
+import {
+  createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
-  createMockProgressCallback
+  createMockProgressCallback,
 } from '../../../helpers/test-helpers';
 import type { ADBDevice } from '../../../../src/adb/device';
 
@@ -20,8 +20,8 @@ describe('LogcatAcquirer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    device = createMockADBDeviceWithCommands({ 
-      getLogcat: mockLogcatOutput 
+    device = createMockADBDeviceWithCommands({
+      getLogcat: mockLogcatOutput,
     }) as unknown as ADBDevice;
     domMocks = setupAcquirerDOMMocks();
     acquirer = new LogcatAcquirer(device);
@@ -37,7 +37,7 @@ describe('LogcatAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('logcat');
-      expect(result.fileName).toMatch(/logcat-.*\.txt/);
+      expect(result.fileName).toBe('logcat.txt');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -69,15 +69,15 @@ describe('LogcatAcquirer', () => {
     it('should handle empty logcat', async () => {
       // Cleanup previous mocks
       domMocks.cleanup();
-      
+
       // Create new device with empty logcat
-      device = createMockADBDeviceWithCommands({ 
-        getLogcat: '' 
+      device = createMockADBDeviceWithCommands({
+        getLogcat: '',
       }) as unknown as ADBDevice;
-      
+
       // Recreate DOM mocks
       domMocks = setupAcquirerDOMMocks();
-      
+
       // Create new acquirer with new device
       acquirer = new LogcatAcquirer(device);
 
@@ -128,7 +128,7 @@ describe('LogcatAcquirer', () => {
       acquirer = new LogcatAcquirer(device, {
         buffer: 'main',
         maxLines: 500,
-        filter: '*:W'
+        filter: '*:W',
       });
       const result = await acquirer.acquire();
 
@@ -165,7 +165,7 @@ describe('LogcatAcquirer', () => {
 
     it('should handle logs without priority markers', async () => {
       device = createMockADBDeviceWithCommands({
-        getLogcat: 'Plain log line\nAnother plain line'
+        getLogcat: 'Plain log line\nAnother plain line',
       }) as unknown as ADBDevice;
       acquirer = new LogcatAcquirer(device);
 
@@ -250,21 +250,27 @@ describe('LogcatAcquirer', () => {
 
   describe('output format', () => {
     it('should include metadata header in output', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
+      const text = await result.blob!.text();
+      expect(text).toContain('# Logcat Acquisition Metadata');
     });
 
     it('should include JSON metadata', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
+      const text = await result.blob!.text();
+      expect(text).toContain('METADATA (JSON)');
     });
 
     it('should include original logcat output', async () => {
-      await acquirer.acquire();
+      const result = await acquirer.acquire();
 
-      expect(domMocks.mockAnchor.click).toHaveBeenCalled();
+      expect(result.blob).toBeInstanceOf(Blob);
+      const text = await result.blob!.text();
+      expect(text).toContain('LOGCAT OUTPUT');
     });
   });
 });
