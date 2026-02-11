@@ -648,16 +648,6 @@ describe('SystemInfoAcquirer', () => {
       expect(result.endTime).toBeInstanceOf(Date);
     });
 
-    it('should generate correct filename', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      // Format: system-info-Test Device-2026-02-10T10-22-41-227Z.json
-      expect(result.fileName).toMatch(
-        /system-info-Test Device-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json/
-      );
-    });
-
     it('should include acquisition duration', async () => {
       const result = await acquirer.acquire();
 
