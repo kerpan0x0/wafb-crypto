@@ -21,7 +21,7 @@
     "dev:web": "pnpm --filter @wafb/web dev",
     "dev:core": "pnpm --filter @wafb/core dev",
     "build": "turbo run build",
-    "build:dev": "VITE_DEV_VERSION=true vite build",
+    "build:dev": "pnpm --filter @wafb/web build:dev",
     "build:web": "turbo run build --filter=@wafb/web",
     "build:core": "turbo run build --filter=@wafb/core",
     "preview": "pnpm --filter @wafb/web preview",
