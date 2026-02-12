@@ -10,11 +10,8 @@ export type {
   // Connection types
   DeviceInfo,
   ConnectionOptions,
-
   DeviceProperties,
 } from './adb';
-
-
 
 // ============================================================================
 // Forensics - Acquisition, Analysis, Export
@@ -28,13 +25,10 @@ export type {
   AcquisitionProgress,
   AcquisitionResult,
   AcquisitionMetadata,
-  AcquisitionSession
+  AcquisitionSession,
 } from './forensics/acquisition';
 
-export { 
-  ACQUISITION_TYPES,
-  Acquirer
-} from './forensics/acquisition';
+export { ACQUISITION_TYPES, Acquirer } from './forensics/acquisition';
 
 export { SettingsAcquirer } from './forensics/acquisition/settings';
 export type { SettingsConfig } from './forensics/acquisition/settings';
@@ -52,47 +46,38 @@ export { PackagesAcquirer } from './forensics/acquisition/packages';
 export type {
   PackagesConfig,
   PackageInfo,
-  PackagesData
+  PackageFile,
+  PackageCertificate,
 } from './forensics/acquisition/packages';
 
 export { LogcatAcquirer } from './forensics/acquisition/logcat';
-export type {
-  LogcatConfig,
-  LogcatStats,
-  LogcatData
-} from './forensics/acquisition/logcat';
+export type { LogcatConfig, LogcatStats, LogcatData } from './forensics/acquisition/logcat';
 
 export { LogAcquirer } from './forensics/acquisition/logs';
-export type {
-  LogConfig,
-  LogData
-} from './forensics/acquisition/logs';
+export type { LogConfig, LogData } from './forensics/acquisition/logs';
 
 export { SystemInfoAcquirer } from './forensics/acquisition/system';
-export type {
-  SystemInfoConfig,
-  SystemInfoData
-} from './forensics/acquisition/system';
+export type { SystemInfoConfig, SystemInfoData } from './forensics/acquisition/system';
 
 export { RootBinariesAcquirer } from './forensics/acquisition/root-binaries';
 export type { RootBinariesConfig } from './forensics/acquisition/root-binaries';
 
-export { SELinuxAcquirer } from './forensics/acquisition/selinux'
-export type { SELinuxConfig } from './forensics/acquisition/selinux'
+export { SELinuxAcquirer } from './forensics/acquisition/selinux';
+export type { SELinuxConfig } from './forensics/acquisition/selinux';
 
-export { ProcessAcquirer } from './forensics/acquisition/process'
-export type { ProcessConfig } from './forensics/acquisition/process'
+export { ProcessAcquirer } from './forensics/acquisition/process';
+export type { ProcessConfig } from './forensics/acquisition/process';
 
-export { ServicesAcquirer } from './forensics/acquisition/services'
-export type { ServicesConfig } from './forensics/acquisition/services'
+export { ServicesAcquirer } from './forensics/acquisition/services';
+export type { ServicesConfig } from './forensics/acquisition/services';
 
-export { FileAcquirer } from './forensics/acquisition/files'
-export type { FileAcquisitionConfig } from './forensics/acquisition/files'
+export { FileAcquirer } from './forensics/acquisition/files';
+export type { FileAcquisitionConfig } from './forensics/acquisition/files';
 
 export { TmpAcquirer } from './forensics/acquisition/tmpAcquirer';
-export type { TmpAcquirerConfig } from './forensics/acquisition/tmpAcquirer'
+export type { TmpAcquirerConfig } from './forensics/acquisition/tmpAcquirer';
 
-export { DumpsysAcquirer } from './forensics/acquisition/dumpsys'
+export { DumpsysAcquirer } from './forensics/acquisition/dumpsys';
 export type { DumpsysConfig } from './forensics/acquisition/dumpsys';
 
 // ============================================================================
@@ -106,14 +91,14 @@ export {
   ADBError,
   ADBConnectionError,
   ADBDeviceNotFoundError,
-  ADBCommandError
+  ADBCommandError,
 } from './utils/errors';
 
 export {
   readStreamAsText,
   readStreamAsBytes,
   concatUint8Arrays,
-  retry
+  retry,
 } from './utils/stream-helpers';
 
 // ============================================================================

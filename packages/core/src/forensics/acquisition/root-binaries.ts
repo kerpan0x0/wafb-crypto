@@ -121,18 +121,33 @@ export class RootBinariesAcquirer extends Acquirer {
   }
 
   private async getAvailableRootBinaries(binaries: string[]): Promise<string> {
-    const rootBinariesData: Record<string, string> = {};
+    const rootBinariesPaths: string[] = [];
 
     for (const binary of binaries) {
       try {
         const result = await new RootBinariesCommand(this.device.adb).exec({ command: binary });
-        rootBinariesData[binary] = result;
-        this.logger.info(`Retrieved root binary: ${binary}`);
+
+        // Parse multi-line output from `which -a` (e.g., "/path1\n/path2")
+        const paths = result
+          .split('\n')
+          .map(p => p.trim())
+          .filter(p => p !== '' && !p.toLowerCase().includes('not found'));
+
+        rootBinariesPaths.push(...paths);
+
+        if (paths.length > 0) {
+          this.logger.info(`Found ${paths.length} path(s) for binary: ${binary}`);
+        }
       } catch (err) {
         this.logger.warn(`Error retrieving binary ${binary}: ${err}`);
       }
     }
 
-    return JSON.stringify(rootBinariesData, null, 2);
+    // Remove duplicates (in case same binary found multiple times)
+    const uniquePaths = [...new Set(rootBinariesPaths)];
+
+    this.logger.info(`Total unique root binary paths found: ${uniquePaths.length}`);
+
+    return JSON.stringify(uniquePaths, null, 2);
   }
 }

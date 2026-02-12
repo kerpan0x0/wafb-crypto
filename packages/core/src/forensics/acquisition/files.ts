@@ -27,9 +27,11 @@ interface FileDetail {
   path: string;
   size: number;
   type: string;
-  mtime: number;
-  atime: number;
-  ctime: number;
+  modified_time: number; // MVT requirement (was mtime)
+  access_time: number; // MVT requirement (was atime)
+  changed_time: number; // MVT requirement (was ctime)
+  mode: string; // MVT requirement - file permissions mode
+  context: string; // MVT requirement - SELinux context
   permissionsOctal: string;
   permissionsHuman: string;
   owner: string;
@@ -142,23 +144,8 @@ export class FileAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 95, 'Preparing output...', 'running');
 
-      const outputData = {
-        totalFiles: this.fileDetails.length,
-        totalSize: this.totalBytesScanned,
-        filesHashed: this.filesHashed,
-        totalBytesHashed: this.totalBytesHashed,
-        files: this.fileDetails,
-        deviceInfo,
-        acquisitionTime: new Date().toISOString(),
-        timestamp: new Date().toISOString(),
-        downloadedFiles: this.fileConfig.downloadFiles || false,
-        hashingEnabled: this.fileConfig.computeFileHashes || false,
-        hashAlgorithms: this.fileConfig.computeFileHashes
-          ? this.fileConfig.hashAlgorithms || []
-          : [],
-      };
-
-      const outputJson = JSON.stringify(outputData, null, 2);
+      // Output direct array for MVT compatibility
+      const outputJson = JSON.stringify(this.fileDetails, null, 2);
       const outputBytes = new TextEncoder().encode(outputJson);
 
       const blob = new Blob([outputBytes], { type: 'application/json' });
@@ -715,7 +702,7 @@ export class FileAcquirer extends Acquirer {
   private parseStatLine(path: string, line: string): FileDetail | null {
     const parts = line.split('|');
 
-    if (parts.length !== 12) {
+    if (parts.length !== 13) {
       this.logger.warn(`Unexpected stat format for ${path}`, { parts: parts.length });
       return null;
     }
@@ -733,6 +720,7 @@ export class FileAcquirer extends Acquirer {
       uidStr,
       gidStr,
       inodeStr,
+      selinuxContext,
     ] = parts;
 
     const size = parseInt(sizeStr, 10);
@@ -756,9 +744,11 @@ export class FileAcquirer extends Acquirer {
       path,
       size,
       type: typeStr,
-      mtime,
-      atime,
-      ctime,
+      modified_time: mtime,
+      access_time: atime,
+      changed_time: ctime,
+      mode: humanPerms, // MVT expects human-readable mode string
+      context: selinuxContext || '', // SELinux context from stat -c %C
       permissionsOctal: octalPerms,
       permissionsHuman: humanPerms,
       owner,

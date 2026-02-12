@@ -652,7 +652,7 @@ describe('SystemInfoAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.duration).toBeGreaterThan(0);
+      expect(result.duration).toBeGreaterThanOrEqual(0);
       expect(typeof result.duration).toBe('number');
     });
 

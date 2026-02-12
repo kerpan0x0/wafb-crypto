@@ -11,8 +11,8 @@ export interface StatOptions extends CommandOptions {
 
 export class StatCommand implements ADBCommands<string> {
   private logger: Logger;
-  
-  private static readonly DEFAULT_FORMAT = "%s|%F|%Y|%X|%Z|%a|%A|%U|%G|%u|%g|%i";
+
+  private static readonly DEFAULT_FORMAT = '%s|%F|%Y|%X|%Z|%a|%A|%U|%G|%u|%g|%i|%C';
 
   constructor(private adb: Adb) {
     this.logger = new Logger('StatCommand');
@@ -27,12 +27,12 @@ export class StatCommand implements ADBCommands<string> {
 
     try {
       const output = await new ShellCommand(this.adb, command).exec({ timeout });
-      
-      this.logger.debug('Stat command completed', { 
-        path, 
-        outputLength: output.length 
+
+      this.logger.debug('Stat command completed', {
+        path,
+        outputLength: output.length,
       });
-      
+
       return output;
     } catch (error) {
       this.logger.error('Stat command failed', { path, error });
@@ -52,7 +52,7 @@ export interface StatBatchOptions extends CommandOptions {
 
 export class StatBatchCommand implements ADBCommands<string> {
   private logger: Logger;
-  private static readonly DEFAULT_FORMAT = "%s|%F|%Y|%X|%Z|%a|%A|%U|%G|%u|%g|%i";
+  private static readonly DEFAULT_FORMAT = '%s|%F|%Y|%X|%Z|%a|%A|%U|%G|%u|%g|%i|%C';
 
   constructor(private adb: Adb) {
     this.logger = new Logger('StatBatchCommand');
@@ -69,18 +69,18 @@ export class StatBatchCommand implements ADBCommands<string> {
 
     // Build command that stats all files
     // Each stat output will be on a separate line
-    const commands = paths.map(path => 
-      `stat -c "${format}" ${this.escapeShellArg(path)} 2>/dev/null || echo "ERROR"`
-    ).join(' ; ');
+    const commands = paths
+      .map(path => `stat -c "${format}" ${this.escapeShellArg(path)} 2>/dev/null || echo "ERROR"`)
+      .join(' ; ');
 
     try {
       const output = await new ShellCommand(this.adb, commands).exec({ timeout });
-      
-      this.logger.debug('Batch stat command completed', { 
+
+      this.logger.debug('Batch stat command completed', {
         count: paths.length,
-        outputLength: output.length 
+        outputLength: output.length,
       });
-      
+
       return output;
     } catch (error) {
       this.logger.error('Batch stat command failed', { count: paths.length, error });
