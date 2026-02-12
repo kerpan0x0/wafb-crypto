@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### User Interface & Experience
 - **Single ZIP bundle** – all selected acquisitions are now packed into one timestamped archive with a `manifest.json` containing metadata, hashes and acquisition summary (#41)
+- **MVT‑compatible output** – the generated ZIP follows the structure expected by [Mobile Verification Toolkit](https://mvt.re), enabling direct forensic analysis with MVT Android modules
 - **Responsive layout** – header and footer now share consistent width (`max-w-6xl`) and footer always sticks to bottom of viewport
 - **Build version in footer** – displays `{package.json-version}-{short-commit}` (e.g. `0.2.0-a1b2c3d`) – unified across all environments
 

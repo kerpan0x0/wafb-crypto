@@ -61,6 +61,30 @@ wafb/
 └── turbo.json         # Turborepo pipeline configuration
 ```
 
+## ⚠️ Warning – Sensitive Data
+
+**WAFB extracts forensic artifacts directly from your Android device.**  
+The acquired data may contain **personally identifiable information (PII)**, including but not limited to:
+
+- Contacts, messages, call logs
+- Installed applications and usage history
+- Location data, Wi‑Fi passwords, account tokens
+- System logs and diagnostic dumps (may contain device identifiers, IP addresses, recent activity)
+
+**You are solely responsible for how you handle this data.**  
+- Always treat extracted archives as **highly confidential**.  
+- Never share acquisition results publicly or with unauthorised parties.  
+- Delete local copies immediately after analysis.  
+- Ensure your storage and transfer methods are secure.
+
+This tool is designed for **legitimate forensic investigations, security research, and personal device backups only**.  
+Misuse may violate privacy laws and regulations. By using WAFB, you acknowledge these responsibilities.
+
+## 🙏 Acknowledgments
+
+- [@yume-chan/adb](https://github.com/yume-chan/ya-webadb) - WebADB implementation
+- AndroidQF format specification
+
 ## 📄 License
 
 GPL‑3.0 © 2026 garrett & contributors.
