@@ -7,7 +7,11 @@
     "type": "git",
     "url": "https://git.lattuga.net/garrett/wafb.git"
   },
-  "author": "garrett",
+  "author": "garrett <garrett@autistici.org>",
+  "contributors": [
+    "garrett <garrett@autistici.org>",
+    "ntonjeta <ntonjeta@autistici.org>"
+  ],
   "license": "GPL-3.0",
   "workspaces": [
     "packages/*"

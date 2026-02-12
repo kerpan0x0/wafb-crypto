@@ -1,172 +1,107 @@
 # Changelog
 
-All notable changes to WAFB (WebADB Forensics Bridge) will be documented in this file.
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+---
 
-### 🎉 Android Packages, Logcat & Architecture Refactor
-This release introduces detailed acquisition support for installed packages and Logcat, along with a significant refactoring of the frontend architecture for better scalability.
+## [0.2.0] - 2026-02-12
 
-### Added
+### 🚀 Added
 
-#### Core Package (@wafb/core)
-- **New PackagesAcquirer Module**: Full acquisition of installed packages list via ADB, including system/user filtering and SHA-256 integrity.
-- **Logcat Acquisition Support**: Exported `LogcatAcquirer` and related types (`LogcatConfig`, `LogcatStats`, `LogcatData`) for system log retrieval.
-- **Detailed Metadata**: Extraction of SDK versions and declared permissions via `dumpsys`.
+#### Forensic Acquisition Modules
+- **`dumpsys` acquirer** – full system diagnostic dump (raw output) (#40)
+- **`tmp` acquirer** – acquisition of temporary files from `/data/local/tmp` (#38)
+- **`logs` acquirer** – system log files (ANR, kernel, pstore, uiderrors) (#36)
+- **`files` acquirer** – complete file system listing with forensic metadata, optional SHA‑256 hashing (device or browser) (#35)
+- **`services` acquirer** – list of active system services, enriched with PID, process name, and running/stopped state
+- **`process` acquirer** – snapshot of running processes with PID, PPID, UID, SELinux context, and system/user classification
+- **`settings` acquirer** – export of `global`, `system`, and `secure` settings via `cmd settings list` (#27)
+- **`mount` acquirer** – combined mount points from `mount` and `/proc/mounts` (#23)
+- **`selinux` acquirer** – mode, policy version, process contexts, file contexts, and denial log parsing (#24)
+- **`env` acquirer** – environment variables dump (#7)
+- **`rootBinaries` acquirer** – detection of `su`, `magisk`, `busybox`, and other root artifacts (#5)
+- **`system_info` acquirer** – detailed device information (battery, network, storage, memory, sensors) (#6)
 
-#### Web Package (@wafb/web)
-- **Dynamic Acquisition Engine**: Implemented a mapping (Factory) pattern in `AcquisitionPage` for managing acquirers dynamically.
-- **Integrated Support**: Added execution flow for both `packages` and `bugreport` types using the new factory pattern.
+#### User Interface & Experience
+- **Single ZIP bundle** – all selected acquisitions are now packed into one timestamped archive with a `manifest.json` containing metadata, hashes and acquisition summary (#41)
+- **Responsive layout** – header and footer now share consistent width (`max-w-6xl`) and footer always sticks to bottom of viewport
+- **Build version in footer** – displays `{package.json-version}-{short-commit}` (e.g. `0.2.0-a1b2c3d`) – unified across all environments
 
-### Changed
+#### Development & Infrastructure
+- **Version management** – centralised `scripts/version-utils.mjs`; Vite injects version dynamically; `pnpm version:sync` and `pnpm version:sync-dev` update all `package.json` files
+- **CI/CD** – automated deployment to `https://wafb.jamme.la` on tag push
+- **ESM‑safe version fallback** – uses `fs.readFileSync` + `JSON.parse` instead of `require` for CI environments without Git
 
-#### Core Package
-- **API Exports**: Updated main index to properly export new forensic acquisition modules.
+### 🔧 Changed
 
-#### Web Package
-- **Acquisition Store**: Improved type handling in `acquisitionStore.ts` using explicit casting for session acquisition lookups.
-- **Acquisition UI Refactor**: Simplified logic by removing static conditional chains and optimizing CSS transitions for progress states.
+- **Command pattern refactor** – all ADB interactions moved to dedicated `*Command` classes; acquirers consume them via the `ADBCommands` interface (#26, #18)
+- **Acquisition workflow** – `AcquisitionPage` now uses a dynamic factory map, eliminating hard‑coded conditionals
+- **Bugreport** – improved path parsing (regex + `OK:` prefix); cleanup tracking; idle timeout set to 3 minutes
+- **Packages** – permission extraction, SDK version parsing, better heuristics for system app identification
+- **Logcat** – added metadata header, statistics (error/warning counts), configurable buffer selection
+- **File acquirer** – adaptive batching, device‑side hashing with fallback to browser `SubtleCrypto`, parallel folder scans, `maxHashFileSize` and `excludeHashPaths` options
+- **Testing** – full test suites for all acquirers (≥80% coverage), centralised test helpers (`createMockADBDeviceWithCommands`, `setupAcquirerDOMMocks`)
+- **Logger** – browser detection to avoid CSS formatting in Node/Vitest; improved log retention
 
-### Removed
+### 🐛 Fixed
 
-#### Web Package
-- **Obsolete Code Cleanup**: Removed unused hooks (`useADB`, `useBugreport`, `useForensics`, `useReport`) and deprecated components (`ErrorBoundary`, `Layout`).
+- **Bugreport cleanup** – now attempted even when acquisition fails (critical for forensic integrity)
+- **ShellCommand** – added **idle timeout** (default 5s) to prevent hanging on devices that never close the stream
+- **Store compatibility** – use `globalThis` instead of `window` for `__ACQUISITION_TYPES__` to support `happy-dom` test environment
+- **Turbo cache** – removed from version control
+- **ESLint / TypeScript** – resolved ESM/CJS conflicts in core package
 
-## [0.1.0] - 2025-01-10
+### 📚 Documentation
 
-### 🎉 First Stable Release
-This release marks the transition from alpha to the first production-ready version of WAFB, with significant improvements in code quality, testing, and forensic integrity.
-
-### Added
-
-#### Core Package (@wafb/core)
-- **Enhanced Forensic Integrity**
-  - Forensic-grade cleanup tracking with `cleanupPerformed` flag
-  - Public `wasCleanupPerformed()` method for verification
-  - Cleanup attempt guaranteed even on acquisition failure
-  - Critical logging for cleanup failures (essential for chain of custody)
-  
-- **Test Infrastructure**
-  - Comprehensive test suite: 26 bugreport tests + 8 logger + 8 device + 8 commands + 11 connection tests
-  - Reusable test helpers library (`createMockAdb`, `createMockDevice`, `createMockShellSocket`, etc.)
-  - Stream helpers tests with full coverage
-  - Integration test skeleton for physical device validation
-  - Coverage thresholds enforced: 80% lines/functions/statements, 75% branches
-  
-- **Acquisition Framework Enhancements**
-  - Structured metadata for all 9 acquisition types
-  - SDK version compatibility checking
-  - Root requirement validation
-  - Default enable/disable logic based on device capabilities
-
-#### Web Package (@wafb/web)
-- **Acquisition Store (Zustand)**
-  - Complete state management for multi-acquisition sessions
-  - Progress aggregation across multiple acquisitions
-  - Session lifecycle tracking (preparing → running → completed/failed/cancelled)
-  - Device info persistence throughout session
-  - 37 comprehensive tests covering all store functionality
-  
-- **Test Infrastructure**
-  - Vitest setup with happy-dom environment
-  - Test utilities for ACQUISITION_TYPES mocking
-  - Complete store test coverage (initialization, selection, progress, completion)
-
-### Changed
-
-#### Core Package
-- **Module Structure**: Flattened acquisition module hierarchy
-  - `forensics/acquisition/base/types.ts` → `forensics/acquisition/types.ts`
-  - `forensics/acquisition/bugreport/BugreportAcquirer.ts` → `forensics/acquisition/bugreport.ts`
-  - Improved maintainability and reduced nesting
-  
-- **Logger Improvements**
-  - Browser detection for CSS formatting (prevents pollution in test output)
-  - Performance optimization: `slice()` instead of `shift()` for log retention
-  - Consistent use of `console.log` for standard messages
-  
-- **BugreportAcquirer Cleanup Logic**
-  - Cleanup now tracked with internal `cleanupPerformed` flag
-  - Dedicated `performCleanup()` private method with robust error handling
-  - Always attempts cleanup even on acquisition failure
-  - Cleanup status included in `AcquisitionResult.data.cleanupPerformed`
-
-#### Web Package
-- **Acquisition Store**: `window` → `globalThis` for ACQUISITION_TYPES
-  - Ensures compatibility with test environments (happy-dom)
-  - Works seamlessly in both browser and Node.js contexts
-  - Fixed initialization issues in Vitest
-
-### Fixed
-
-#### Core Package
-- **Logger Performance**: Use `slice()` instead of `shift()` for maintaining log history
-- **Test Environment Compatibility**: Logger CSS formatting now detects browser context
-- **Cleanup Tracking**: Failures are logged as CRITICAL with full error context
-- **Device Test Mocking**: Refactored to use shared test helpers, eliminating code duplication
-
-#### Web Package
-- **Test Initialization**: ACQUISITION_TYPES properly initialized in test environment via `globalThis`
-- **Store Reset**: Proper cleanup between tests to avoid state pollution
-
-### Testing
-
-#### 🎯 All Tests Passing: 63/63 ✅
-
-#### Core Package (@wafb/core) - 61 tests
-- **Bugreport Acquisition** (26 tests)
-  - Bugreportz zip format and legacy text fallback
-  - **Cleanup verification** (critical for forensics!)
-  - Progress reporting validation
-  - Error handling (device disconnection, timeout, command failures)
-  - Hash computation (SHA-256)
-  - Metadata inclusion (timestamps, duration, file size)
-  - Edge cases (cleanup on failure, parsing errors)
-  
-- **ADB Components**
-  - Logger (8 tests): Level filtering, log retention, context tracking
-  - Device (8 tests): Properties, root detection, battery info
-  - Commands (8 tests): Shell execution, timeout, file operations
-  - Connection (11 tests): Connect, disconnect, retry logic, error handling
-  
-- **Stream Helpers** (6 tests): Text/binary reading, concatenation, retry mechanism
-- **Packages Acquisition** (6 tests): Package listing and filtering
-
-#### Web Package (@wafb/web) - 37 tests
-- **Acquisition Store** (37 tests)
-  - Initialization and reset (2)
-  - Acquisition initialization (6): Root/SDK filtering, device info
-  - Selection management (5): Toggle, select all, deselect all
-  - Session management (5): Start, unique IDs, validation
-  - Progress tracking (5): Individual and total progress
-  - Completion handling (3): Success, failure, session updates
-  - Session lifecycle (3): End conditions, timestamps
-  - Computed values (6): Selected acquisitions, session state
-  - Edge cases (3): Empty states, non-existent acquisitions
-
-#### Test Infrastructure
-- **Reusable Helpers**: Mock factories for ADB, devices, connections, streams
-- **Coverage**: 80%+ lines/functions/statements, 75%+ branches
-- **CI Integration**: Turbo-powered caching for faster test runs
-
-### Developer Experience
-
-- **Turbo Test Configuration**: Test output caching and coverage report retention
-- **Vitest Config**: Unified test setup across packages with proper timeouts
-- **Test Helpers Library**: Eliminates boilerplate and ensures consistency
-- **CI/CD**: All tests run automatically on every push via GitHub Actions
-
-### Security & Forensic Integrity
-
-- ✅ **Cleanup Tracking**: Every acquisition reports if cleanup was performed
-- ✅ **Chain of Custody**: Timestamps, hashes, and metadata for all acquisitions
-- ✅ **Error Resilience**: Cleanup attempted even on acquisition failure
-- ✅ **Audit Trail**: CRITICAL logging for cleanup failures
-- ✅ **No Traces**: Ensures forensic operations don't contaminate evidence
+- README completely overhauled with:
+  - Quick start (clone, install, run)
+  - Live demo link: [https://wafb.jamme.la](https://wafb.jamme.la)
+  - Requirements and architecture overview
+- CHANGELOG now follows "Keep a Changelog" format
 
 ---
 
-## [0.1.0-alpha] - 2026-01-08
+## [0.1.0] - 2026-01-10
+
+### 🚀 Added
+
+#### Core Functionality
+- **ADB over WebUSB** – device connection, authentication, shell commands, file transfer
+- **Bugreport acquisition** – both legacy (`bugreport > file`) and modern (`bugreportz`) formats, with automatic fallback
+- **Package listing** – `pm list packages` with optional system/user filtering
+- **Logcat acquisition** – dump mode, buffer selection, line limits, priority filtering
+- **Acquisition store** – Zustand-based state management for multi‑session triage
+
+#### Web UI
+- **React + TypeScript + Vite** application with Tailwind CSS
+- **Device connection screen** – WebUSB picker, requirement checklist, error handling
+- **Acquisition selection grid** – visual cards with icons, categories, progress bars
+- **Session progress** – global progress bar, per‑acquisition status, completion summary
+- **Automatic download** – individual files (ZIP for bugreportz, TXT for legacy)
+
+#### Developer Experience
+- **Monorepo structure** – `packages/core`, `packages/web`, `packages/cli` (scaffold)
+- **Turborepo** – parallel task execution, caching
+- **TypeScript project references** – strict type checking across packages
+- **Husky + lint-staged** – pre‑commit linting and formatting
+
+### 🔧 Changed
+
+- N/A – initial release
+
+### 🐛 Fixed
+
+- N/A – initial release
+
+### 📚 Documentation
+
+- Initial README with project description, goals, and setup instructions
+- GPL-3.0 license added
+
+---
+
+[0.2.0]: https://git.lattuga.net/garrett/wafb/compare/v0.1.0...v0.2.0
+[0.1.0]: https://git.lattuga.net/garrett/wafb/releases/tag/v0.1.0
