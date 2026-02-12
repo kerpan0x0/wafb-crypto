@@ -137,12 +137,9 @@ jobs:
 
       - name: Sync Versions from Git Tag
         run: |
-          CLEAN_VERSION="${GITHUB_REF_NAME#v}"  # removes leading 'v'
+          CLEAN_VERSION="${GITHUB_REF_NAME#v}"
           echo "Syncing all package.json to version: $CLEAN_VERSION"
-          pnpm -r exec npm version \
-            --no-git-tag-version \
-            --allow-same-version \
-            "$CLEAN_VERSION"
+          pnpm -r version --no-git-tag-version --allow-same-version "$CLEAN_VERSION"
 
       - name: Build
         run: |

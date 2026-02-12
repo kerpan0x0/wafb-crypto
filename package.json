@@ -36,7 +36,7 @@
     "prepare": "husky install",
     "start": "pnpm build:core && pnpm dev:web",
     "version:compute": "node scripts/get-version.mjs",
-    "version:sync": "V=$(pnpm version:compute) && pnpm -r exec npm version --no-git-tag-version --allow-same-version \"$V\""
+    "version:sync": "pnpm -r version --no-git-tag-version --allow-same-version \"$(pnpm version:compute)\""
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.0.0",
