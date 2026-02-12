@@ -140,8 +140,13 @@ jobs:
           CLEAN_VERSION=${GITHUB_REF_NAME#v}
           NEW_VERSION=$CLEAN_VERSION pnpm version:sync
 
-      - name: Build Project
-        run: pnpm build
+      - name: Build
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            pnpm build
+          else
+            pnpm build:dev
+          fi
 
       - name: Archive Web Bundle
         run: |

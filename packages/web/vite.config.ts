@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { computeVersion } from '../../scripts/version-utils.mjs'; // adjust path
 
-export default defineConfig(({ command }) => {
-  const isDev = command === 'serve'; // dev server vs build
+export default defineConfig(() => {
+  const isDev = process.env.VITE_DEV_VERSION === 'true';
   const version = computeVersion({ dev: isDev });
 
   return {
