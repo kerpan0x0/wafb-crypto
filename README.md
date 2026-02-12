@@ -18,6 +18,7 @@ It uses **WebUSB** to connect directly to your device – **no ADB server, no dr
   - Device info, battery, network, storage, memory, sensors
 - All results bundled into one **timestamped ZIP** with JSON manifest
 - Works entirely in the browser – **no data leaves your machine**
+- [MVT](https://docs.mvt.re/en/latest/) compliance for acquisition analysis
 - Responsive UI – adapts to any screen size
 
 ---
@@ -87,12 +88,13 @@ Misuse may violate privacy laws and regulations. By using WAFB, you acknowledge 
 
 ## 📄 License
 
-GPL‑3.0 © 2026 garrett & contributors.
+GPL‑3.0 © 2026
+
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 ## 👥 Authors
 
-garrett (@garrett)
-ntonjeta (@ntonjeta)
+- garrett (@garrett)
+- ntonjeta (@n)
 
 Contributions are welcome – see the repository for open issues and merge requests.
