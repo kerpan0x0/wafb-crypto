@@ -1,9 +1,12 @@
-// packages/web/src/App.tsx
-
 import { AcquisitionPage } from './components/acquisition/AcquisitionPage';
+import { Layout } from './components/layout/Layout';
 
 function App() {
-  return <AcquisitionPage />;
+  return (
+    <Layout>
+      <AcquisitionPage />
+    </Layout>
+  );
 }
 
 export default App;

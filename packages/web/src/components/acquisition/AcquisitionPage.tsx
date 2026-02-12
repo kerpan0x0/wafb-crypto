@@ -298,14 +298,8 @@ export function AcquisitionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="bg-gray-50 p-8 h-full">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">WAFB</h1>
-          <p className="text-gray-600">WebADB Forensics Bridge - Android Acquisition Tool</p>
-        </header>
-
         {/* Device Connection */}
         {!device ? (
           <div className="bg-white rounded-lg shadow p-8 text-center">
