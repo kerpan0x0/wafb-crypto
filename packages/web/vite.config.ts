@@ -1,13 +1,12 @@
-// packages/web/vite.config.ts
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { computeVersion } from '../../scripts/version-utils.mjs'; // adjust path
+import { getVersion } from '../../scripts/version.mjs'; // .mjs extension
 
-export default defineConfig(() => {
-  const isDev = process.env.VITE_DEV_VERSION === 'true';
-  const version = computeVersion({ dev: isDev });
+export default defineConfig(({ command }) => {
+  const isDevServer = command === 'serve';
+  const isDevBuild = process.env.VITE_DEV_VERSION === 'true';
+  const version = getVersion(isDevServer || isDevBuild);
 
   return {
     define: {
@@ -23,22 +22,10 @@ export default defineConfig(() => {
     server: {
       port: 3000,
       open: true,
-      https: false,
     },
     build: {
       outDir: 'dist',
       sourcemap: true,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom'],
-            'wafb-core': ['@wafb/core'],
-          },
-        },
-      },
-    },
-    optimizeDeps: {
-      exclude: ['@wafb/core'],
     },
   };
 });
