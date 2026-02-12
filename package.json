@@ -36,8 +36,8 @@
     "start": "pnpm build:core && pnpm dev:web",
     "version:compute": "node scripts/get-version.mjs",
     "version:compute-dev": "node scripts/get-version.mjs --dev",
-    "version:sync": "pnpm -r version \"$(pnpm version:compute)\" --no-git-tag-version",
-    "version:sync-dev": "pnpm -r version \"$(pnpm version:compute-dev)\" --no-git-tag-version"
+    "version:sync": "pnpm -r exec npm version --no-git-tag-version --allow-same-version \"$(pnpm version:compute)\"",
+    "version:sync-dev": "pnpm -r exec npm version --no-git-tag-version --allow-same-version \"$(pnpm version:compute-dev)\""
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.0.0",
