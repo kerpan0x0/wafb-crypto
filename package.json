@@ -30,7 +30,10 @@
     "clean": "turbo run clean && rm -rf node_modules",
     "prepare": "husky install",
     "start": "pnpm build:core && pnpm dev:web",
-    "version:sync": "pnpm -r version ${NEW_VERSION:-$npm_package_version} --no-git-tag-version"
+    "version:compute": "node scripts/get-version.mjs",
+    "version:compute-dev": "node scripts/get-version.mjs --dev",
+    "version:sync": "pnpm -r version \"$(pnpm version:compute)\" --no-git-tag-version",
+    "version:sync-dev": "pnpm -r version \"$(pnpm version:compute-dev)\" --no-git-tag-version"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.0.0",
