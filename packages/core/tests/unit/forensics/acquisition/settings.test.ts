@@ -161,16 +161,20 @@ user_setup_complete=1`;
 
       // Should produce a single blob containing data for all namespaces
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should create blob with correct content type', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob.type).toBe('application/json');
     });
 
     it('should include device information in progress callback', async () => {

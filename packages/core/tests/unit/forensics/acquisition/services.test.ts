@@ -62,8 +62,8 @@ describe('ServicesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('services');
-      expect(result.fileName).toBe('services.json');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileName).toBe('services.json');
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should parse all services correctly', async () => {
@@ -98,8 +98,8 @@ describe('ServicesAcquirer', () => {
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeDefined();
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeDefined();
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
     });
   });
 
@@ -107,8 +107,8 @@ describe('ServicesAcquirer', () => {
     it('should parse service names from dumpsys -l', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      const text = await result.blob!.text();
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.services.some((s: any) => s.name === 'activity')).toBe(true);
@@ -118,7 +118,7 @@ describe('ServicesAcquirer', () => {
     it('should skip header line from dumpsys -l', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.services.some((s: any) => s.name.includes('Currently running'))).toBe(false);
@@ -130,7 +130,7 @@ describe('ServicesAcquirer', () => {
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.runningServices).toBeGreaterThan(0);
@@ -142,7 +142,7 @@ describe('ServicesAcquirer', () => {
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // Should have at least some services marked as stopped
@@ -155,7 +155,7 @@ describe('ServicesAcquirer', () => {
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // Some services should have PID and user info
@@ -168,7 +168,7 @@ describe('ServicesAcquirer', () => {
     it('should classify android.* as system services', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemServices).toBeGreaterThan(0);
@@ -183,7 +183,7 @@ describe('ServicesAcquirer', () => {
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemServices).toBe(1);
@@ -193,7 +193,7 @@ describe('ServicesAcquirer', () => {
     it('should calculate correct counts', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemServices + data.userServices).toBe(data.totalServices);
@@ -231,7 +231,7 @@ describe('ServicesAcquirer', () => {
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // Should only have user services
@@ -247,7 +247,7 @@ describe('ServicesAcquirer', () => {
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // Should only have system services
@@ -262,8 +262,8 @@ describe('ServicesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
     });
 
     it('should respect timeout configuration', async () => {
@@ -397,8 +397,8 @@ describe('ServicesAcquirer', () => {
     it('should include file size', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should set correct acquisition type', async () => {
@@ -422,8 +422,8 @@ describe('ServicesAcquirer', () => {
     it('should create valid JSON', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      const text = await result.blob!.text();
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      const text = await result.files[0].blob!.text();
 
       expect(() => JSON.parse(text)).not.toThrow();
     });
@@ -431,7 +431,7 @@ describe('ServicesAcquirer', () => {
     it('should include all required fields', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data).toHaveProperty('totalServices');
@@ -448,7 +448,7 @@ describe('ServicesAcquirer', () => {
     it('should format service entries correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const service = data.services[0];
@@ -459,15 +459,15 @@ describe('ServicesAcquirer', () => {
     it('should return blob with correct type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/json');
     });
 
     it('should generate filename with device model', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBeDefined();
-      expect(result.fileName).toBe('services.json');
+      expect(result.files[0].fileName).toBeDefined();
+      expect(result.files[0].fileName).toBe('services.json');
     });
   });
 });

@@ -1,8 +1,3 @@
-/**
- * @file systemInfoAcquirer.test.ts
- * @description Comprehensive tests for SystemInfoAcquirer with updated DumpsysCommand pattern
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SystemInfoAcquirer } from '../../../../src/forensics/acquisition/system';
 import type { ADBDevice } from '../../../../src/adb';
@@ -153,7 +148,7 @@ describe('SystemInfoAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('system_info');
-      expect(result.fileName).toBe('system-info.json');
+      expect(result.files[0].fileName).toBe('system-info.json');
       expect(device.getProperties).toHaveBeenCalled();
     });
 
@@ -172,8 +167,10 @@ describe('SystemInfoAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
     });
 
     it('should include device information', async () => {
@@ -660,8 +657,10 @@ describe('SystemInfoAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBeGreaterThan(0);
-      expect(typeof result.fileSize).toBe('number');
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
+      expect(typeof result.files[0].fileSize).toBe('number');
     });
 
     it('should include component collection status', async () => {
@@ -677,16 +676,20 @@ describe('SystemInfoAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.fileName).toBe('system-info.json');
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].fileName).toBe('system-info.json');
     });
 
     it('should return blob instead of triggering download', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.size).toBeGreaterThan(0);
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob.size).toBeGreaterThan(0);
     });
   });
 });

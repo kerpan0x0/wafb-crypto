@@ -40,7 +40,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('process');
-      expect(result.fileName).toBe('processes.json');
+      expect(result.files[0].fileName).toBe('processes.json');
     });
 
     it('should parse all processes correctly', async () => {
@@ -75,8 +75,8 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.fileName).toBe('processes.json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].fileName).toBe('processes.json');
     });
   });
 
@@ -84,7 +84,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     it('should parse PID correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].pid).toBe(1);
@@ -94,7 +94,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     it('should parse PPID correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].ppid).toBe(0);
@@ -104,7 +104,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     it('should parse user correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].user).toBe('root');
@@ -114,7 +114,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     it('should parse process name correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].name).toBe('init');
@@ -124,7 +124,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
     it('should parse memory info correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].vsz).toBeGreaterThan(0);
@@ -135,7 +135,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
       acquirer = new ProcessAcquirer(device, { includeSELinuxContext: true });
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes.some((p: any) => p.selinuxContext)).toBe(true);
@@ -152,7 +152,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const processWithSpaces = data.processes.find((p: any) => p.pid === 9999);
@@ -193,7 +193,7 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
     it('should map root user to UID 0', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const rootProcess = data.processes.find((p: any) => p.user === 'root');
@@ -203,7 +203,7 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
     it('should map system user to UID 1000', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const systemProcess = data.processes.find((p: any) => p.user === 'system');
@@ -213,7 +213,7 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
     it('should parse app user format (u0_aXXX)', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const appProcess = data.processes.find((p: any) => p.user === 'u0_a123');
@@ -231,7 +231,7 @@ u:r:app:s0 custom_user 9999 1 12345 678 0 0 S custom_app`;
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.processes[0].uid).toBe(-1);
@@ -248,7 +248,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // u1_a456 = 1*100000 + 10000 + 456 = 110456
@@ -260,7 +260,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should identify init as system process', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemProcesses).toBeGreaterThan(0);
@@ -269,7 +269,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should identify user apps correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.userProcesses).toBeGreaterThan(0);
@@ -278,7 +278,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should classify system_server as system process', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const systemServer = data.processes.find((p: any) => p.name === 'system_server');
@@ -289,7 +289,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should classify zygote processes as system', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const zygote = data.processes.find((p: any) => p.name.includes('zygote'));
@@ -299,7 +299,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should calculate correct system/user counts', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data.systemProcesses + data.userProcesses).toBe(data.totalProcesses);
@@ -341,8 +341,8 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
     });
 
     it('should respect timeout configuration', async () => {
@@ -471,8 +471,8 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should include file size', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should set correct acquisition type', async () => {
@@ -494,7 +494,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should create valid JSON', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
 
       expect(() => JSON.parse(text)).not.toThrow();
     });
@@ -502,7 +502,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should include all required fields', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       expect(data).toHaveProperty('totalProcesses');
@@ -517,7 +517,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should format process entries correctly', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const process = data.processes[0];
@@ -534,15 +534,15 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should have correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/json');
     });
 
     it('should generate filename with device model', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBeDefined();
-      expect(result.fileName).toBe('processes.json');
+      expect(result.files[0].fileName).toBeDefined();
+      expect(result.files[0].fileName).toBe('processes.json');
     });
   });
 
@@ -552,7 +552,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
       expect(result.success).toBe(true);
       expect((result.data as any).totalProcesses).toBeGreaterThan(0);
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
     });
 
     it('should work with different device models', async () => {
@@ -570,7 +570,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('processes.json');
+      expect(result.files[0].fileName).toBe('processes.json');
     });
 
     it('should capture acquisition timestamp', async () => {
@@ -578,7 +578,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
       const result = await acquirer.acquire();
       const afterAcquisition = Date.now();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       const timestamp = data.timestamp;

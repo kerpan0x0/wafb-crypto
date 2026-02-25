@@ -46,7 +46,7 @@ describe('RootBinariesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('rootBinaries');
-      expect(result.fileName).toBe('root_binaries.json');
+      expect(result.files[0].fileName).toBe('root_binaries.json');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -89,7 +89,7 @@ describe('RootBinariesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
+      expect(result.files[0].hash).toBeDefined();
     });
 
     it('should generate valid JSON output', async () => {
@@ -97,7 +97,7 @@ describe('RootBinariesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.format).toBe('text');
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
     });
 
     it('should include device information in result', async () => {
@@ -126,8 +126,8 @@ describe('RootBinariesAcquirer', () => {
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/json');
     });
   });
 
@@ -241,14 +241,14 @@ describe('RootBinariesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBeDefined();
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should set correct file name', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('root_binaries.json');
+      expect(result.files[0].fileName).toBe('root_binaries.json');
     });
 
     it('should include data format in result', async () => {

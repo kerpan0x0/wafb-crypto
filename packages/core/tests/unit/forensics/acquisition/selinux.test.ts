@@ -40,8 +40,8 @@ u:object_r:system_file:s0 /system/bin/linker`,
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('selinux');
-      expect(result.fileName).toBeTruthy();
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileName).toBeTruthy();
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
 
       const lastProgress = getLastProgress();
       expect(lastProgress?.status).toBe('completed');
@@ -154,10 +154,10 @@ u:object_r:system_file:s0 etc`,
       expect(result.success).toBe(true);
 
       // Blob should be present in the result
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
 
       // Read blob content
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // Check that fileContexts is an array of strings
@@ -180,7 +180,7 @@ u:object_r:system_file:s0 etc`,
 
       expect(result.success).toBe(true);
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const data = JSON.parse(text);
 
       // Should have path headers like "# /system"
@@ -348,8 +348,8 @@ u:object_r:system_file:s0 etc`,
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeTruthy();
-      expect(result.hash).toHaveLength(64); // SHA-256 hex string
+      expect(result.files[0].hash).toBeTruthy();
+      expect(result.files[0].hash).toHaveLength(64); // SHA-256 hex string
     });
 
     it('should not compute hash when not requested', async () => {
@@ -359,7 +359,7 @@ u:object_r:system_file:s0 etc`,
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeUndefined();
+      expect(result.files[0].hash).toBeUndefined();
     });
   });
 
@@ -367,13 +367,13 @@ u:object_r:system_file:s0 etc`,
     it('should generate valid filename', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('selinux.json');
+      expect(result.files[0].fileName).toBe('selinux.json');
     });
 
     it('should create downloadable blob', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
     });
   });
 });

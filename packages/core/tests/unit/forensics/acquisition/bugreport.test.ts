@@ -29,7 +29,7 @@ describe('BugreportAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('bugreport');
-      expect(result.fileName).toBe('bugreport.zip');
+      expect(result.files[0].fileName).toBe('bugreport.zip');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -48,8 +48,8 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
     });
 
     it('should handle bugreport generation errors', async () => {
@@ -81,7 +81,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeUndefined();
+      expect(result.files[0].hash).toBeUndefined();
     });
 
     it('should include device info in result', async () => {
@@ -106,7 +106,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('bugreport.txt');
+      expect(result.files[0].fileName).toBe('bugreport.txt');
     });
   });
 
@@ -227,7 +227,7 @@ describe('BugreportAcquirer', () => {
       acquirer = new BugreportAcquirer(device, { computeHash: true });
       const result = await acquirer.acquire();
 
-      expect(result.hash).toBeDefined();
+      expect(result.files[0].hash).toBeDefined();
     });
 
     it('should respect timeout config', async () => {
@@ -263,9 +263,9 @@ describe('BugreportAcquirer', () => {
     it('should include file size in metadata', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(typeof result.fileSize).toBe('number');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(typeof result.files[0].fileSize).toBe('number');
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
   });
 
@@ -274,7 +274,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/bugreport\.(zip|txt)/);
+      expect(result.files[0].fileName).toMatch(/bugreport\.(zip|txt)/);
     });
 
     it('should handle bugreportz output with whitespace', async () => {
@@ -320,7 +320,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/\.zip$/);
+      expect(result.files[0].fileName).toMatch(/\.zip$/);
       expect(result.data?.format).toBe('zip');
     });
 
@@ -329,7 +329,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/\.txt$/);
+      expect(result.files[0].fileName).toMatch(/\.txt$/);
       expect(result.data?.format).toBe('text');
     });
 
@@ -338,9 +338,9 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
-      expect(result.hash!.length).toBeGreaterThan(0);
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
+      expect(result.files[0].hash!.length).toBeGreaterThan(0);
     });
 
     it('should skip hash computation when computeHash is false', async () => {
@@ -348,7 +348,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeUndefined();
+      expect(result.files[0].hash).toBeUndefined();
     });
 
     it('should respect custom timeout configuration', async () => {
@@ -384,7 +384,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/\.txt$/);
+      expect(result.files[0].fileName).toMatch(/\.txt$/);
       expect(result.data?.format).toBe('text');
     });
 
@@ -393,7 +393,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toMatch(/\.zip$/);
+      expect(result.files[0].fileName).toMatch(/\.zip$/);
     });
   });
 
@@ -488,20 +488,20 @@ describe('BugreportAcquirer', () => {
     it('should use simple filename format', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('bugreport.zip');
+      expect(result.files[0].fileName).toBe('bugreport.zip');
     });
 
     it('should use correct extension for zip format', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('bugreport.zip');
+      expect(result.files[0].fileName).toBe('bugreport.zip');
     });
 
     it('should use correct extension for text format', async () => {
       acquirer = new BugreportAcquirer(device, { preferZip: false });
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('bugreport.txt');
+      expect(result.files[0].fileName).toBe('bugreport.txt');
     });
   });
 
@@ -532,9 +532,9 @@ describe('BugreportAcquirer', () => {
     it('should include file size', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(result.fileSize).toBeGreaterThan(0);
-      expect(typeof result.fileSize).toBe('number');
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
+      expect(typeof result.files[0].fileSize).toBe('number');
     });
 
     it('should include device info in result data', async () => {
@@ -581,7 +581,7 @@ describe('BugreportAcquirer', () => {
 
       expect(result.success).toBe(true);
       // Will use the default model from createMockDeviceProperties: 'Test Device'
-      expect(result.fileName).toBeDefined();
+      expect(result.files[0].fileName).toBeDefined();
     });
 
     it('should skip hash computation on crypto errors', async () => {
@@ -727,15 +727,15 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
     });
 
     it('should return blob with correct MIME type for zip', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/zip');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/zip');
     });
 
     it('should return blob with correct MIME type for text', async () => {
@@ -743,8 +743,8 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('text/plain');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('text/plain');
     });
   });
 
@@ -774,7 +774,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('bugreport.txt');
+      expect(result.files[0].fileName).toBe('bugreport.txt');
     });
 
     it('should handle modern device with bugreportz', async () => {
@@ -797,7 +797,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('bugreport.zip');
+      expect(result.files[0].fileName).toBe('bugreport.zip');
     });
 
     it('should preserve parentheses and special chars in model name', async () => {
@@ -820,7 +820,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('bugreport.zip');
+      expect(result.files[0].fileName).toBe('bugreport.zip');
     });
   });
 
@@ -851,7 +851,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBe(largeContent.length);
+      expect(result.files[0].fileSize).toBe(largeContent.length);
     });
   });
 });

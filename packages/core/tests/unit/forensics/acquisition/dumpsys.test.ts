@@ -101,8 +101,8 @@ describe('DumpsysAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('dumpsys');
-      expect(result.fileName).toBe('dumpsys.txt');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileName).toBe('dumpsys.txt');
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
       expect(result.duration).toBeGreaterThanOrEqual(0);
@@ -136,9 +136,9 @@ describe('DumpsysAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('text/plain');
-      expect(result.blob!.size).toBeGreaterThan(0);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('text/plain');
+      expect(result.files[0].blob!.size).toBeGreaterThan(0);
     });
   });
 
@@ -199,14 +199,14 @@ describe('DumpsysAcquirer', () => {
       const result = await hashAcquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
-      expect(result.hash?.length).toBe(64); // SHA-256 hex length
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
+      expect(result.files[0].hash?.length).toBe(64); // SHA-256 hex length
     });
 
     it('should not compute hash when computeHash is false/undefined', async () => {
       const result = await acquirer.acquire(); // default config
-      expect(result.hash).toBeUndefined();
+      expect(result.files[0].hash).toBeUndefined();
 
       const noHashAcquirer = new DumpsysAcquirer(device, { computeHash: false });
       const result2 = await noHashAcquirer.acquire();
@@ -309,7 +309,7 @@ describe('DumpsysAcquirer', () => {
 
     it('should include file size', async () => {
       const result = await acquirer.acquire();
-      expect(result.fileSize).toBe(MOCK_DUMPSYS_OUTPUT.length);
+      expect(result.files[0].fileSize).toBe(MOCK_DUMPSYS_OUTPUT.length);
     });
 
     it('should include device info in data', async () => {
@@ -332,23 +332,23 @@ describe('DumpsysAcquirer', () => {
   describe('output format', () => {
     it('should generate filename with correct pattern', async () => {
       const result = await acquirer.acquire();
-      expect(result.fileName).toBe('dumpsys.txt');
+      expect(result.files[0].fileName).toBe('dumpsys.txt');
     });
 
     it('should create blob with UTF-8 encoded content', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('text/plain');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('text/plain');
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       expect(text).toBe(MOCK_DUMPSYS_OUTPUT);
     });
 
     it('should not modify or parse the dumpsys output', async () => {
       const result = await acquirer.acquire();
 
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       expect(text).toBe(MOCK_DUMPSYS_OUTPUT); // raw, unchanged
     });
   });
@@ -370,7 +370,7 @@ describe('DumpsysAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBe(0);
+      expect(result.files[0].fileSize).toBe(0);
       expect(result.data?.outputSize).toBe(0);
       expect(result.data?.lines).toBe(1); // empty string split gives [''] -> 1 line
     });
@@ -387,7 +387,7 @@ describe('DumpsysAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBe(largeOutput.length);
+      expect(result.files[0].fileSize).toBe(largeOutput.length);
     });
 
     it('should handle device model with special characters', async () => {
@@ -404,7 +404,7 @@ describe('DumpsysAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('dumpsys.txt');
+      expect(result.files[0].fileName).toBe('dumpsys.txt');
     });
   });
 });

@@ -103,8 +103,8 @@ sysfs /sys sysfs rw,relatime 0 0
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('mount');
-      expect(result.fileName).toContain('mounts');
-      expect(result.fileName).toContain('.json');
+      expect(result.files[0].fileName).toContain('mounts');
+      expect(result.files[0].fileName).toContain('.json');
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
       expect(result.duration).toBeGreaterThanOrEqual(0);
@@ -170,22 +170,22 @@ sysfs /sys sysfs rw,relatime 0 0
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      expect(result.files[0].hash).toBeDefined();
+      expect(typeof result.files[0].hash).toBe('string');
     });
 
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/json');
     });
 
     it('should generate simple filename', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('mounts.json');
+      expect(result.files[0].fileName).toBe('mounts.json');
     });
 
     it('should include device information in result', async () => {
@@ -317,17 +317,17 @@ sysfs /sys sysfs rw,relatime 0 0
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
     });
 
     it('should create JSON output with proper formatting', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/json');
 
       // Verify JSON is valid
-      const text = await result.blob!.text();
+      const text = await result.files[0].blob!.text();
       const parsed = JSON.parse(text);
       expect(Array.isArray(parsed)).toBe(true);
     });
@@ -387,7 +387,7 @@ sysfs /sys sysfs rw,relatime 0 0
 
       expect(result).toHaveProperty('success');
       expect(result).toHaveProperty('type');
-      expect(result).toHaveProperty('fileName');
+      expect(result).toHaveProperty('files');
       expect(result).toHaveProperty('startTime');
       expect(result).toHaveProperty('endTime');
       expect(result).toHaveProperty('duration');

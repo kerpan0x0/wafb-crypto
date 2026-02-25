@@ -128,16 +128,16 @@ describe('FileAcquirer', () => {
     it('should create JSON blob with file metadata', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob!.type).toBe('application/json');
     });
 
     it('should trigger download of JSON file', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.fileName).toContain('files');
-      expect(result.fileName).toContain('.json');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].fileName).toContain('files');
+      expect(result.files[0].fileName).toContain('.json');
     });
 
     it('should include file count in result data', async () => {
@@ -207,7 +207,7 @@ describe('FileAcquirer', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.hash).toBeDefined();
+        expect(result.files[0].hash).toBeDefined();
       }
     });
 
@@ -391,18 +391,18 @@ describe('FileAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileName).toBeDefined();
-      expect(result.fileName).toContain('files');
-      expect(result.fileName).toContain('.json');
+      expect(result.files[0].fileName).toBeDefined();
+      expect(result.files[0].fileName).toContain('files');
+      expect(result.files[0].fileName).toContain('.json');
     });
 
     it('should include fileSize in result', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBeDefined();
-      expect(typeof result.fileSize).toBe('number');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(typeof result.files[0].fileSize).toBe('number');
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should include timestamps in result', async () => {

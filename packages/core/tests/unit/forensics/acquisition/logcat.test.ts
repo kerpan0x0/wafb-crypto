@@ -37,7 +37,7 @@ describe('LogcatAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('logcat');
-      expect(result.fileName).toBe('logcat.txt');
+      expect(result.files[0].fileName).toBe('logcat.txt');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -63,7 +63,7 @@ describe('LogcatAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
+      expect(result.files[0].hash).toBeDefined();
     });
 
     it('should handle empty logcat', async () => {
@@ -229,9 +229,9 @@ describe('LogcatAcquirer', () => {
     it('should include file size', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(typeof result.fileSize).toBe('number');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(typeof result.files[0].fileSize).toBe('number');
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should include buffer in data', async () => {
@@ -252,24 +252,24 @@ describe('LogcatAcquirer', () => {
     it('should include metadata header in output', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      const text = await result.blob!.text();
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      const text = await result.files[0].blob!.text();
       expect(text).toContain('# Logcat Acquisition Metadata');
     });
 
     it('should include JSON metadata', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      const text = await result.blob!.text();
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      const text = await result.files[0].blob!.text();
       expect(text).toContain('METADATA (JSON)');
     });
 
     it('should include original logcat output', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      const text = await result.blob!.text();
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      const text = await result.files[0].blob!.text();
       expect(text).toContain('LOGCAT OUTPUT');
     });
   });

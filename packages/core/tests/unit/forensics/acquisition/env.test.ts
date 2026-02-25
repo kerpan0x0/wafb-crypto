@@ -44,7 +44,7 @@ LD_LIBRARY_PATH=/system/lib`;
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('env');
-      expect(result.fileName).toBe('env.txt');
+      expect(result.files[0].fileName).toBe('env.txt');
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -69,14 +69,16 @@ LD_LIBRARY_PATH=/system/lib`;
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].hash).toBeDefined();
     });
 
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob.type).toBe('application/text');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].blob.type).toBe('application/text');
     });
 
     it('should include device information in result', async () => {
@@ -104,14 +106,14 @@ LD_LIBRARY_PATH=/system/lib`;
     it('should set correct file name', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('env.txt');
+      expect(result.files[0].fileName).toBe('env.txt');
     });
 
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.fileName).toBe('env.txt');
+      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].fileName).toBe('env.txt');
     });
   });
 
@@ -260,8 +262,10 @@ VAR3=value3`;
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBeDefined();
-      expect(result.fileSize).toBeGreaterThanOrEqual(0);
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(result.files[0].fileSize).toBeGreaterThanOrEqual(0);
     });
 
     it('should include data format in result', async () => {
@@ -460,7 +464,9 @@ LD_PRELOAD=/system/lib/libpreload.so`;
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeUndefined();
+      expect(result.files).toBeDefined();
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].hash).toBeUndefined();
     });
 
     it('should work with empty configuration', async () => {
