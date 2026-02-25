@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger } from '@wafb/core';
+import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
 import {
   MountAcquirer,
   EnvAcquirer,
@@ -20,6 +20,31 @@ import {
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
 import type { AcquisitionProgress, AcquisitionType, AcquisitionResult } from '@wafb/core';
 import JSZip from 'jszip';
+
+// ============================================================================
+// TYPE DECLARATIONS FOR FILE SYSTEM ACCESS API
+// ============================================================================
+
+declare global {
+  interface Window {
+    showSaveFilePicker?(options?: {
+      suggestedName?: string;
+      types?: Array<{
+        description: string;
+        accept: Record<string, string[]>;
+      }>;
+    }): Promise<FileSystemFileHandle>;
+  }
+
+  interface FileSystemFileHandle {
+    createWritable(): Promise<FileSystemWritableFileStream>;
+  }
+
+  interface FileSystemWritableFileStream extends WritableStream {
+    write(data: BufferSource): Promise<void>;
+    close(): Promise<void>;
+  }
+}
 
 export function AcquisitionPage() {
   const [device, setDevice] = useState<ADBDevice | null>(null);
@@ -131,6 +156,7 @@ export function AcquisitionPage() {
           includeSystem: true,
           includeDetails: true,
           includePermissions: true,
+          downloadApks: true,
           computeHash: true,
         },
       },
@@ -251,42 +277,143 @@ export function AcquisitionPage() {
     }
   };
 
-  // Create and download ZIP bundle
+  // ============================================================================
+  // HYBRID ZIP CREATION: STREAMING + JSZIP FALLBACK
+  // ============================================================================
+
+  /**
+   * Create and download ZIP using hybrid approach:
+   * 1. If File System Access API available → Streaming directly to disk
+   * 2. Otherwise → JSZip traditional fallback
+   */
   const createAndDownloadZip = async (results: AcquisitionResult[]) => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    const folderName = `wafb-acquisition-${timestamp}`;
+    
+    // Feature detection
+    const supportsFileSystemAccess = 'showSaveFilePicker' in window;
+    
+    if (supportsFileSystemAccess) {
+      console.log('✅ Using streaming ZIP with File System Access API');
+      try {
+        await createZipWithStreaming(results, folderName);
+        return;
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          console.log('User cancelled save dialog');
+          return;
+        }
+        console.warn('Streaming failed, falling back to JSZip:', error);
+        // Fallthrough to JSZip
+      }
+    }
+    
+    console.log('Using JSZip (no streaming support or fallback)');
+    await createZipWithJSZip(results, folderName);
+  };
+
+  /**
+   * OPTION 1: Streaming with File System Access API
+   * Writes directly to disk with constant memory usage (~100MB)
+   */
+  async function createZipWithStreaming(
+    results: AcquisitionResult[],
+    folderName: string
+  ): Promise<void> {
+    // Request save location
+    const fileHandle = await (window as any).showSaveFilePicker({
+      suggestedName: `${folderName}.zip`,
+      types: [{
+        description: 'ZIP Archive',
+        accept: { 'application/zip': ['.zip'] }
+      }]
+    });
+
+    // Get writable stream directly to disk
+    const writable = await fileHandle.createWritable();
+    const zip = new StreamingZipWriter(writable);
+    
+    let totalFiles = 0;
+    let processedFiles = 0;
+    
+    // Count total files
+    for (const result of results) {
+      if (result.files) totalFiles += result.files.length;
+    }
+    totalFiles++; // +1 for manifest
+    
+    console.log(`Streaming ${totalFiles} files to disk...`);
+    
+    // Add manifest
+    const manifest = createManifest(results);
+    const manifestData = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
+    await zip.addFile(`${folderName}/manifest.json`, manifestData);
+    processedFiles++;
+    console.log(`[${processedFiles}/${totalFiles}] manifest.json`);
+    
+    // Add all acquisition files
+    for (const result of results) {
+      if (!result.success || !result.files) continue;
+      
+      for (const file of result.files) {
+        // Convert blob to Uint8Array
+        const data = new Uint8Array(await file.blob.arrayBuffer());
+        
+        // Write with full path
+        await zip.addFile(`${folderName}/${file.fileName}`, data);
+        
+        processedFiles++;
+        const sizeMB = (data.length / (1024 * 1024)).toFixed(2);
+        console.log(`[${processedFiles}/${totalFiles}] ${file.fileName} (${sizeMB} MB)`);
+        
+        // Blob can now be garbage collected - memory freed!
+      }
+    }
+
+    await zip.finalize();
+    await writable.close();
+    
+    console.log(`✅ ZIP saved directly to disk: ${folderName}.zip`);
+  }
+
+  /**
+   * OPTION 2: JSZip (Fallback)
+   * Traditional approach for browsers without File System Access API
+   */
+  async function createZipWithJSZip(
+    results: AcquisitionResult[],
+    folderName: string
+  ): Promise<void> {
     const zip = new JSZip();
-    const sessionFolder = zip.folder(`wafb-acquisition-${new Date().toISOString().split('T')[0]}`);
+    const sessionFolder = zip.folder(folderName);
 
     if (!sessionFolder) {
       console.error('Failed to create ZIP folder');
       return;
     }
 
-    // Add each acquisition result to the ZIP
+    // Add all files
     for (const result of results) {
-      if (result.success && result.blob && result.fileName) {
-        sessionFolder.file(result.fileName, result.blob);
+      if (!result.success || !result.files) continue;
+
+      for (const file of result.files) {
+        sessionFolder.file(file.fileName, file.blob);
+        console.log(`Added: ${file.fileName} (${file.blob.size} bytes)`);
       }
     }
 
-    // Create manifest file with metadata
-    const manifest = {
-      acquisitionDate: new Date().toISOString(),
-      deviceInfo: deviceInfo,
-      acquisitions: results.map(r => ({
-        type: r.type,
-        success: r.success,
-        fileName: r.fileName,
-        fileSize: r.fileSize,
-        hash: r.hash,
-        duration: r.duration,
-        error: r.error,
-      })),
-    };
-
+    // Add manifest
+    const manifest = createManifest(results);
     sessionFolder.file('manifest.json', JSON.stringify(manifest, null, 2));
 
-    // Generate and download ZIP
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    // Generate ZIP (STORE mode = no compression, like StreamingZip)
+    console.log('Generating ZIP...');
+    const zipBlob = await zip.generateAsync({ 
+      type: 'blob',
+      compression: 'STORE',  // No compression for speed
+    });
+    
+    // Download
     const zipUrl = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
     a.href = zipUrl;
@@ -295,7 +422,49 @@ export function AcquisitionPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(zipUrl);
-  };
+    
+    console.log(`✅ ZIP downloaded: ${zipBlob.size} bytes (${(zipBlob.size / (1024 * 1024)).toFixed(2)} MB)`);
+  }
+
+  /**
+   * Create manifest with metadata (no blobs!)
+   */
+  function createManifest(results: AcquisitionResult[]) {
+    return {
+      acquisitionDate: new Date().toISOString(),
+      deviceInfo: deviceInfo,
+      acquisitions: results.map(r => ({
+        type: r.type,
+        success: r.success,
+        files: r.files?.map(f => ({
+          fileName: f.fileName,
+          fileSize: f.fileSize,
+          description: f.description,
+          mimeType: f.mimeType,
+          hash: f.hash,
+        })),
+        duration: r.duration,
+        error: r.error,
+        data: r.data,
+      })),
+      summary: {
+        totalAcquisitions: results.length,
+        successfulAcquisitions: results.filter(r => r.success).length,
+        failedAcquisitions: results.filter(r => !r.success).length,
+        totalFiles: results.reduce((sum, r) => sum + (r.files?.length || 0), 0),
+        totalSize: results.reduce((sum, r) =>
+          sum + (r.files?.reduce((s, f) => s + f.fileSize, 0) || 0), 0
+        ),
+      },
+    };
+  }
+
+  // ============================================================================
+  // UI COMPONENT
+  // ============================================================================
+
+  // Feature detection for UI hint
+  const supportsAdvancedMode = 'showSaveFilePicker' in window;
 
   return (
     <div className="bg-gray-50 p-8 h-full">
@@ -361,6 +530,13 @@ export function AcquisitionPage() {
               </div>
             </div>
 
+            {/* Advanced Mode Hint */}
+            {supportsAdvancedMode && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6 text-sm text-blue-800">
+                <span className="font-semibold">✨ Advanced mode enabled:</span> Direct-to-disk ZIP creation available (saves memory for large acquisitions)
+              </div>
+            )}
+
             {/* Acquisition Selection */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <div className="flex items-center justify-between mb-6">
@@ -405,7 +581,7 @@ export function AcquisitionPage() {
                       <input
                         type="checkbox"
                         checked={acq.enabled}
-                        onChange={() => {}}
+                        onChange={() => { }}
                         className="w-5 h-5"
                         disabled={isSessionActive()}
                       />
@@ -428,15 +604,14 @@ export function AcquisitionPage() {
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all ${
-                              acq.status === 'completed'
-                                ? 'bg-green-500'
-                                : acq.status === 'failed'
-                                  ? 'bg-red-500'
-                                  : acq.status === 'running'
-                                    ? 'bg-blue-500'
-                                    : 'bg-gray-400'
-                            }`}
+                            className={`h-2 rounded-full transition-all ${acq.status === 'completed'
+                              ? 'bg-green-500'
+                              : acq.status === 'failed'
+                                ? 'bg-red-500'
+                                : acq.status === 'running'
+                                  ? 'bg-blue-500'
+                                  : 'bg-gray-400'
+                              }`}
                             style={{ width: `${acq.progress}%` }}
                           />
                         </div>
@@ -482,15 +657,14 @@ export function AcquisitionPage() {
                       <div key={acq.type} className="flex items-center justify-between text-sm">
                         <span>{ACQUISITION_TYPES[acq.type].name}</span>
                         <span
-                          className={`font-semibold ${
-                            acq.status === 'completed'
-                              ? 'text-green-600'
-                              : acq.status === 'failed'
-                                ? 'text-red-600'
-                                : acq.status === 'running'
-                                  ? 'text-blue-600'
-                                  : 'text-gray-500'
-                          }`}
+                          className={`font-semibold ${acq.status === 'completed'
+                            ? 'text-green-600'
+                            : acq.status === 'failed'
+                              ? 'text-red-600'
+                              : acq.status === 'running'
+                                ? 'text-blue-600'
+                                : 'text-gray-500'
+                            }`}
                         >
                           {acq.status === 'completed'
                             ? '✓ Done'
