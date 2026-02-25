@@ -25,7 +25,8 @@ describe('PackagesAcquirer', () => {
     vi.clearAllMocks();
     device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new PackagesAcquirer(device);
+    // Disable APK download by default to keep tests focused on metadata
+    acquirer = new PackagesAcquirer(device, { downloadApks: false });
   });
 
   afterEach(() => {
@@ -42,8 +43,11 @@ describe('PackagesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('packages');
-      expect(result.fileName).toBe('packages.json');
-      expect(result.blob).toBeDefined();
+      expect(result.files).toBeDefined();
+      expect(result.files!.length).toBeGreaterThan(0);
+      const jsonFile = result.files![0];
+      expect(jsonFile.fileName).toBe('packages.json');
+      expect(jsonFile.blob).toBeDefined();
       expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
     });
 
@@ -51,9 +55,11 @@ describe('PackagesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.blob).toBeDefined();
+      expect(result.files).toBeDefined();
+      const jsonFile = result.files![0];
+      expect(jsonFile.blob).toBeDefined();
 
-      const packages = await parseBlobAsPackages(result.blob!);
+      const packages = await parseBlobAsPackages(jsonFile.blob);
       expect(Array.isArray(packages)).toBe(true);
       expect(packages.length).toBe(3); // default: com.android.vending, com.example.app, com.google.android.gms
     });
@@ -83,7 +89,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app', 'com.example.app2'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device, { includeDetails: true });
+      acquirer = new PackagesAcquirer(device, { includeDetails: true, downloadApks: false });
 
       await acquirer.acquire();
 
@@ -96,24 +102,26 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: [],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).totalPackages).toBe(0);
 
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
       expect(packages).toEqual([]);
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new PackagesAcquirer(device, { computeHash: true });
+      acquirer = new PackagesAcquirer(device, { computeHash: true, downloadApks: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      const jsonFile = result.files![0];
+      expect(jsonFile.hash).toBeDefined();
+      expect(typeof jsonFile.hash).toBe('string');
     });
   });
 
@@ -126,10 +134,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages.length).toBe(1);
       const pkg = packages[0];
@@ -157,10 +166,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
       const pkg = packages[0] as any;
 
       // These fields were removed in the androidqf format migration
@@ -176,7 +186,8 @@ describe('PackagesAcquirer', () => {
 
     it('should use 4-space indentation in JSON output', async () => {
       const result = await acquirer.acquire();
-      const text = await result.blob!.text();
+      const jsonFile = result.files![0];
+      const text = await jsonFile.blob.text();
 
       // Verify 4-space indent: the first property in the first object
       // JSON.stringify with 4 spaces creates lines like:
@@ -193,7 +204,8 @@ describe('PackagesAcquirer', () => {
 
     it('should produce a direct JSON array (not wrapped in object)', async () => {
       const result = await acquirer.acquire();
-      const text = await result.blob!.text();
+      const jsonFile = result.files![0];
+      const text = await jsonFile.blob.text();
 
       expect(text.trim().startsWith('[')).toBe(true);
       expect(text.trim().endsWith(']')).toBe(true);
@@ -209,10 +221,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
       const file: PackageFile = packages[0].files[0];
 
       expect(file).toHaveProperty('path');
@@ -231,10 +244,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
       const cert = packages[0].files[0].certificate;
 
       expect(cert).toEqual({
@@ -254,10 +268,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages[0].files.length).toBeGreaterThanOrEqual(1);
       expect(packages[0].files[0].path).toContain('.apk');
@@ -270,10 +285,11 @@ describe('PackagesAcquirer', () => {
           'com.example.app': ['split_config.arm64_v8a.apk', 'split_config.xxhdpi.apk'],
         },
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       // Should have base.apk + 2 splits = 3 files
       expect(packages[0].files.length).toBe(3);
@@ -294,10 +310,11 @@ describe('PackagesAcquirer', () => {
         listPackages: ['com.example.app'],
         // com.example.app defaults to /data/app/~~hash~~/com.example.app-hash==/base.apk
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       const pkg = packages[0];
       expect(pkg.system).toBe(false);
@@ -309,10 +326,11 @@ describe('PackagesAcquirer', () => {
         listPackages: ['com.android.vending'],
         // com.android.vending defaults to /system/priv-app/Phonesky/Phonesky.apk
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       const pkg = packages[0];
       expect(pkg.system).toBe(true);
@@ -323,10 +341,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.android.vending', 'com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       for (const pkg of packages) {
         expect(pkg.third_party).toBe(!pkg.system);
@@ -337,7 +356,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         // Default: com.android.vending (system), com.example.app (user), com.google.android.gms (system)
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
 
@@ -354,7 +373,8 @@ describe('PackagesAcquirer', () => {
   describe('uid', () => {
     it('should include numeric uid for each package', async () => {
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       for (const pkg of packages) {
         expect(typeof pkg.uid).toBe('number');
@@ -367,10 +387,11 @@ describe('PackagesAcquirer', () => {
         listPackages: ['com.android.vending'],
         // com.android.vending has uid 10070 in defaultPackagePaths
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages[0].uid).toBe(10070);
     });
@@ -386,10 +407,11 @@ describe('PackagesAcquirer', () => {
         listPackages: ['com.example.app', 'com.example.disabled'],
         disabledPackages: ['com.example.disabled'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       const enabledPkg = packages.find(p => p.name === 'com.example.app');
       const disabledPkg = packages.find(p => p.name === 'com.example.disabled');
@@ -403,10 +425,11 @@ describe('PackagesAcquirer', () => {
         listPackages: ['com.example.app'],
         disabledPackages: [],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages[0].disabled).toBe(false);
     });
@@ -424,10 +447,11 @@ describe('PackagesAcquirer', () => {
           'com.example.app': 'com.android.vending',
         },
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages[0].installer).toBe('com.android.vending');
     });
@@ -439,10 +463,11 @@ describe('PackagesAcquirer', () => {
           'com.example.app': 'null',
         },
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device);
+      acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages[0].installer).toBe('null');
     });
@@ -507,7 +532,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app1', 'com.example.app2'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device, { includeDetails: true });
+      acquirer = new PackagesAcquirer(device, { includeDetails: true, downloadApks: false });
 
       // Capture the original routing implementation before overriding
       const originalImpl = vi
@@ -577,9 +602,11 @@ describe('PackagesAcquirer', () => {
     it('should include file size', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileSize).toBeDefined();
-      expect(typeof result.fileSize).toBe('number');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files).toBeDefined();
+      const jsonFile = result.files![0];
+      expect(jsonFile.fileSize).toBeDefined();
+      expect(typeof jsonFile.fileSize).toBe('number');
+      expect(jsonFile.fileSize).toBeGreaterThan(0);
     });
 
     it('should include package counts in data', async () => {
@@ -605,7 +632,7 @@ describe('PackagesAcquirer', () => {
 
   describe('configuration', () => {
     it('should respect includeSystem config', async () => {
-      acquirer = new PackagesAcquirer(device, { includeSystem: false });
+      acquirer = new PackagesAcquirer(device, { includeSystem: false, downloadApks: false });
       await acquirer.acquire();
 
       const spawnCalls = vi.mocked(device.adb.subprocess.shellProtocol.spawn).mock.calls;
@@ -622,7 +649,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device, { includeDetails: false });
+      acquirer = new PackagesAcquirer(device, { includeDetails: false, downloadApks: false });
 
       const result = await acquirer.acquire();
 
@@ -637,10 +664,11 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
       }) as unknown as ADBDevice;
-      acquirer = new PackagesAcquirer(device, { includeDetails: false });
+      acquirer = new PackagesAcquirer(device, { includeDetails: false, downloadApks: false });
 
       const result = await acquirer.acquire();
-      const packages = await parseBlobAsPackages(result.blob!);
+      const jsonFile = result.files![0];
+      const packages = await parseBlobAsPackages(jsonFile.blob);
 
       expect(packages.length).toBe(1);
       expect(packages[0]).toHaveProperty('name');
@@ -652,7 +680,7 @@ describe('PackagesAcquirer', () => {
     });
 
     it('should respect timeout config', async () => {
-      acquirer = new PackagesAcquirer(device, { timeout: 5000 });
+      acquirer = new PackagesAcquirer(device, { timeout: 5000, downloadApks: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
