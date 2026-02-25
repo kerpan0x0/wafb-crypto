@@ -1,12 +1,12 @@
-import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { ADBDevice } from '../..';
 import { CmdCommand } from '../../adb/commands';
 
-export interface SettingsConfig extends AcquisitionConfig {}
+export interface SettingsConfig extends AcquisitionConfig { }
 
 export class SettingsAcquirer extends Acquirer {
-  constructor(device: ADBDevice, settingsConfig: SettingsConfig = {}) {
-    super(device, settingsConfig, 'settings');
+  constructor(device: ADBDevice, config: SettingsConfig = {}) {
+    super(device, config, 'settings');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -64,12 +64,18 @@ export class SettingsAcquirer extends Acquirer {
       const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('settings', 'json');
 
-      // Step 4: Compute hash if required
-      let hash: string | undefined;
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'System settings database',
+        mimeType: blob.type,
+      };
+
       if (this.config.computeHash) {
         this.notifyProgress(onProgress, 90, 'Computing hash...', 'running');
-        hash = await this.computeHash(jsonBytes);
-        this.logger.info(`Computed SHA-256 hash for settings: ${hash}`);
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
       }
 
       // Step 5: Complete acquisition
@@ -83,14 +89,11 @@ export class SettingsAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'settings',
-        fileName,
-        fileSize: jsonBytes.length,
-        hash,
+        files: [file],
         startTime,
         endTime,
         duration,
         data: settingsData,
-        blob,
       };
 
       return result;

@@ -42,18 +42,24 @@ export interface AcquisitionProgress {
   deviceInfo?: DeviceProperties;
 }
 
+export interface AcquisitionFile {
+  fileName: string;
+  fileSize: number;
+  blob: Blob;
+  hash?: string;
+  description?: string;
+  mimeType?: string;
+}
+
 export interface AcquisitionResult {
   success: boolean;
   type: AcquisitionType;
-  fileName?: string;
-  fileSize?: number;
-  hash?: string;
   startTime: Date;
   endTime: Date;
   duration: number;
   data?: unknown;
-  blob?: Blob; // Blob data for bundling into ZIP
   error?: string;
+  files?: AcquisitionFile[];
 }
 
 export interface AcquisitionMetadata {
@@ -282,5 +288,5 @@ export { ProcessAcquirer } from './process';
 export { ServicesAcquirer } from './services';
 export { FileAcquirer } from './files';
 export { LogAcquirer } from './logs';
-export { TmpAcquirer } from './tmpAcquirer';
+export { TmpAcquirer } from './tmp';
 export { DumpsysAcquirer } from './dumpsys';

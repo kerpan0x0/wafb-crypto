@@ -1,6 +1,6 @@
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { DumpsysCommand } from '../../adb/commands/';
 
 export interface ServicesConfig extends AcquisitionConfig {
@@ -34,9 +34,9 @@ export interface ServicesData {
 export class ServicesAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
-    private servicesConfig: ServicesConfig = {}
+    protected config: ServicesConfig = {}
   ) {
-    super(device, servicesConfig, 'services' as any);
+    super(device, config, 'services' as any);
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -61,7 +61,7 @@ export class ServicesAcquirer extends Acquirer {
 
       this.logger.info(`Collected ${services.length} services`);
 
-      if (this.servicesConfig.includeServiceDetails !== false) {
+      if (this.config.includeServiceDetails !== false) {
         this.notifyProgress(onProgress, 70, `Analyzing ${services.length} services...`, 'running');
 
         await this.enrichServicesWithDetails(services);
@@ -92,6 +92,19 @@ export class ServicesAcquirer extends Acquirer {
       const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('services', 'json');
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'System services status',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -99,9 +112,8 @@ export class ServicesAcquirer extends Acquirer {
 
       const result: AcquisitionResult = {
         success: true,
-        type: 'services' as any,
-        fileName,
-        fileSize: jsonBytes.length,
+        type: 'services',
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -113,12 +125,7 @@ export class ServicesAcquirer extends Acquirer {
           userServices: userCount,
           deviceInfo,
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(jsonBytes);
-      }
 
       this.logger.info('Services acquisition completed', {
         fileName,
@@ -137,7 +144,7 @@ export class ServicesAcquirer extends Acquirer {
 
       return {
         success: false,
-        type: 'services' as any,
+        type: 'services',
         startTime,
         endTime,
         duration,
@@ -245,11 +252,11 @@ export class ServicesAcquirer extends Acquirer {
   private shouldIncludeService(serviceName: string): boolean {
     const isSystem = this.isSystemService(serviceName);
 
-    if (isSystem && this.servicesConfig.includeSystemServices === false) {
+    if (isSystem && this.config.includeSystemServices === false) {
       return false;
     }
 
-    if (!isSystem && this.servicesConfig.includeUserServices === false) {
+    if (!isSystem && this.config.includeUserServices === false) {
       return false;
     }
 

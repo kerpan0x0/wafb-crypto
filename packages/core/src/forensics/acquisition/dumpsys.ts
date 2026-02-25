@@ -1,16 +1,16 @@
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import type { ADBDevice } from '../../adb/device';
 import { DumpsysCommand } from '../../adb/commands';
 
-export interface DumpsysConfig extends AcquisitionConfig {}
+export interface DumpsysConfig extends AcquisitionConfig { }
 
 export class DumpsysAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
-    private dumpsysConfig: DumpsysConfig = {}
+    protected config: DumpsysConfig = {}
   ) {
-    super(device, dumpsysConfig, 'dumpsys');
+    super(device, config, 'dumpsys');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -56,14 +56,26 @@ export class DumpsysAcquirer extends Acquirer {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'Dumpsys output',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       this.notifyProgress(onProgress, 100, 'Dumpsys acquisition completed!', 'completed');
 
       // Step 4: Build result
       const result: AcquisitionResult = {
         success: true,
-        type: 'dumpsys' as any,
-        fileName,
-        fileSize: textBytes.length,
+        type: 'dumpsys',
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -72,12 +84,7 @@ export class DumpsysAcquirer extends Acquirer {
           outputSize: dumpsysOutput.length,
           lines: dumpsysOutput.split('\n').length,
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(textBytes);
-      }
 
       this.logger.info('Dumpsys acquisition completed', {
         fileName,
@@ -96,7 +103,7 @@ export class DumpsysAcquirer extends Acquirer {
 
       return {
         success: false,
-        type: 'dumpsys' as any,
+        type: 'dumpsys',
         startTime,
         endTime,
         duration,

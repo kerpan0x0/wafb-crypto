@@ -1,4 +1,4 @@
-import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
 import {
   GetLogcatCommand,
@@ -59,9 +59,9 @@ export interface SELinuxData {
 export class SELinuxAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
-    private selinuxConfig: SELinuxConfig = {}
+    protected config: SELinuxConfig = {}
   ) {
-    super(device, selinuxConfig, 'selinux');
+    super(device, config, 'selinux');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -102,7 +102,7 @@ export class SELinuxAcquirer extends Acquirer {
       const step = 50 / this.getEnabledComponentsCount();
 
       // Step 4: Get process contexts (50-70%)
-      if (this.selinuxConfig.includeContexts !== false) {
+      if (this.config.includeContexts !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -118,7 +118,7 @@ export class SELinuxAcquirer extends Acquirer {
       }
 
       // Step 5: Get file contexts (70-85%)
-      if (this.selinuxConfig.includeFileContexts !== false) {
+      if (this.config.includeFileContexts !== false) {
         this.notifyProgress(onProgress, progressOffset, 'Collecting file contexts...', 'running');
         try {
           selinuxData.fileContexts = await this.getFileContexts();
@@ -129,7 +129,7 @@ export class SELinuxAcquirer extends Acquirer {
       }
 
       // Step 6: Get SELinux denials (85-95%)
-      if (this.selinuxConfig.includeDenials !== false) {
+      if (this.config.includeDenials !== false) {
         this.notifyProgress(onProgress, progressOffset, 'Analyzing SELinux denials...', 'running');
         try {
           selinuxData.denials = await this.getSELinuxDenials();
@@ -148,6 +148,19 @@ export class SELinuxAcquirer extends Acquirer {
       const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('selinux', 'json');
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'SELinux policy and configuration',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -157,8 +170,7 @@ export class SELinuxAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'selinux',
-        fileName,
-        fileSize: jsonBytes.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -170,12 +182,7 @@ export class SELinuxAcquirer extends Acquirer {
           denialsCount: selinuxData.denials?.length || 0,
           deviceInfo,
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(jsonBytes);
-      }
 
       this.logger.info('SELinux acquisition completed', {
         fileName,
@@ -209,9 +216,9 @@ export class SELinuxAcquirer extends Acquirer {
 
   private getEnabledComponentsCount(): number {
     let count = 0;
-    if (this.selinuxConfig.includeContexts !== false) count++;
-    if (this.selinuxConfig.includeFileContexts !== false) count++;
-    if (this.selinuxConfig.includeDenials !== false) count++;
+    if (this.config.includeContexts !== false) count++;
+    if (this.config.includeFileContexts !== false) count++;
+    if (this.config.includeDenials !== false) count++;
     return count || 1;
   }
 
@@ -376,7 +383,7 @@ export class SELinuxAcquirer extends Acquirer {
    */
   private async getSELinuxDenials(): Promise<SELinuxDenial[]> {
     try {
-      const maxLines = this.selinuxConfig.maxDenialLines || 500;
+      const maxLines = this.config.maxDenialLines || 500;
       const pattern = /avc.*denied/i;
       const logcatOutput = await new GetLogcatCommand(this.device.adb).exec({
         dump: true,

@@ -1,7 +1,7 @@
 import { GetLogcatCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
 export interface LogcatConfig extends AcquisitionConfig {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';
@@ -35,9 +35,9 @@ export interface LogcatData {
 export class LogcatAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
-    private logcatConfig: LogcatConfig = {}
+    protected config: LogcatConfig = {}
   ) {
-    super(device, logcatConfig, 'logcat');
+    super(device, config, 'logcat');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -68,10 +68,10 @@ export class LogcatAcquirer extends Acquirer {
       );
 
       const logOutput = await new GetLogcatCommand(this.device.adb).exec({
-        buffer: this.logcatConfig.buffer,
-        maxLines: this.logcatConfig.maxLines,
-        filter: this.logcatConfig.filter,
-        dump: this.logcatConfig.dumpMode !== false, // default true
+        buffer: this.config.buffer,
+        maxLines: this.config.maxLines,
+        filter: this.config.filter,
+        dump: this.config.dumpMode !== false, // default true
       });
 
       this.notifyProgress(onProgress, 70, 'Processing log data...', 'running');
@@ -88,8 +88,8 @@ export class LogcatAcquirer extends Acquirer {
 
       const logcatData: LogcatData = {
         stats,
-        buffer: this.logcatConfig.buffer || 'all',
-        format: this.logcatConfig.format || 'threadtime',
+        buffer: this.config.buffer || 'all',
+        format: this.config.format || 'threadtime',
         deviceInfo,
         acquisitionTime: new Date().toISOString(),
       };
@@ -101,6 +101,19 @@ export class LogcatAcquirer extends Acquirer {
       const blob = new Blob([logBytes], { type: 'text/plain' });
       const fileName = this.generateFileName('logcat', 'txt');
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'System logs (logcat)',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -110,8 +123,7 @@ export class LogcatAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'logcat',
-        fileName,
-        fileSize: logBytes.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -119,16 +131,10 @@ export class LogcatAcquirer extends Acquirer {
           totalLines: stats.totalLines,
           errorCount: stats.errorCount,
           warningCount: stats.warningCount,
-          buffer: this.logcatConfig.buffer || 'all',
+          buffer: this.config.buffer || 'all',
           deviceInfo,
         },
-        blob,
       };
-
-      // Compute hash if requested
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(logBytes);
-      }
 
       this.logger.info('Logcat acquisition completed', {
         fileName,

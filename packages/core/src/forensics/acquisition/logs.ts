@@ -1,6 +1,6 @@
 import type { ADBDevice, DeviceProperties } from '../../adb';
 import { LsCommand, ReadFileCommand } from '../../adb/commands';
-import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig } from '.';
+import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig, AcquisitionFile } from '.';
 
 export interface LogConfig extends AcquisitionConfig {
   includeSystemLogs?: boolean;
@@ -34,9 +34,9 @@ export class LogAcquirer extends Acquirer {
 
   constructor(
     device: ADBDevice,
-    private logConfig: LogConfig = {}
+    protected config: LogConfig = {}
   ) {
-    super(device, logConfig, 'logs');
+    super(device, config, 'logs');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -57,7 +57,7 @@ export class LogAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 15, 'Collecting system logs...', 'running');
       const logFiles: string[] = [];
-      if (this.logConfig.includeSystemLogs !== false) {
+      if (this.config.includeSystemLogs !== false) {
         logFiles.push(...LogAcquirer.staticLogFiles);
       }
 
@@ -67,8 +67,10 @@ export class LogAcquirer extends Acquirer {
       this.notifyProgress(onProgress, 45, 'Acquiring log files...', 'running');
       const logData = await this.getFiles(logFiles, deviceInfo);
 
-      this.notifyProgress(onProgress, 70, 'Creating log archive...', 'running');
-      const { blob, fileName } = await this.buildLogsZip(logData);
+      this.notifyProgress(onProgress, 70, 'Creating log files...', 'running');
+      
+      const files = await this.buildLogsFiles(logData);
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -77,19 +79,12 @@ export class LogAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'logs',
-        fileName,
-        fileSize: blob.size,
+        files: files,  // ✅ Array di file
         startTime,
         endTime,
         duration,
         data: logData,
-        blob,
       };
-
-      if (this.config.computeHash) {
-        const zipBytes = new Uint8Array(await blob.arrayBuffer());
-        result.hash = await this.computeHash(zipBytes);
-      }
 
       return result;
     } catch (error) {
@@ -103,6 +98,7 @@ export class LogAcquirer extends Acquirer {
       return {
         success: false,
         type: 'logs',
+        files: [],  // ✅ Array vuoto
         startTime,
         endTime,
         duration,
@@ -111,7 +107,6 @@ export class LogAcquirer extends Acquirer {
     }
   }
 
-  // TODO remove deviceInfo side effect
   private async getFiles(logFiles: string[], deviceInfo: DeviceProperties): Promise<LogData> {
     const result: LogData = {
       totalFiles: logFiles.length,
@@ -163,18 +158,34 @@ export class LogAcquirer extends Acquirer {
     return result;
   }
 
-  private async buildLogsZip(logData: LogData): Promise<{ blob: Blob; fileName: string }> {
-    const JSZip = await import('jszip');
-    const zip = new JSZip.default();
+  private async buildLogsFiles(logData: LogData): Promise<AcquisitionFile[]> {
+    const files: AcquisitionFile[] = [];
 
     for (const logEntry of logData.logs) {
       if (logEntry.success && logEntry.data) {
         const normalizedPath = logEntry.path.startsWith('/')
           ? logEntry.path.slice(1)
           : logEntry.path;
-        const zipPath = `logs/${normalizedPath}`;
+        
+        const fileName = `logs/${normalizedPath}`;
 
-        zip.file(zipPath, logEntry.data);
+        const blob = new Blob([logEntry.data], { type: 'text/plain' });
+
+        const file: AcquisitionFile = {
+          fileName: fileName,
+          fileSize: blob.size,
+          blob: blob,
+          description: `Log file from ${logEntry.path}`,
+          mimeType: 'text/plain',
+        };
+
+        if (this.config.computeHash) {
+          const data = new TextEncoder().encode(logEntry.data);
+          file.hash = await this.computeHash(data);
+        }
+
+        files.push(file);
+        this.logger.debug(`Added log file: ${fileName} (${this.formatBytes(blob.size)})`);
       }
     }
 
@@ -192,12 +203,28 @@ export class LogAcquirer extends Acquirer {
         error: log.error,
       })),
     };
-    zip.file('logs/acquisition-metadata.json', JSON.stringify(metadata, null, 2));
 
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const fileName = this.generateFileName('logs', 'zip');
+    const metadataJson = JSON.stringify(metadata, null, 2);
+    const metadataBlob = new Blob([metadataJson], { type: 'application/json' });
 
-    return { blob: zipBlob, fileName };
+    const metadataFile: AcquisitionFile = {
+      fileName: 'logs/acquisition-metadata.json',
+      fileSize: metadataBlob.size,
+      blob: metadataBlob,
+      description: 'Log acquisition metadata',
+      mimeType: 'application/json',
+    };
+
+    if (this.config.computeHash) {
+      const data = new TextEncoder().encode(metadataJson);
+      metadataFile.hash = await this.computeHash(data);
+    }
+
+    files.push(metadataFile);
+
+    this.logger.info(`Created ${files.length} log files (${logData.successfulFiles} logs + metadata)`);
+
+    return files;
   }
 
   private async logsFileName(logFolders: string[]): Promise<string[]> {
@@ -224,7 +251,6 @@ export class LogAcquirer extends Acquirer {
     return result;
   }
 
-  // TODO move this replicated code (tmpAcquirer) to a utility function
   private parseFilesFromLs(lsOutput: string, basePath: string): string[] {
     const files: string[] = [];
     const lines = lsOutput.split('\n').filter(line => line.trim());
@@ -247,5 +273,13 @@ export class LogAcquirer extends Acquirer {
     }
 
     return files;
+  }
+
+  private formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   }
 }

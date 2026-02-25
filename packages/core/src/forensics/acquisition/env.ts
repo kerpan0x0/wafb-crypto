@@ -1,9 +1,9 @@
-import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
 import { EnvCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 
-export interface EnvConfig extends AcquisitionConfig {}
+export interface EnvConfig extends AcquisitionConfig { }
 
 export class EnvAcquirer extends Acquirer {
   constructor(
@@ -58,6 +58,19 @@ export class EnvAcquirer extends Acquirer {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'Environment variables',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       this.notifyProgress(
         onProgress,
         100,
@@ -69,8 +82,7 @@ export class EnvAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'env',
-        fileName,
-        fileSize: env.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -78,13 +90,7 @@ export class EnvAcquirer extends Acquirer {
           format: 'text',
           deviceInfo: deviceInfo,
         },
-        blob,
       };
-
-      // Compute hash if requested
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(new TextEncoder().encode(env));
-      }
 
       this.logger.info('Environment variables acquisition completed', {
         fileName,

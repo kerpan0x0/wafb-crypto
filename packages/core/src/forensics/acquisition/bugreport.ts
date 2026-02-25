@@ -7,7 +7,7 @@ import {
 } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
 export interface BugreportConfig extends AcquisitionConfig {
   preferZip?: boolean;
@@ -19,9 +19,9 @@ export class BugreportAcquirer extends Acquirer {
 
   constructor(
     device: ADBDevice,
-    private bugreportConfig: BugreportConfig = {}
+    protected config: BugreportConfig = {}
   ) {
-    super(device, bugreportConfig, 'bugreport');
+    super(device, config, 'bugreport');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -86,6 +86,18 @@ export class BugreportAcquirer extends Acquirer {
 
       const fileName = this.generateFileName('bugreport', useZip ? 'zip' : 'txt');
 
+      const acquisitionFile: AcquisitionFile = {
+        blob,
+        fileName,
+        mimeType: blob.type,
+        fileSize: blob.size,
+        description: 'System bugreport archive',
+      }
+
+      if (this.config.computeHash) {
+        acquisitionFile.hash = await this.computeHash(bugreportData);
+      }
+
       // Step 6: Cleanup
       await this.performCleanup(bugreportPath, useZip);
 
@@ -98,8 +110,7 @@ export class BugreportAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'bugreport',
-        fileName,
-        fileSize: bugreportData.length,
+        files: [acquisitionFile],
         startTime,
         endTime,
         duration,
@@ -108,12 +119,7 @@ export class BugreportAcquirer extends Acquirer {
           deviceInfo: deviceInfo,
           cleanupPerformed: this.cleanupPerformed,
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(bugreportData);
-      }
 
       this.logger.info('Bugreport acquisition completed', {
         fileName,
@@ -150,7 +156,7 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private async performCleanup(bugreportPath: string, useZip: boolean): Promise<void> {
-    if (this.bugreportConfig.cleanupAfter === false) {
+    if (this.config.cleanupAfter === false) {
       this.logger.warn('Cleanup disabled by configuration - file remains on device');
       this.cleanupPerformed = false;
       return;
@@ -178,7 +184,7 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private async checkBugreportzSupport(): Promise<boolean> {
-    if (this.bugreportConfig.preferZip === false) {
+    if (this.config.preferZip === false) {
       return false;
     }
 

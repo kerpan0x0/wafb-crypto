@@ -1,6 +1,6 @@
 import type { ADBDevice, DeviceProperties } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../adb/commands';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
@@ -80,9 +80,9 @@ export interface SystemInfoData {
 export class SystemInfoAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
-    private systemConfig: SystemInfoConfig = {}
+    protected config: SystemInfoConfig = {}
   ) {
-    super(device, systemConfig, 'system_info');
+    super(device, config, 'system_info');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -112,7 +112,7 @@ export class SystemInfoAcquirer extends Acquirer {
       const step = 60 / this.getEnabledComponentsCount();
 
       // Step 3: Get battery info (40-50%)
-      if (this.systemConfig.includeBattery !== false) {
+      if (this.config.includeBattery !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -129,7 +129,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 5: Get network info (50-60%)
-      if (this.systemConfig.includeNetwork !== false) {
+      if (this.config.includeNetwork !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -145,7 +145,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 6: Get storage info (60-70%)
-      if (this.systemConfig.includeStorage !== false) {
+      if (this.config.includeStorage !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -161,7 +161,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 7: Get memory info (70-80%)
-      if (this.systemConfig.includeMemory !== false) {
+      if (this.config.includeMemory !== false) {
         this.notifyProgress(onProgress, progressOffset, 'Reading memory information...', 'running');
         try {
           systemInfoData.memory = await this.getMemoryInfo();
@@ -172,7 +172,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 8: Get sensors (80-90%)
-      if (this.systemConfig.includeSensors !== false) {
+      if (this.config.includeSensors !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -196,6 +196,19 @@ export class SystemInfoAcquirer extends Acquirer {
       const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('system-info', 'json');
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'System information',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -205,8 +218,7 @@ export class SystemInfoAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'system_info',
-        fileName,
-        fileSize: jsonBytes.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -220,12 +232,7 @@ export class SystemInfoAcquirer extends Acquirer {
             sensors: !!systemInfoData.sensors,
           },
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(jsonBytes);
-      }
 
       this.logger.info('System info acquisition completed', {
         fileName,
@@ -403,11 +410,11 @@ export class SystemInfoAcquirer extends Acquirer {
 
   private getEnabledComponentsCount(): number {
     let count = 0;
-    if (this.systemConfig.includeBattery !== false) count++;
-    if (this.systemConfig.includeNetwork !== false) count++;
-    if (this.systemConfig.includeStorage !== false) count++;
-    if (this.systemConfig.includeMemory !== false) count++;
-    if (this.systemConfig.includeSensors !== false) count++;
+    if (this.config.includeBattery !== false) count++;
+    if (this.config.includeNetwork !== false) count++;
+    if (this.config.includeStorage !== false) count++;
+    if (this.config.includeMemory !== false) count++;
+    if (this.config.includeSensors !== false) count++;
     return count || 1;
   }
 

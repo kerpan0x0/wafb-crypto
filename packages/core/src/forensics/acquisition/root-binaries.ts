@@ -1,9 +1,9 @@
-import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
 import { RootBinariesCommand } from '../../adb/commands';
 import type { ADBDevice } from '../../adb';
 
-export interface RootBinariesConfig extends AcquisitionConfig {}
+export interface RootBinariesConfig extends AcquisitionConfig { }
 
 export class RootBinariesAcquirer extends Acquirer {
   constructor(
@@ -65,6 +65,19 @@ export class RootBinariesAcquirer extends Acquirer {
 
       const fileName = `root_binaries.json`;
 
+      const file: AcquisitionFile = {
+        fileName: fileName,
+        fileSize: blob.size,
+        blob: blob,
+        description: 'Root binaries information',
+        mimeType: blob.type,
+      };
+
+      if (this.config.computeHash) {
+        const blobBytes = new Uint8Array(await blob.arrayBuffer());
+        file.hash = await this.computeHash(blobBytes);
+      }
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -74,8 +87,7 @@ export class RootBinariesAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'rootBinaries',
-        fileName,
-        fileSize: rootBinaries.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -83,13 +95,7 @@ export class RootBinariesAcquirer extends Acquirer {
           format: 'text',
           deviceInfo: deviceInfo,
         },
-        blob,
       };
-
-      // Compute hash if requested
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(new TextEncoder().encode(rootBinaries));
-      }
 
       this.logger.info('Root binaries acquisition completed', {
         fileName,
