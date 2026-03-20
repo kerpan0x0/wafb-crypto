@@ -1,108 +1,121 @@
-import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
-import { GenerateBackupCommand, ReadFileCommand } from '../../adb/commands';
+import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { BackupCommand, WhichCommand } from '../../adb/commands';
 import { ADBDevice } from '../..';
+import { ADBCommandError } from '../../utils/errors';
 
 export interface BackupConfig extends AcquisitionConfig {
   type?: string;
-  useCompression?: boolean;
 }
 
-// TODO fix name 
-export interface BackupResult {
-  outputPath: string;
-}
+/** Candidate paths for the `bu` binary, tried in order. */
+const BU_CANDIDATES = ['/system/bin/bu', '/system/xbin/bu', 'bu'];
 
 export class BackupAcquirer extends Acquirer {
   constructor(
     device: ADBDevice,
-    private backupConfig: BackupConfig = { type: 'full', useCompression: false }
+    protected config: BackupConfig = { type: 'full' }
   ) {
-    super(device, backupConfig, 'backup');
+    super(device, config, 'backup');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
     const config = {
-      type: this.backupConfig.type ?? 'full',
-      useCompression: this.backupConfig.useCompression ?? false,
+      type: this.config.type ?? 'full',
     };
     const startTime = new Date();
 
     try {
       this.logger.info('Starting backup acquisition');
 
-      // Step 1: Get device info
-      this.notifyProgress(onProgress, 10, 'Reading device information...', 'running');
+      // ── Step 1: Device info ───────────────────────────────────────────────
+      this.notifyProgress(onProgress, 5, 'Reading device information...', 'running');
       const deviceInfo = await this.device.getProperties();
+      this.notifyProgress(onProgress, 10, `Connected to ${deviceInfo.model}`, 'running', deviceInfo);
 
+      // ── Step 2: Locate `bu` binary ────────────────────────────────────────
+      this.notifyProgress(onProgress, 15, 'Checking backup utility...', 'running');
+      const buPath = await this.findBuBinary();
+
+      if (!buPath) {
+        throw new ADBCommandError(
+          '`bu` binary not found on device. ' +
+            'Checked: ' + BU_CANDIDATES.join(', ') +
+            '. Backup is not available on this device.'
+        );
+      }
+
+      this.logger.info(`Found bu binary at: ${buPath}`);
+
+      // ── Step 3: Skip if type is 'none' ────────────────────────────────────
+      if (config.type === 'none') {
+        return this.skippedResult(startTime);
+      }
+
+      // ── Step 4: Start backup, get raw stdout stream ───────────────────────
+      // bu backup writes the .ab data to stdout.  We return it as a
+      // ReadableStream so the ZIP writer can pipe it directly to disk
+      // without ever buffering the full backup in browser memory.
       this.notifyProgress(
         onProgress,
         20,
-        `Connected to ${deviceInfo.model}`,
-        'running',
-        deviceInfo
-      );
-
-      // Step 2: Generate backup
-      this.notifyProgress(
-        onProgress,
-        40,
-        'Generating backup (this may take several minutes)...',
+        'Starting backup — confirm on device if prompted...',
         'running'
       );
 
-      const backupOutputPath = await this.generateBackup(config.type, config.useCompression);
-      this.notifyProgress(onProgress, 80, 'Backup generation completed.', 'running');
+      const { backupType, timeout } = this.resolveBackupParams(config.type);
+      this.logger.info(`Backup type: ${backupType}, buPath: ${buPath}`);
 
-      const backupData = await new ReadFileCommand(this.device.adb).exec({ path: backupOutputPath.outputPath });
-      this.logger.info(`Backup read from device, size: ${backupData.length} bytes`);
-
-      // Step 3: Create blob and prepare result
-      this.notifyProgress(onProgress, 90, 'Preparing backup...', 'running');
-
-      const blob = new Blob([backupData.buffer as ArrayBuffer], {
-        type: 'application/vnd.android.backup',
+      const { stream, exited } = await new BackupCommand(this.device.adb).exec({
+        type: backupType,
+        buPath,
+        timeout,
       });
-      const fileName = this.generateFileName('backup', 'ab');
-      this.logger.info(`Backup prepared: ${fileName}, size: ${backupData.length} bytes`);
 
-      // Step 4: Finalize acquisition
+      // Wire up exit logging (non-blocking — the stream is the primary signal)
+      exited.then(code => {
+        if (code !== 0) {
+          this.logger.warn(`bu backup exited with code ${code}`);
+        } else {
+          this.logger.info('bu backup exited cleanly');
+        }
+      }).catch(() => {/* ignore */});
+
+      this.notifyProgress(onProgress, 30, 'Backup streaming in progress — confirm on device if prompted...', 'running');
+
+      // ── Step 5: Return stream in AcquisitionFile ──────────────────────────
+      // fileSize is unknown until the stream is consumed; set to 0.
+      // The ZIP writer will record the real size via the data descriptor.
+      const fileName = this.generateFileName('backup', 'ab');
+
+      const acquisitionFile: AcquisitionFile = {
+        stream,
+        fileName,
+        mimeType: 'application/vnd.android.backup',
+        fileSize: 0,  // unknown until stream is consumed
+        description: 'Android backup',
+      };
+
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      this.notifyProgress(
-        onProgress,
-        100,
-        'Backup acquisition completed successfully.',
-        'completed'
-      );
+      // Report 40% — the stream is ready but not yet consumed (ZIP writing
+      // happens in the caller after this returns).  The caller will update
+      // progress to 100% once the stream has been fully written to disk.
+      this.notifyProgress(onProgress, 40, 'Backup stream ready, writing to ZIP...', 'running');
 
-      const result: AcquisitionResult = {
+      return {
         success: true,
         type: 'backup',
-        fileName,
-        fileSize: backupData.length,
+        files: [acquisitionFile],
         startTime,
         endTime,
         duration,
         data: {
-          format: config.useCompression ? 'compressed' : 'uncompressed',
           backupType: config.type,
+          buPath,
           deviceInfo,
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(backupData);
-      }
-
-      this.logger.info('Backup acquisition completed', {
-        fileName,
-        fileSize: backupData.length,
-        duration,
-      });
-
-      return result;
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -122,39 +135,40 @@ export class BackupAcquirer extends Acquirer {
     }
   }
 
-  private async generateBackup(type: string, useCompression: boolean): Promise<BackupResult> {
-    let backupType = '';
-    let timeout = 600000; // Default: 10 minutes
-    let idleTimeout = 45000; // Default: 45 seconds
+  // ---------------------------------------------------------------------------
 
-    switch (type) {
-      case 'sms-only': {
-        backupType = 'com.android.providers.telephony';
-        timeout = 120000; // 2 minutes for SMS-only
-        idleTimeout = 30000; // 30 seconds idle
-        break;
-      }
-      case 'full': {
-        backupType = 'all';
-        timeout = 600000; // 10 minutes for full backup
-        idleTimeout = 45000; // 45 seconds idle
-        break;
-      }
-      case 'none': {
-        // No backup
-        return { outputPath: '' };
+  private async findBuBinary(): Promise<string | null> {
+    for (const candidate of BU_CANDIDATES) {
+      try {
+        const found = await new WhichCommand(this.device.adb).exec({ command: candidate });
+        if (found.startsWith('/')) return found;
+      } catch {
+        // not found — try next
       }
     }
+    return null;
+  }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = `/sdcard/backup-${timestamp}.ab`;
+  private resolveBackupParams(type: string): { backupType: string; timeout: number } {
+    switch (type) {
+      case 'sms-only':
+        return { backupType: 'com.android.providers.telephony', timeout: 300000 };
+      case 'full':
+        return { backupType: 'all', timeout: 600000 };
+      default:
+        return { backupType: type, timeout: 600000 };
+    }
+  }
 
-    return await new GenerateBackupCommand(this.device.adb).exec({
-      type: backupType,
-      outputPath: backupPath,
-      useCompression,
-      timeout,
-      idleTimeout,
-    });
+  private skippedResult(startTime: Date): AcquisitionResult {
+    const endTime = new Date();
+    return {
+      success: true,
+      type: 'backup',
+      startTime,
+      endTime,
+      duration: endTime.getTime() - startTime.getTime(),
+      data: { backupType: 'none' },
+    };
   }
 }

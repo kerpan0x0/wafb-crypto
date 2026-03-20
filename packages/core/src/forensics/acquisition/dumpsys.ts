@@ -1,7 +1,7 @@
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import type { ADBDevice } from '../../adb/device';
-import { DumpsysCommand } from '../../adb/commands';
+import { DumpsysCommand, DumpsysStreamCommand } from '../../adb/commands';
 
 export interface DumpsysConfig extends AcquisitionConfig { }
 
@@ -39,60 +39,68 @@ export class DumpsysAcquirer extends Acquirer {
         'running'
       );
 
-      const timeout = this.config.timeout ?? 600000;
-      const dumpsysOutput = await new DumpsysCommand(this.device.adb).exec({ timeout });
-
-      this.logger.info('Dumpsys collection completed', {
-        outputSize: dumpsysOutput.length,
-      });
-
-      this.notifyProgress(onProgress, 90, 'Processing dumpsys output...', 'running');
-
-      // Step 3: Convert to blob
-      const textBytes = new TextEncoder().encode(dumpsysOutput);
-      const blob = new Blob([textBytes], { type: 'text/plain' });
       const fileName = this.generateFileName('dumpsys', 'txt');
+      let file: AcquisitionFile;
+
+      if (this.config.computeHash) {
+        // Buffered mode: load the full output into memory so we can hash it.
+        // Use only when forensic integrity is required — large outputs (50-200 MB)
+        // will be held in browser memory for the duration of the acquisition.
+        this.notifyProgress(onProgress, 90, 'Processing dumpsys output...', 'running');
+
+        const timeout = this.config.timeout ?? 600000;
+        const output = await new DumpsysCommand(this.device.adb).exec({ timeout });
+
+        const textBytes = new TextEncoder().encode(output);
+        const blob = new Blob([textBytes], { type: 'text/plain' });
+
+        file = {
+          fileName,
+          fileSize: blob.size,
+          blob,
+          description: 'Dumpsys output',
+          mimeType: 'text/plain',
+        };
+
+        file.hash = await this.computeHash(textBytes);
+
+        this.logger.info('Dumpsys acquisition completed (buffered)', {
+          fileName,
+          fileSize: blob.size,
+        });
+      } else {
+        // Streaming mode (default): pipe stdout directly into the ZIP writer
+        // without buffering in memory. fileSize is unknown until the stream
+        // is consumed. Hash computation is skipped.
+        this.notifyProgress(onProgress, 90, 'Streaming dumpsys output into archive...', 'running');
+
+        const { stream: dumpsysStream } = await new DumpsysStreamCommand(this.device.adb).exec();
+
+        file = {
+          fileName,
+          fileSize: 0,
+          stream: dumpsysStream,
+          description: 'Dumpsys output',
+          mimeType: 'text/plain',
+        };
+
+        this.logger.info('Dumpsys stream ready, handing off to ZIP writer', { fileName });
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'Dumpsys output',
-        mimeType: blob.type,
-      };
-
-      if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
-      }
-
       this.notifyProgress(onProgress, 100, 'Dumpsys acquisition completed!', 'completed');
 
-      // Step 4: Build result
-      const result: AcquisitionResult = {
+      return {
         success: true,
         type: 'dumpsys',
         files: [file],
         startTime,
         endTime,
         duration,
-        data: {
-          deviceInfo,
-          outputSize: dumpsysOutput.length,
-          lines: dumpsysOutput.split('\n').length,
-        },
+        data: { deviceInfo },
       };
-
-      this.logger.info('Dumpsys acquisition completed', {
-        fileName,
-        fileSize: textBytes.length,
-        duration,
-      });
-
-      return result;
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();

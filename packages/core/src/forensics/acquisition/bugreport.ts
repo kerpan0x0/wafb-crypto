@@ -5,6 +5,7 @@ import {
   BugreportzCommand,
   ReadFileCommand,
 } from '../../adb/commands';
+import type { BugreportStream } from '../../adb/commands/bugreportCommand';
 import type { ADBDevice } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
@@ -62,49 +63,69 @@ export class BugreportAcquirer extends Acquirer {
         'running'
       );
 
-      const bugreportOut = await this.generateBugreport(useZip);
-      bugreportPath = this.parseBugreportPath(bugreportOut);
+      const bugreportResult = await this.generateBugreport(useZip);
+      useZip = bugreportResult.usedZip;
 
-      // Step 4: Download file
-      this.notifyProgress(
-        onProgress,
-        70,
-        `Downloading ${useZip ? 'zip' : 'text'} file from device...`,
-        'running'
-      );
+      let acquisitionFile: AcquisitionFile;
 
-      const bugreportData = await new ReadFileCommand(this.device.adb).exec({
-        path: bugreportPath,
-      });
+      if (bugreportResult.usedZip) {
+        // bugreportz: file is on device storage, download it
+        bugreportPath = this.parseBugreportPath(bugreportResult.output);
 
-      this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
+        this.notifyProgress(onProgress, 70, 'Downloading bugreport zip from device...', 'running');
 
-      // Step 5: Create blob and trigger download
-      const blob = new Blob([bugreportData.buffer as ArrayBuffer], {
-        type: useZip ? 'application/zip' : 'text/plain',
-      });
+        const bugreportData = await new ReadFileCommand(this.device.adb).exec({
+          path: bugreportPath,
+        });
 
-      const fileName = this.generateFileName('bugreport', useZip ? 'zip' : 'txt');
+        this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
-      const acquisitionFile: AcquisitionFile = {
-        blob,
-        fileName,
-        mimeType: blob.type,
-        fileSize: blob.size,
-        description: 'System bugreport archive',
+        const blob = new Blob([bugreportData.buffer as ArrayBuffer], {
+          type: 'application/zip',
+        });
+
+        const fileName = this.generateFileName('bugreport', 'zip');
+
+        acquisitionFile = {
+          blob,
+          fileName,
+          mimeType: 'application/zip',
+          fileSize: blob.size,
+          description: 'System bugreport archive',
+        };
+
+        if (this.config.computeHash) {
+          acquisitionFile.hash = await this.computeHash(bugreportData);
+        }
+
+        // Cleanup the file left on the device
+        await this.performCleanup(bugreportPath, true);
+      } else {
+        // Legacy bugreport: stdout stream — pipe directly into the ZIP writer,
+        // no temporary file on the device, no ReadFileCommand needed.
+        this.notifyProgress(onProgress, 70, 'Streaming bugreport output into archive...', 'running');
+
+        const fileName = this.generateFileName('bugreport', 'txt');
+
+        acquisitionFile = {
+          stream: bugreportResult.stream.stream,
+          fileName,
+          mimeType: 'text/plain',
+          fileSize: 0,
+          description: 'System bugreport (legacy text format)',
+        };
+
+        // Wire up exit logging (non-blocking)
+        bugreportResult.stream.exited.then(code => {
+          if (code !== 0) this.logger.warn(`bugreport exited with code ${code}`);
+          else this.logger.info('bugreport stream completed');
+        }).catch(() => {/* ignore */});
       }
-
-      if (this.config.computeHash) {
-        acquisitionFile.hash = await this.computeHash(bugreportData);
-      }
-
-      // Step 6: Cleanup
-      await this.performCleanup(bugreportPath, useZip);
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      this.notifyProgress(onProgress, 100, 'Bugreport downloaded successfully!', 'completed');
+      this.notifyProgress(onProgress, 100, 'Bugreport acquisition completed!', 'completed');
 
       // Step 7: Build result
       const result: AcquisitionResult = {
@@ -122,8 +143,8 @@ export class BugreportAcquirer extends Acquirer {
       };
 
       this.logger.info('Bugreport acquisition completed', {
-        fileName,
-        fileSize: bugreportData.length,
+        fileName: acquisitionFile.fileName,
+        streaming: !bugreportResult.usedZip,
         duration,
       });
 
@@ -188,25 +209,37 @@ export class BugreportAcquirer extends Acquirer {
       return false;
     }
 
-    return '' !== (await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' }));
+    try {
+      const path = await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' });
+      return path.startsWith('/');
+    } catch (error) {
+      this.logger.warn('Failed to check bugreportz support, falling back to legacy bugreport', error);
+      return false;
+    }
   }
 
-  private async generateBugreport(useZip: boolean): Promise<string> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const bugreportPath = `/sdcard/bugreport-${timestamp}.txt`;
-
+  private async generateBugreport(useZip: boolean): Promise<
+    | { usedZip: true; output: string }
+    | { usedZip: false; stream: BugreportStream }
+  > {
     if (useZip) {
-      return await new BugreportzCommand(this.device.adb).exec({
-        timeout: this.config.timeout || 180000,
-        idleTimeout: 180000
-      });
-    } else {
-      return await new BugreportCommand(this.device.adb).exec({
-        outputPath: bugreportPath,
-        timeout: this.config.timeout || 180000,
-        idleTimeout: 180000
-      });
+      try {
+        const output = await new BugreportzCommand(this.device.adb).exec({
+          timeout: this.config.timeout || 180000,
+          idleTimeout: 180000,
+          throwOnError: true,
+        });
+        return { usedZip: true, output };
+      } catch (error) {
+        this.logger.warn('bugreportz failed, falling back to legacy text bugreport', error);
+        // fall through to streaming legacy format
+      }
     }
+
+    // Legacy `bugreport` writes to stdout — stream directly into the ZIP,
+    // no temporary file on the device needed.
+    const stream = await new BugreportCommand(this.device.adb).exec();
+    return { usedZip: false, stream };
   }
 
   public wasCleanupPerformed(): boolean {
