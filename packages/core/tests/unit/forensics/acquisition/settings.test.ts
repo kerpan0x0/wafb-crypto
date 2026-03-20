@@ -82,7 +82,7 @@ user_setup_complete=1`;
             };
           },
         },
-        stderr: new ReadableStream(),
+        stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
         stdin: new WritableStream(),
         exit: Promise.resolve({ code: 0 }),
       } as any);
@@ -216,7 +216,7 @@ user_setup_complete=1`;
               };
             },
           },
-          stderr: new ReadableStream(),
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
           stdin: new WritableStream(),
           exit: Promise.resolve({ code: 0 }),
         } as any);

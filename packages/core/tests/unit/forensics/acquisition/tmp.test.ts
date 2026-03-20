@@ -66,7 +66,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         } else if (command.includes('ls -R /data/local/tmp')) {
           return {
@@ -77,7 +79,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         }
         return {
@@ -86,7 +90,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
               read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
               releaseLock: vi.fn()
             })
-          }
+          },
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+          exit: Promise.resolve({ code: 0 }),
         };
       });
 
@@ -144,7 +150,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         } else if (command.includes('ls -R /data/local/tmp')) {
           return {
@@ -155,7 +163,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         }
         return {
@@ -164,7 +174,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
               read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
               releaseLock: vi.fn()
             })
-          }
+          },
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+          exit: Promise.resolve({ code: 0 }),
         };
       });
 
@@ -210,7 +222,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         }
         return {
@@ -219,7 +233,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
               read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
               releaseLock: vi.fn()
             })
-          }
+          },
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+          exit: Promise.resolve({ code: 0 }),
         };
       });
 
@@ -278,7 +294,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
               read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
               releaseLock: vi.fn()
             })
-          }
+          },
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+          exit: Promise.resolve({ code: 0 }),
         };
       });
 
@@ -310,7 +328,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         } else if (command.includes('ls -R /data/local/tmp')) {
           return {
@@ -321,7 +341,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         }
         return {
@@ -330,7 +352,9 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
               read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
               releaseLock: vi.fn()
             })
-          }
+          },
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+          exit: Promise.resolve({ code: 0 }),
         };
       });
 
@@ -394,7 +418,9 @@ lrwxrwxrwx 1 root root   10 Jan  1 12:04 symlink -> target`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         } else if (command.includes('ls -R /data/local/tmp')) {
           return {
@@ -405,7 +431,9 @@ lrwxrwxrwx 1 root root   10 Jan  1 12:04 symlink -> target`;
                   .mockResolvedValueOnce({ done: true, value: undefined }),
                 releaseLock: vi.fn()
               })
-            }
+            },
+            stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+            exit: Promise.resolve({ code: 0 }),
           };
         }
         return {
@@ -414,7 +442,9 @@ lrwxrwxrwx 1 root root   10 Jan  1 12:04 symlink -> target`;
               read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
               releaseLock: vi.fn()
             })
-          }
+          },
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
+          exit: Promise.resolve({ code: 0 }),
         };
       });
 

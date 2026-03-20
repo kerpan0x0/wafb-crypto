@@ -66,7 +66,7 @@ sysfs /sys sysfs rw,relatime 0 0
             };
           },
         },
-        stderr: new ReadableStream(),
+        stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
         stdin: new WritableStream(),
         exit: Promise.resolve({ code: 0 }),
       });
@@ -218,7 +218,7 @@ sysfs /sys sysfs rw,relatime 0 0
               };
             },
           },
-          stderr: new ReadableStream(),
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
           stdin: new WritableStream(),
           exit: Promise.resolve({ code: 0 }),
         });
@@ -257,7 +257,7 @@ sysfs /sys sysfs rw,relatime 0 0
               };
             },
           },
-          stderr: new ReadableStream(),
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
           stdin: new WritableStream(),
           exit: Promise.resolve({ code: 0 }),
         });
@@ -359,7 +359,7 @@ sysfs /sys sysfs rw,relatime 0 0
               };
             },
           },
-          stderr: new ReadableStream(),
+          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
           stdin: new WritableStream(),
           exit: Promise.resolve({ code: 0 }),
         });

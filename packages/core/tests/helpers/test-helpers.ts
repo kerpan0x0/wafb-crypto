@@ -61,22 +61,25 @@ export function createMockShellSocket(output: string, exitCode: number = 0) {
   const encoder = new TextEncoder();
   let readCount = 0;
 
-  return {
-    stdout: {
+  // A reusable factory for a simple "emit one chunk then done" reader
+  const makeReader = (content: string) => {
+    let reads = 0;
+    return {
       getReader: () => ({
         read: async () => {
-          if (readCount === 0) {
-            readCount++;
-            return { done: false, value: encoder.encode(output) };
-          }
+          if (reads === 0) { reads++; return { done: false, value: encoder.encode(content) }; }
           return { done: true, value: undefined };
         },
         releaseLock: vi.fn(),
       }),
-    },
-    stderr: new ReadableStream(),
+    };
+  };
+
+  return {
+    stdout: makeReader(output),
+    stderr: makeReader(''),      // empty stderr by default
     stdin: new WritableStream(),
-    exit: Promise.resolve({ code: exitCode }),
+    exited: Promise.resolve(exitCode),
   };
 }
 
@@ -84,16 +87,18 @@ export function createMockShellSocket(output: string, exitCode: number = 0) {
  * Creates a shell socket that never resolves (for timeout tests)
  */
 export function createHangingShellSocket() {
+  const hangingStream = {
+    getReader: () => ({
+      read: () => new Promise<never>(() => {}),
+      releaseLock: vi.fn(),
+    }),
+  };
+
   return {
-    stdout: {
-      getReader: () => ({
-        read: () => new Promise(() => {}),
-        releaseLock: vi.fn(),
-      }),
-    },
-    stderr: new ReadableStream(),
+    stdout: hangingStream,
+    stderr: hangingStream,
     stdin: new WritableStream(),
-    exit: new Promise(() => {}),
+    exited: new Promise<never>(() => {}),
   };
 }
 
@@ -368,15 +373,15 @@ ${apkLines.join('\n')}`;
           : '01-01 10:00:00.000  1234  5678 I Tag: Info message\n' +
             '01-01 10:00:01.000  1234  5678 W Tag: Warning message\n' +
             '01-01 10:00:02.000  1234  5678 E Tag: Error message';
-    } else if (command.includes('bugreportz')) {
-      output = commandOverrides.generateBugreportz || 'OK:/data/bugreport-2024-01-01.zip';
-    } else if (command === 'bugreport') {
-      output = commandOverrides.generateBugreportLegacy || '/sdcard/bugreport.txt';
     } else if (command.includes('which -a')) {
       const binaryName = command.replace('which -a ', '').trim();
       output = defaultRootBinaryPaths[binaryName as keyof typeof defaultRootBinaryPaths] || '';
     } else if (command.includes('which')) {
       output = commandOverrides.checkCommandExists ? '/system/bin/' + command.split(' ').pop() : '';
+    } else if (command.includes('bugreportz')) {
+      output = commandOverrides.generateBugreportz || 'OK:/data/bugreport-2024-01-01.zip';
+    } else if (command === 'bugreport') {
+      output = commandOverrides.generateBugreportLegacy || '/sdcard/bugreport.txt';
     } else if (command === 'getprop') {
       const props = commandOverrides.getPropOutput || {
         'ro.build.version.release': '13',
@@ -397,7 +402,7 @@ ${apkLines.join('\n')}`;
       stdout: createMockReadableStream(output),
       stderr: createMockReadableStream(''),
       stdin: new WritableStream(),
-      exit: Promise.resolve({ code: 0 }),
+      exited: Promise.resolve(0),
     });
   });
 
@@ -544,9 +549,9 @@ export function createMockADBDeviceForFileAcquirer(
           };
         },
       },
-      stderr: new ReadableStream(),
+      stderr: createMockReadableStream(''),
       stdin: new WritableStream(),
-      exit: Promise.resolve({ code: 0 }),
+      exited: Promise.resolve(0),
     } as any);
   });
 
