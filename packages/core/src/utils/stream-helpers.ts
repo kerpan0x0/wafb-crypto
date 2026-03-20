@@ -100,3 +100,36 @@ export async function retry<T>(
 
   throw lastError;
 }
+
+/**
+ * Wraps a ReadableStream with an idle timeout: if no chunk arrives within
+ * `ms` milliseconds the stream is closed gracefully.
+ *
+ * Used internally by ShellCommand.spawn() so devices that never send EOF
+ * do not stall consumers like the ZIP writer indefinitely.
+ */
+export function wrapWithIdleTimeout(
+  source: ReadableStream<Uint8Array>,
+  ms: number
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      const idlePromise = new Promise<{ done: true; value: undefined }>(resolve => {
+        idleTimer = setTimeout(() => resolve({ done: true, value: undefined }), ms);
+      });
+      const { done, value } = await Promise.race([reader.read(), idlePromise]);
+      if (idleTimer !== undefined) clearTimeout(idleTimer);
+      if (done) {
+        reader.releaseLock();
+        controller.close();
+      } else if (value) {
+        controller.enqueue(value);
+      }
+    },
+    cancel() {
+      reader.releaseLock();
+    },
+  });
+}

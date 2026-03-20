@@ -23,9 +23,14 @@ export class ADBDeviceNotFoundError extends ADBError {
 }
 
 export class ADBCommandError extends ADBError {
-  constructor(message: string) {
+  public readonly exitCode: number | undefined;
+  public readonly stderr: string | undefined;
+
+  constructor(message: string, exitCode?: number, stderr?: string) {
     super(message);
     this.name = 'ADBCommandError';
+    this.exitCode = exitCode;
+    this.stderr = stderr;
     Object.setPrototypeOf(this, ADBCommandError.prototype);
   }
 }
