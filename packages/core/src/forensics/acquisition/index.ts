@@ -46,7 +46,13 @@ export interface AcquisitionProgress {
 export interface AcquisitionFile {
   fileName: string;
   fileSize: number;
-  blob: Blob;
+  blob?: Blob;
+  /**
+   * For large files (e.g. backup): a ReadableStream that produces the raw
+   * bytes.  When set, `blob` may be omitted.  The stream is consumed once
+   * by the ZIP writer and cannot be replayed.
+   */
+  stream?: ReadableStream<Uint8Array>;
   hash?: string;
   description?: string;
   mimeType?: string;
