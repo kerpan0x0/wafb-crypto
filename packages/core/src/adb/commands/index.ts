@@ -5,15 +5,32 @@ export interface ADBCommands<Out> {
 export interface CommandOptions {
   timeout?: number;
   idleTimeout?: number;
+  /**
+   * When true, throw an {@link ADBCommandError} if the shell exits with a
+   * non-zero return code.  The error will carry both `exitCode` and `stderr`.
+   * @default false
+   */
+  throwOnError?: boolean;
+}
+
+/**
+ * Full result returned by {@link ShellCommand.exec}.
+ * Consumers that only need stdout can use the `.stdout` field directly.
+ */
+export interface ShellResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
 }
 
 // +------------------------ Export Commands ------------------------------------------------
+export { ShellCommand } from './shellCommand';
 export { WhichCommand, RootBinariesCommand } from './whichCommand';
 export { BugreportCommand, BugreportzCommand } from './bugreportCommand';
 export { ReadFileCommand, WriteFileCommand, DeleteFileCommand } from './fileCommand';
 export { GetNetworkInfoCommand, GetStorageInfoCommand } from './getSystemProperty';
-export { DumpsysCommand } from './dumpsysCommand';
-export type { DumpsysOptions } from './dumpsysCommand';
+export { DumpsysCommand, DumpsysStreamCommand } from './dumpsysCommand';
+export type { DumpsysOptions, DumpsysStream } from './dumpsysCommand';
 export { GetPropCommand } from './getDevicePropertyCommand';
 export { PmCommand } from './pmCommand';
 export { IsRootedCommand } from './isRootedCommand';
@@ -30,4 +47,4 @@ export type { StatOptions, StatBatchOptions } from './statCommand';
 export { FindCommand } from './findCommand';
 export { HashCommand, HashBatchCommand } from './hashCommand';
 export type { HashOptions, HashBatchOptions } from './hashCommand';
-export { GenerateBackupCommand } from './backupCommand';
+export { BackupCommand } from './backupCommand';

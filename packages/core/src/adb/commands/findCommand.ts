@@ -54,7 +54,7 @@ export class FindCommand implements ADBCommands<string> {
     command += ` 2>/dev/null || echo ""`;
 
     try {
-      const output = await new ShellCommand(this.adb, command).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
       
       const resultCount = output ? output.split('\n').filter(l => l.trim()).length : 0;
       this.logger.debug('Find command completed', { path, resultCount });

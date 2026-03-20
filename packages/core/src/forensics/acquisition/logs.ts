@@ -1,6 +1,7 @@
 import type { ADBDevice, DeviceProperties } from '../../adb';
 import { LsCommand, ReadFileCommand } from '../../adb/commands';
 import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig, AcquisitionFile } from '.';
+import { ADBCommandError } from '../../utils/errors';
 
 export interface LogConfig extends AcquisitionConfig {
   includeSystemLogs?: boolean;
@@ -139,7 +140,12 @@ export class LogAcquirer extends Acquirer {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        if (errorMessage.toLowerCase().includes('permission denied')) {
+        const stderrHint = error instanceof ADBCommandError ? (error.stderr ?? '') : '';
+        const isPermissionDenied =
+          stderrHint.toLowerCase().includes('permission denied') ||
+          errorMessage.toLowerCase().includes('permission denied');
+
+        if (isPermissionDenied) {
           this.logger.debug(`Permission denied for ${logFile}`);
           result.skippedFiles++;
         } else {

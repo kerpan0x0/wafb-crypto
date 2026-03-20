@@ -24,7 +24,7 @@ export class HashCommand implements ADBCommands<string> {
     const command = this.buildHashCommand(path, algorithm);
 
     try {
-      const output = await new ShellCommand(this.adb, command).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
       
       this.logger.debug('Hash command completed', { 
         path, 
@@ -85,7 +85,7 @@ export class HashBatchCommand implements ADBCommands<string> {
     }).join(' ; ');
 
     try {
-      const output = await new ShellCommand(this.adb, commands).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, commands).exec({ timeout })).stdout;
       
       this.logger.debug('Batch hash command completed', { 
         count: files.length,

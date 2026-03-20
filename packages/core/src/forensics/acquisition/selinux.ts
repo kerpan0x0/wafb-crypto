@@ -228,7 +228,8 @@ export class SELinuxAcquirer extends Acquirer {
   private async getSELinuxMode(): Promise<SELinuxMode> {
     try {
       const getenforceOutput = await new GetenforceCommand(this.device.adb).exec({ timeout: 5000 });
-      const current = getenforceOutput.trim() as SELinuxMode['current'];
+      const rawMode = getenforceOutput.trim();
+      const current = (rawMode || 'Unknown') as SELinuxMode['current'];
 
       // Try to get configured mode from kernel cmdline
       let config = 'Unknown';

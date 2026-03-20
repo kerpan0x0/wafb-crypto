@@ -12,7 +12,7 @@ export class WhichCommand implements ADBCommands<string> {
   constructor(private adb: Adb) { }
 
   async exec(options: WhichOptions): Promise<string> {
-    return (await new ShellCommand(this.adb, `which ${options.command}`).exec(options)).trim();
+    return (await new ShellCommand(this.adb, `which ${options.command}`).exec(options)).stdout.trim();
   }
 }
 
@@ -22,7 +22,7 @@ export class RootBinariesCommand implements ADBCommands<string> {
   constructor(private adb: Adb) { }
 
   async exec(options: WhichOptions): Promise<string> {
-    const output = await new ShellCommand(this.adb, `which -a ${options.command}`).exec(options);
+    const output = (await new ShellCommand(this.adb, `which -a ${options.command}`).exec(options)).stdout;
     return output;
   }
 }

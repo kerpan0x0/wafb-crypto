@@ -13,7 +13,7 @@ export class GetNetworkInfoCommand implements ADBCommands<string> {
 
   async exec(): Promise<string> {
     try {
-      return await new ShellCommand(this.adb, 'settings list global').exec();
+      return (await new ShellCommand(this.adb, 'settings list global').exec()).stdout;
     } catch (error) {
       this.logger.warn('Failed to get network info', error);
       return '';
@@ -29,7 +29,7 @@ export class GetStorageInfoCommand implements ADBCommands<string> {
 
   async exec(): Promise<string> {
     try {
-      return await new ShellCommand(this.adb, 'df /data /sdcard 2>/dev/null || df').exec();
+      return (await new ShellCommand(this.adb, 'df /data /sdcard 2>/dev/null || df').exec()).stdout;
 
     } catch (error) {
       this.logger.warn('Failed to get storage info', error);

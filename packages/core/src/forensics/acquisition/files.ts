@@ -8,6 +8,7 @@ import {
   ReadFileCommand,
   StatBatchCommand,
 } from '../../adb/commands';
+import { ADBCommandError } from '../../utils/errors';
 import { files } from 'jszip';
 
 export interface FileAcquisitionConfig extends AcquisitionConfig {
@@ -389,8 +390,8 @@ export class FileAcquirer extends Acquirer {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
 
-        // Check if timeout
-        if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+        // Check if timeout — ADBCommandError thrown by withTimeout() has no exitCode
+        if (error instanceof ADBCommandError && error.message.includes('timed out')) {
           // Reduce batch size adaptively
           const newBatchSize = Math.max(minBatchSize, Math.floor(batchSize / 2));
 
@@ -646,8 +647,8 @@ export class FileAcquirer extends Acquirer {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
 
-        // Check if timeout
-        if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+        // Check if timeout — ADBCommandError thrown by withTimeout() has no exitCode
+        if (error instanceof ADBCommandError && error.message.includes('timed out')) {
           // Reduce batch size adaptively
           const newBatchSize = Math.max(minBatchSize, Math.floor(batchSize / 2));
 

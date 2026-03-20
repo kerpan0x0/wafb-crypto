@@ -23,7 +23,7 @@ export class TestFileCommand implements ADBCommands<boolean> {
     const command = `test -e '${path.replace(/'/g, "'\\''")}' && echo "exists" || echo "not-found"`;
 
     try {
-      const output = await new ShellCommand(this.adb, command).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
       const exists = output.trim() === 'exists';
       
       this.logger.debug('File existence test result', { path, exists });

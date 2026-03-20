@@ -8,6 +8,6 @@ export class EnvCommand implements ADBCommands<string> {
   }
 
   async exec(options: CommandOptions = {}): Promise<string> {
-    return await new ShellCommand(this.adb, `env`).exec(options);
+    return (await new ShellCommand(this.adb, `env`).exec(options)).stdout;
   }
 }

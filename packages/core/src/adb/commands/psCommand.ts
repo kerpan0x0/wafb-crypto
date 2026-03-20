@@ -20,7 +20,7 @@ export class PsCommand implements ADBCommands<string> {
 
   async exec(options: PsOptions = {}): Promise<string> {
     const command = this.buildCommand(options);
-    return await new ShellCommand(this.adb, command).exec(options);
+    return (await new ShellCommand(this.adb, command).exec(options)).stdout;
   }
 
 

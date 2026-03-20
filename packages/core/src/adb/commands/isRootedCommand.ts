@@ -8,7 +8,7 @@ export class IsRootedCommand implements ADBCommands<boolean> {
 
     async exec(): Promise<boolean> {
         try {
-            const output = await new ShellCommand(this.adb, 'su -c "id"').exec();
+            const output = (await new ShellCommand(this.adb, 'su -c "id"').exec()).stdout;
             return output.includes('uid=0');
         } catch (error) {
             return false;

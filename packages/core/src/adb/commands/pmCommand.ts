@@ -31,6 +31,6 @@ export class PmCommand implements ADBCommands<string> {
     if (disabledOnly) command += ' -d';
     if (!includeSystem && !disabledOnly) command += ' -3';
 
-    return await new ShellCommand(this.adb, command).exec({ timeout });
+    return (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
   }
 }

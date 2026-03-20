@@ -26,7 +26,7 @@ export class StatCommand implements ADBCommands<string> {
     const command = `stat -c "${format}" ${this.escapeShellArg(path)} 2>/dev/null || echo ""`;
 
     try {
-      const output = await new ShellCommand(this.adb, command).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
 
       this.logger.debug('Stat command completed', {
         path,
@@ -74,7 +74,7 @@ export class StatBatchCommand implements ADBCommands<string> {
       .join(' ; ');
 
     try {
-      const output = await new ShellCommand(this.adb, commands).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, commands).exec({ timeout })).stdout;
 
       this.logger.debug('Batch stat command completed', {
         count: paths.length,

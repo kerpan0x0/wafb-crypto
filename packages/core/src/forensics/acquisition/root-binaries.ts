@@ -137,7 +137,7 @@ export class RootBinariesAcquirer extends Acquirer {
         const paths = result
           .split('\n')
           .map(p => p.trim())
-          .filter(p => p !== '' && !p.toLowerCase().includes('not found'));
+          .filter(p => p.startsWith('/'));
 
         rootBinariesPaths.push(...paths);
 

@@ -33,6 +33,6 @@ export class LsCommand implements ADBCommands<string> {
       fullCommand += ` | grep "${options.filter}"`;
     }
 
-    return await new ShellCommand(this.adb, fullCommand).exec(options);
+    return (await new ShellCommand(this.adb, fullCommand).exec(options)).stdout;
   }
 }

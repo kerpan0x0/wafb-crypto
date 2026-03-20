@@ -8,7 +8,7 @@ export class GetPropCommand implements ADBCommands<Record<string, string>> {
     constructor(private adb: Adb) { }
 
     async exec(options: CommandOptions = {}): Promise<Record<string, string>> {
-        const output = await new ShellCommand(this.adb, 'getprop').exec(options);
+        const output = (await new ShellCommand(this.adb, 'getprop').exec(options)).stdout;
         const props: Record<string, string> = {};
         const regex = /\[([^\]]+)\]:\s*\[([^\]]*)\]/g;
 

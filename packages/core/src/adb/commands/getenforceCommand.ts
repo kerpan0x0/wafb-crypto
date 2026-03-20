@@ -8,6 +8,6 @@ export class GetenforceCommand implements ADBCommands<string> {
   }
 
   async exec(_options: CommandOptions): Promise<string> {
-    return await new ShellCommand(this.adb, `getenforce`).exec();
+    return (await new ShellCommand(this.adb, `getenforce`).exec()).stdout;
   }
 }

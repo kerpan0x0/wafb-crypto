@@ -36,9 +36,14 @@ export class SettingsAcquirer extends Acquirer {
       for (const ns of namespaces) {
         this.logger.info(`Acquiring settings for namespace: ${ns}`);
 
-        const output = await new CmdCommand(this.device.adb).exec({ namespace: `${ns}` });
+        let output = '';
+        try {
+          output = await new CmdCommand(this.device.adb).exec({ namespace: `${ns}` });
+          this.logger.debug(`Settings data for namespace ${ns}: ${output}`);
+        } catch (error) {
+          this.logger.warn(`Failed to acquire settings for namespace: ${ns}`, error);
+        }
 
-        this.logger.debug(`Settings data for namespace ${ns}: ${output}`);
         settingsData.push({ namespace: ns, data: output });
 
         this.notifyProgress(

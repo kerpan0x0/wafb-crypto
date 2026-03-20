@@ -22,6 +22,6 @@ export class GetLogcatCommand implements ADBCommands<string> {
     if (options.maxLines) args.push(`-t ${options.maxLines}`);
     if (options.filter) args.push(options.filter);
 
-    return await new ShellCommand(this.adb, `${command} ${args.join(' ')}`).exec(options);
+    return (await new ShellCommand(this.adb, `${command} ${args.join(' ')}`).exec(options)).stdout;
   }
 }

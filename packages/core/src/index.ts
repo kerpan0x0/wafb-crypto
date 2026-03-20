@@ -26,6 +26,7 @@ export type {
   AcquisitionResult,
   AcquisitionMetadata,
   AcquisitionSession,
+  AcquisitionFile,
 } from './forensics/acquisition';
 
 export { ACQUISITION_TYPES, Acquirer } from './forensics/acquisition';
@@ -96,6 +97,9 @@ export {
   ADBDeviceNotFoundError,
   ADBCommandError,
 } from './utils/errors';
+
+export { ShellCommand } from './adb/commands/shellCommand';
+export type { ShellResult, CommandOptions } from './adb/commands';
 
 export {
   readStreamAsText,

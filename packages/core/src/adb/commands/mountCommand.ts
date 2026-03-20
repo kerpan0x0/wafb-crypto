@@ -7,7 +7,7 @@ export class ProcMountCommand implements ADBCommands<string> {
     }
 
     async exec(_options?: CommandOptions): Promise<string> {
-        return await new ShellCommand(this.adb, 'cat /proc/mounts').exec();
+        return (await new ShellCommand(this.adb, 'cat /proc/mounts').exec()).stdout;
     }
 }
 
@@ -16,6 +16,6 @@ export class MountCommand implements ADBCommands<string> {
     }
 
     async exec(_options?: CommandOptions): Promise<string> {
-        return await new ShellCommand(this.adb, 'mount').exec();
+        return (await new ShellCommand(this.adb, 'mount').exec()).stdout;
     }
 }
