@@ -122,47 +122,70 @@ export class StreamingZipWriter {
   }
 
   /**
-   * Aggiunge un file da ReadableStream (per file molto grandi).
-   * 
-   * Nota: Il file viene comunque letto completamente in memoria
-   * per calcolare il CRC32 (richiesto dal formato ZIP).
-   * 
-   * @param name - Nome del file nello ZIP
-   * @param dataStream - Stream di dati
-   * 
-   * @example
-   * ```typescript
-   * const fileStream = await fetch('large-file.bin').then(r => r.body);
-   * await zip.addFileFromStream('large-file.bin', fileStream);
-   * ```
+   * Adds a file from a ReadableStream using the ZIP data descriptor extension
+   * (general purpose bit flag bit 3).
+   *
+   * This writes the local file header immediately with CRC32 / sizes set to
+   * zero, then streams the data chunks directly to disk computing the CRC32
+   * on-the-fly, and finally writes a data descriptor record with the real
+   * values.  The central directory entry (written at finalize time) always
+   * contains the correct final values.
+   *
+   * Memory usage is O(chunk size) — the full file is never held in RAM.
+   *
+   * @param name - File name inside the ZIP
+   * @param dataStream - Source stream; consumed once and not replayable
    */
   async addFileFromStream(name: string, dataStream: ReadableStream<Uint8Array>): Promise<void> {
     if (this.finalized) {
       throw new Error('Cannot add file: ZIP writer already finalized');
     }
 
-    this.logger.debug(`Adding file from stream: ${name}`);
+    this.logger.debug(`Adding file from stream (data descriptor): ${name}`);
 
+    const localHeaderOffset = this.currentOffset;
+
+    // Write local file header with zeros for CRC32/sizes and bit 3 set
+    const localHeader = this.createLocalFileHeaderDeferred(name);
+    await this.writer.write(localHeader);
+    this.currentOffset += localHeader.length;
+
+    // Stream data, computing CRC32 and total size on the fly
     const reader = dataStream.getReader();
-    const chunks: Uint8Array[] = [];
+    let crc32 = 0xffffffff;
+    let totalSize = 0;
 
-    // Leggi tutti i chunk (necessario per CRC32)
     try {
-      let done = false;
-      while (!done) {
-        const result = await reader.read();
-        done = result.done;
-        if (!done && result.value) {
-          chunks.push(result.value);
-        }
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        await this.writer.write(value);
+        this.currentOffset += value.byteLength;
+        totalSize += value.byteLength;
+        crc32 = this.updateCRC32(crc32, value);
       }
     } finally {
       reader.releaseLock();
     }
 
-    // Concatena e aggiungi come file normale
-    const fullData = this.concatUint8Arrays(chunks);
-    await this.addFile(name, fullData);
+    crc32 = (crc32 ^ 0xffffffff) >>> 0;
+
+    // Write data descriptor (signature + CRC32 + sizes)
+    const descriptor = this.createDataDescriptor(crc32, totalSize);
+    await this.writer.write(descriptor);
+    this.currentOffset += descriptor.length;
+
+    // Save metadata for central directory (uses real values)
+    this.entries.push({
+      name,
+      offset: localHeaderOffset,
+      size: totalSize,
+      crc32,
+    });
+
+    this.logger.debug(`Stream file added: ${name}, ${totalSize} bytes, crc32=0x${crc32.toString(16)}`);
   }
 
   /**
@@ -247,6 +270,53 @@ export class StreamingZipWriter {
    * - [28-29] Extra Field Length 0
    * - [30+]   Filename
    */
+  /**
+   * Local File Header with bit 3 set — CRC32 and sizes are 0 (deferred to
+   * the data descriptor written after the file data).
+   */
+  private createLocalFileHeaderDeferred(name: string): Uint8Array {
+    const nameBytes = new TextEncoder().encode(name);
+    const header = new Uint8Array(30 + nameBytes.length);
+    const view = new DataView(header.buffer);
+
+    view.setUint32(0, 0x04034b50, true);  // Signature
+    view.setUint16(4, 20, true);           // Version 2.0
+    view.setUint16(6, 0x0008, true);       // Flags: bit 3 = data descriptor present
+    view.setUint16(8, 0, true);            // Compression: STORE
+    view.setUint16(10, 0, true);           // Mod time
+    view.setUint16(12, 0, true);           // Mod date
+    view.setUint32(14, 0, true);           // CRC-32 (deferred)
+    view.setUint32(18, 0, true);           // Compressed size (deferred)
+    view.setUint32(22, 0, true);           // Uncompressed size (deferred)
+    view.setUint16(26, nameBytes.length, true);
+    view.setUint16(28, 0, true);           // Extra field length
+    header.set(nameBytes, 30);
+
+    return header;
+  }
+
+  /** Data descriptor record written immediately after file data. */
+  private createDataDescriptor(crc32: number, size: number): Uint8Array {
+    const record = new Uint8Array(16);
+    const view = new DataView(record.buffer);
+
+    view.setUint32(0, 0x08074b50, true);  // Signature (optional but widely expected)
+    view.setUint32(4, crc32, true);
+    view.setUint32(8, size, true);         // Compressed size
+    view.setUint32(12, size, true);        // Uncompressed size
+
+    return record;
+  }
+
+  /** Incrementally updates a running CRC32 with a new chunk. */
+  private updateCRC32(crc: number, data: Uint8Array): number {
+    const table = this.getCRCTable();
+    for (let i = 0; i < data.length; i++) {
+      crc = table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+    }
+    return crc;
+  }
+
   private createLocalFileHeader(name: string, size: number, crc32: number): Uint8Array {
     const nameBytes = new TextEncoder().encode(name);
     const header = new Uint8Array(30 + nameBytes.length);
