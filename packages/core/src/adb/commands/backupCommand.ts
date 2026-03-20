@@ -1,20 +1,50 @@
-import { ADBCommands, CommandOptions } from ".";
-import { Adb } from "../..";
-import { ShellCommand } from "./shellCommand";
-// TODO fix import 
-import { BackupResult } from "../../forensics/acquisition/backup";
+import { ADBCommands, CommandOptions } from '.';
+import { Adb } from '../..';
+import { ShellCommand } from './shellCommand';
+import { ADBCommandError } from '../../utils/errors';
 
-export interface BackupOptions extends CommandOptions {
-  type: string;
-  outputPath: string;
-  useCompression: boolean;
+export interface BackupOptions extends CommandOptions { 
+  type: string; 
+  buPath: string;
 }
 
-export class GenerateBackupCommand implements ADBCommands<BackupResult> {
-  constructor(private adb: Adb) { }
+export interface BackupStream {
+  stream: ReadableStream<Uint8Array>;
+  exited: Promise<number>;
+}
 
-  async exec(options: BackupOptions): Promise<BackupResult> {
-    const stdout = await new ShellCommand(this.adb, `bu backup -all -nosystem > ${options.outputPath}`).exec({ timeout: 1000000 });
-    return { outputPath: options.outputPath };
+/**
+ * Wraps Android's `bu backup` shell command.
+ *
+ * Returns a raw `ReadableStream` from the command's stdout so the caller
+ * can pipe the backup data directly to disk without buffering it in memory.
+ *
+ * No file is created on the device — `bu backup` writes to stdout and the
+ * data flows through the ADB shell channel directly to the browser.
+ */
+export class BackupCommand implements ADBCommands<BackupStream> {
+  constructor(private adb: Adb) {}
+
+  async exec(options: BackupOptions): Promise<BackupStream> {
+    const { type, buPath } = options;
+
+    if (!buPath) {
+      throw new ADBCommandError('BackupCommand: buPath must not be empty');
+    }
+
+    const cmd = this.buildCommand(buPath, type);
+    // bu backup requires user confirmation on the device (password dialog).
+    // Use a 5-minute idle timeout so the stream is not closed before the
+    // user has a chance to interact with the prompt.
+    const { stdout, exited } = await new ShellCommand(this.adb, cmd).spawn(300000);
+
+    return { stream: stdout, exited };
+  }
+
+  private buildCommand(buPath: string, type: string): string {
+    if (type === 'all') {
+      return `${buPath} backup -all -nosystem`;
+    }
+    return `${buPath} backup ${type}`;
   }
 }

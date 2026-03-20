@@ -31,6 +31,14 @@ export interface DumpsysOptions extends CommandOptions {
   args?: string[];
 }
 
+export interface DumpsysStream {
+  /** Raw stdout stream from `dumpsys`, wrapped with an idle timeout so the
+   *  ZIP writer is not left hanging on devices that never send EOF. */
+  stream: ReadableStream<Uint8Array>;
+  /** Resolves with the process exit code when the command finishes. */
+  exited: Promise<number>;
+}
+
 export class DumpsysCommand implements ADBCommands<string> {
   private logger: Logger;
 
@@ -45,7 +53,7 @@ export class DumpsysCommand implements ADBCommands<string> {
     const command = this.buildCommand(service, packageName, args);
 
     try {
-      const output = await new ShellCommand(this.adb, command).exec({ timeout });
+      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
 
       this.logger.debug('Dumpsys command completed', {
         service,
@@ -79,5 +87,24 @@ export class DumpsysCommand implements ADBCommands<string> {
     }
 
     return command;
+  }
+}
+/**
+ * Streams the full `dumpsys` output without buffering in memory.
+ * Returns a {@link DumpsysStream} so the caller can pipe stdout directly
+ * to a ZIP entry. ShellCommand.spawn() already wraps the stream with an
+ * idle timeout via wrapWithIdleTimeout in stream-helpers.
+ */
+export class DumpsysStreamCommand implements ADBCommands<DumpsysStream> {
+  private logger: Logger;
+
+  constructor(private adb: Adb) {
+    this.logger = new Logger('DumpsysStreamCommand');
+  }
+
+  async exec(): Promise<DumpsysStream> {
+    this.logger.debug('Executing dumpsys stream command');
+    const { stdout, exited } = await new ShellCommand(this.adb, 'dumpsys').spawn();
+    return { stream: stdout, exited };
   }
 }
