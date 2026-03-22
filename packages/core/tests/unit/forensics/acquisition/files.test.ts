@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FileAcquirer } from '../../../../src/forensics/acquisition/files';
 import {
-  createMockADBDeviceForFileAcquirer,
+  createMockDeviceForFileAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   MOCK_FIND_OUTPUT,
   MOCK_STAT_BATCH_OUTPUT,
+  MockDevice,
 } from '../../../helpers/test-helpers';
-import type { Device } from '../../../../src/adb/device';
 
 describe('FileAcquirer', () => {
-  let device: Device;
+  let device: MockDevice;
   let acquirer: FileAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -18,10 +18,10 @@ describe('FileAcquirer', () => {
     vi.clearAllMocks();
 
     // Usa l'helper specifico per FileAcquirer che configura find e stat
-    device = createMockADBDeviceForFileAcquirer() as unknown as Device;
+    device = createMockDeviceForFileAcquirer() as any;
 
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new FileAcquirer(device);
+    acquirer = new FileAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -39,12 +39,12 @@ describe('FileAcquirer', () => {
         computeFileHashes: true,
         hashAlgorithms: ['sha256'] as ('md5' | 'sha1' | 'sha256' | 'sha512')[],
       };
-      const customAcquirer = new FileAcquirer(device, customConfig);
+      const customAcquirer = new FileAcquirer(device as any, customConfig);
       expect(customAcquirer).toBeInstanceOf(FileAcquirer);
     });
 
     it('should set default config values', () => {
-      const acquirerWithDefaults = new FileAcquirer(device, {});
+      const acquirerWithDefaults = new FileAcquirer(device as any, {});
       // Default values are set in constructor but we can't directly test them
       // They will be tested through behavior
       expect(acquirerWithDefaults).toBeInstanceOf(FileAcquirer);
@@ -54,7 +54,7 @@ describe('FileAcquirer', () => {
       const customConfig = {
         additionalPaths: ['/data/custom', '/mnt/external'],
       };
-      const customAcquirer = new FileAcquirer(device, customConfig);
+      const customAcquirer = new FileAcquirer(device as any, customConfig);
       expect(customAcquirer).toBeInstanceOf(FileAcquirer);
     });
   });
@@ -77,21 +77,21 @@ describe('FileAcquirer', () => {
     });
 
     it('should scan default folders for files', async () => {
-      const spawnSpy = vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn');
+      const spawnSpy = device.shell;
 
       await acquirer.acquire();
 
       // Should call find command for default folders
-      expect(spawnSpy).toHaveBeenCalledWith(expect.stringContaining('find'));
+      expect(spawnSpy).toHaveBeenCalledWith(expect.stringContaining('find'), expect.anything());
     });
 
     it('should collect file metadata using stat', async () => {
-      const spawnSpy = vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn');
+      const spawnSpy = device.shell;
 
       await acquirer.acquire();
 
       // Should call stat command for file metadata
-      expect(spawnSpy).toHaveBeenCalledWith(expect.stringContaining('stat'));
+      expect(spawnSpy).toHaveBeenCalledWith(expect.stringContaining('stat'), expect.anything());
     });
 
     it('should report progress during acquisition', async () => {
@@ -189,10 +189,10 @@ describe('FileAcquirer', () => {
       vi.clearAllMocks();
 
       // Usa l'helper con override per simulare risultati vuoti
-      const emptyDevice = createMockADBDeviceForFileAcquirer({
+      const emptyDevice = createMockDeviceForFileAcquirer({
         findOutput: '',
         statBatchOutput: '',
-      }) as unknown as Device;
+      }) as any;
       const emptyAcquirer = new FileAcquirer(emptyDevice);
 
       const result = await emptyAcquirer.acquire();
@@ -202,7 +202,7 @@ describe('FileAcquirer', () => {
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new FileAcquirer(device, { computeHash: true });
+      acquirer = new FileAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -212,7 +212,7 @@ describe('FileAcquirer', () => {
     });
 
     it('should include hash algorithms in result data when enabled', async () => {
-      acquirer = new FileAcquirer(device, {
+      acquirer = new FileAcquirer(device as any, {
         computeFileHashes: true,
         hashAlgorithms: ['sha256'],
       });
@@ -224,7 +224,7 @@ describe('FileAcquirer', () => {
     });
 
     it('should not include hash algorithms when disabled', async () => {
-      acquirer = new FileAcquirer(device, {
+      acquirer = new FileAcquirer(device as any, {
         computeFileHashes: false,
       });
       const result = await acquirer.acquire();
@@ -236,11 +236,11 @@ describe('FileAcquirer', () => {
 
   describe('file downloading', () => {
     it('should download files when downloadFiles is true', async () => {
-      acquirer = new FileAcquirer(device, { downloadFiles: true });
+      acquirer = new FileAcquirer(device as any, { downloadFiles: true });
 
       // Mock ReadFileCommand
       const mockFileContent = new TextEncoder().encode('file content');
-      vi.spyOn(device.adb, 'sync').mockResolvedValue({
+      vi.spyOn(device, 'sync').mockResolvedValue({
         read: vi.fn().mockReturnValue({
           getReader: () => ({
             read: vi
@@ -269,9 +269,9 @@ describe('FileAcquirer', () => {
     });
 
     it('should not download files when downloadFiles is false', async () => {
-      acquirer = new FileAcquirer(device, { downloadFiles: false });
+      acquirer = new FileAcquirer(device as any, { downloadFiles: false });
 
-      const syncSpy = vi.spyOn(device.adb, 'sync');
+      const syncSpy = vi.spyOn(device, 'sync');
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -283,13 +283,13 @@ describe('FileAcquirer', () => {
 
     it('should respect maxTotalSize limit when downloading', async () => {
       const smallLimit = 1000; // 1KB limit
-      acquirer = new FileAcquirer(device, {
+      acquirer = new FileAcquirer(device as any, {
         downloadFiles: true,
         maxTotalSize: smallLimit,
       });
 
       const mockFileContent = new TextEncoder().encode('x'.repeat(2000)); // 2KB file
-      vi.spyOn(device.adb, 'sync').mockResolvedValue({
+      vi.spyOn(device, 'sync').mockResolvedValue({
         read: vi.fn().mockReturnValue({
           getReader: () => ({
             read: vi
@@ -310,9 +310,9 @@ describe('FileAcquirer', () => {
     });
 
     it('should handle file download errors gracefully', async () => {
-      acquirer = new FileAcquirer(device, { downloadFiles: true });
+      acquirer = new FileAcquirer(device as any, { downloadFiles: true });
 
-      vi.spyOn(device.adb, 'sync').mockRejectedValue(new Error('Permission denied'));
+      vi.spyOn(device, 'sync').mockRejectedValue(new Error('Permission denied'));
 
       const result = await acquirer.acquire();
 
@@ -323,7 +323,7 @@ describe('FileAcquirer', () => {
 
   describe('file hashing', () => {
     it('should include filesHashed count when computeFileHashes is true', async () => {
-      const hashAcquirer = new FileAcquirer(device, {
+      const hashAcquirer = new FileAcquirer(device as any, {
         computeFileHashes: true,
         hashAlgorithms: ['sha256'],
       });
@@ -336,7 +336,7 @@ describe('FileAcquirer', () => {
     });
 
     it('should have zero filesHashed when computeFileHashes is false', async () => {
-      const noHashAcquirer = new FileAcquirer(device, {
+      const noHashAcquirer = new FileAcquirer(device as any, {
         computeFileHashes: false,
       });
 
@@ -348,7 +348,7 @@ describe('FileAcquirer', () => {
     });
 
     it('should track total bytes hashed', async () => {
-      const hashAcquirer = new FileAcquirer(device, {
+      const hashAcquirer = new FileAcquirer(device as any, {
         computeFileHashes: true,
         hashAlgorithms: ['sha256'],
       });
@@ -364,15 +364,15 @@ describe('FileAcquirer', () => {
   describe('additional paths', () => {
     it('should scan additional paths when provided', async () => {
       const additionalPaths = ['/data/custom', '/mnt/external'];
-      acquirer = new FileAcquirer(device, {
+      acquirer = new FileAcquirer(device as any, {
         additionalPaths,
       });
 
-      const spawnSpy = vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn');
+      const spawnSpy = device.shell;
       await acquirer.acquire();
 
       // Should call find for additional paths
-      expect(spawnSpy).toHaveBeenCalledWith(expect.stringContaining('find'));
+      expect(spawnSpy).toHaveBeenCalledWith(expect.stringContaining('find'), expect.anything());
     });
   });
 

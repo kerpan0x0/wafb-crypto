@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RootBinariesAcquirer } from '../../../../src/forensics/acquisition/root-binaries';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream,
+  makeShellResult,
 } from '../../../helpers/test-helpers';
-import type { Device } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
 
 describe('RootBinariesAcquirer', () => {
-  let device: Device;
+  let device: MockDevice;
   let acquirer: RootBinariesAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -30,10 +30,10 @@ describe('RootBinariesAcquirer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    device = createMockADBDeviceWithCommands() as unknown as Device;
+    device = createMockDeviceForAcquirer();
 
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new RootBinariesAcquirer(device);
+    acquirer = new RootBinariesAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -47,7 +47,7 @@ describe('RootBinariesAcquirer', () => {
       expect(result.success).toBe(true);
       expect(result.type).toBe('rootBinaries');
       expect(result.files[0].fileName).toBe('root_binaries.json');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should check all root binaries', async () => {
@@ -68,9 +68,7 @@ describe('RootBinariesAcquirer', () => {
       ];
 
       expectedBinaries.forEach(binary => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-          `which -a ${binary}`
-        );
+        expect(device.shell).toHaveBeenCalledWith(`which -a ${binary}`, expect.anything());
       });
     });
 
@@ -85,7 +83,7 @@ describe('RootBinariesAcquirer', () => {
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new RootBinariesAcquirer(device, { computeHash: true });
+      acquirer = new RootBinariesAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -110,12 +108,7 @@ describe('RootBinariesAcquirer', () => {
 
     it('should handle binaries not found on device', async () => {
       // Mock all binaries as not found
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockResolvedValue({
-        stdout: createMockReadableStream(''),
-        stderr: createMockReadableStream(''),
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      });
+      device.shell.mockResolvedValue(makeShellResult(''));
 
       const result = await acquirer.acquire();
 
@@ -143,14 +136,14 @@ describe('RootBinariesAcquirer', () => {
     });
 
     it('should handle shell command errors', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
+      device.shell.mockRejectedValue(
         new Error('Shell error')
       );
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true); // Should still succeed as errors are caught per binary
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should report progress on error', async () => {
@@ -180,7 +173,7 @@ describe('RootBinariesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('which -a su');
+      expect(device.shell).toHaveBeenCalledWith('which -a su', expect.anything());
     });
 
     it('should detect magisk binaries', async () => {
@@ -189,9 +182,7 @@ describe('RootBinariesAcquirer', () => {
       await acquirer.acquire();
 
       magiskBinaries.forEach(binary => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-          `which -a ${binary}`
-        );
+        expect(device.shell).toHaveBeenCalledWith(`which -a ${binary}`, expect.anything());
       });
     });
 
@@ -201,22 +192,20 @@ describe('RootBinariesAcquirer', () => {
       await acquirer.acquire();
 
       supersuFiles.forEach(file => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(`which -a ${file}`);
+        expect(device.shell).toHaveBeenCalledWith(`which -a ${file}`, expect.anything());
       });
     });
 
     it('should detect KingoRoot files', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-        'which -a KingoUser.apk'
-      );
+      expect(device.shell).toHaveBeenCalledWith('which -a KingoUser.apk', expect.anything());
     });
 
     it('should detect busybox', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('which -a busybox');
+      expect(device.shell).toHaveBeenCalledWith('which -a busybox', expect.anything());
     });
   });
 
@@ -321,7 +310,7 @@ describe('RootBinariesAcquirer', () => {
       await acquirer.acquire();
 
       expect(device.getProperties).toHaveBeenCalledTimes(1);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should pass device info to result', async () => {

@@ -5,10 +5,9 @@
  * @module commands/__tests__/bugreportCommand.test
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BugreportCommand, BugreportzCommand } from '../../../../src/commands';
-import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
-import type { Adb } from '@yume-chan/adb';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { BugreportCommand, BugreportzCommand } from '../../../src/commands';
+import { createMockDevice, makeShellResult, makeSpawnResult, MockDevice } from '../../helpers/test-helpers';
 
 // ============================================================================
 // MOCK DATA
@@ -31,14 +30,14 @@ const MOCK_BUGREPORTZ_ERROR = `FAIL:Error generating bugreport: No space left on
 // ============================================================================
 
 describe('BugreportCommand', () => {
-  let mockAdb: Adb;
+  let device: MockDevice;
   let command: BugreportCommand;
 
   beforeEach(() => {
     // BugreportCommand now streams stdout directly — no outputPath needed.
-    const mockSocket = createMockShellSocket('bugreport-data');
-    mockAdb = createMockAdb(mockSocket);
-    command = new BugreportCommand(mockAdb);
+    device = createMockDevice();
+    device.spawn.mockResolvedValue(makeSpawnResult('bugreport-data'));
+    command = new BugreportCommand(device as any);
   });
 
   describe('Legacy Bugreport Execution', () => {
@@ -51,22 +50,21 @@ describe('BugreportCommand', () => {
       expect(result.stream).toBeInstanceOf(ReadableStream);
       // idleTimeout is used internally by ShellCommand.spawn() via wrapWithIdleTimeout
       // and is NOT forwarded as a second arg to shellProtocol.spawn
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('bugreport');
+      expect(device.spawn).toHaveBeenCalledWith('bugreport', undefined);
     });
 
     it('should spawn bugreport without shell redirect', async () => {
       await command.exec();
 
-      const spawnCall = (mockAdb.subprocess.shellProtocol.spawn as any).mock.calls[0];
+      const spawnCall = (device.spawn as any).mock.calls[0];
       expect(spawnCall[0]).toBe('bugreport');
       expect(spawnCall[0]).not.toContain('>');
     });
 
     it('should return a readable stream with the bugreport data', async () => {
       const content = 'bugreport output data';
-      const socket = createMockShellSocket(content);
-      mockAdb = createMockAdb(socket);
-      command = new BugreportCommand(mockAdb);
+      device.spawn.mockResolvedValue(makeSpawnResult(content))
+      command = new BugreportCommand(device as any);
 
       const { stream } = await command.exec();
       const reader = stream.getReader();
@@ -90,26 +88,17 @@ describe('BugreportCommand', () => {
     });
 
     it('should handle command execution errors', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Device disconnected')
-      );
-
+      device.spawn.mockRejectedValue(new Error('Device disconnected'))
       await expect(command.exec()).rejects.toThrow('Device disconnected');
     });
 
     it('should handle permission denied errors', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Permission denied')
-      );
-
+      device.spawn.mockRejectedValue(new Error('Permission denied'))
       await expect(command.exec()).rejects.toThrow('Permission denied');
     });
 
     it('should handle filesystem full errors', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('No space left on device')
-      );
-
+      device.spawn.mockRejectedValue(new Error('No space left on device'));
       await expect(command.exec()).rejects.toThrow('No space left on device');
     });
   });
@@ -120,15 +109,12 @@ describe('BugreportCommand', () => {
 
       // idleTimeout is handled internally by ShellCommand.spawn() via wrapWithIdleTimeout
       // and is NOT forwarded as a second arg to shellProtocol.spawn
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('bugreport');
+      expect(device.spawn).toHaveBeenCalledWith('bugreport', undefined);
       expect(result.stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should handle timeout expiration', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Command timeout')
-      );
-
+      device.spawn.mockRejectedValue(new Error('Command timeout'));
       await expect(command.exec()).rejects.toThrow('Command timeout');
     });
   });
@@ -139,13 +125,13 @@ describe('BugreportCommand', () => {
 // ============================================================================
 
 describe('BugreportzCommand', () => {
-  let mockAdb: Adb;
+  let device: MockDevice;
   let command: BugreportzCommand;
 
   beforeEach(() => {
-    const mockSocket = createMockShellSocket(MOCK_ZIPPED_BUGREPORT);
-    mockAdb = createMockAdb(mockSocket);
-    command = new BugreportzCommand(mockAdb);
+    device = createMockDevice();
+    command = new BugreportzCommand(device as any);
+    device.shell.mockResolvedValue(makeShellResult(MOCK_ZIPPED_BUGREPORT));
   });
 
   describe('Successful Execution', () => {
@@ -154,7 +140,7 @@ describe('BugreportzCommand', () => {
 
       expect(result).toContain('OK:/data/user_de/0/com.android.shell/files/bugreports/');
       expect(result).toContain('.zip');
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('bugreportz');
+      expect(device.shell).toHaveBeenCalledWith('bugreportz', expect.anything());
     });
 
     it('should extract path from zipped bugreport output', async () => {
@@ -164,9 +150,8 @@ describe('BugreportzCommand', () => {
     });
 
     it('should handle progress updates in zipped format', async () => {
-      const mockSocket = createMockShellSocket(MOCK_ZIPPED_BUGREPORT_ALT);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(MOCK_ZIPPED_BUGREPORT_ALT))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -190,9 +175,8 @@ describe('BugreportzCommand', () => {
       ];
 
       for (const output of outputs) {
-        const mockSocket = createMockShellSocket(output);
-        mockAdb = createMockAdb(mockSocket);
-        command = new BugreportzCommand(mockAdb);
+        device.shell.mockResolvedValue(makeShellResult(output));
+        command = new BugreportzCommand(device as any);
 
         const result = await command.exec({});
 
@@ -205,9 +189,8 @@ describe('BugreportzCommand', () => {
 
       for (const userId of userIds) {
         const output = `OK:/data/user_de/${userId}/com.android.shell/files/bugreports/bugreport-device-2025-01-15-10-30-45.zip`;
-        const mockSocket = createMockShellSocket(output);
-        mockAdb = createMockAdb(mockSocket);
-        command = new BugreportzCommand(mockAdb);
+        device.shell.mockResolvedValue(makeShellResult(output))
+        command = new BugreportzCommand(device as any);
 
         const result = await command.exec({});
 
@@ -224,9 +207,8 @@ describe('BugreportzCommand', () => {
     });
 
     it('should handle output with extra whitespace', async () => {
-      const mockSocket = createMockShellSocket(`  ${MOCK_ZIPPED_BUGREPORT}  \n\n`);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(`  ${MOCK_ZIPPED_BUGREPORT}  \n\n`))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -236,9 +218,8 @@ describe('BugreportzCommand', () => {
     it('should handle bugreportz with BEGIN marker', async () => {
       const output =
         'BEGIN:/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip\nOK:/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip';
-      const mockSocket = createMockShellSocket(output);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(output))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -247,9 +228,8 @@ describe('BugreportzCommand', () => {
     });
 
     it('should preserve PROGRESS markers in output', async () => {
-      const mockSocket = createMockShellSocket(MOCK_ZIPPED_BUGREPORT_ALT);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(MOCK_ZIPPED_BUGREPORT_ALT))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -259,9 +239,8 @@ describe('BugreportzCommand', () => {
 
   describe('Error Handling', () => {
     it('should handle bugreportz failure', async () => {
-      const mockSocket = createMockShellSocket(MOCK_BUGREPORTZ_ERROR);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(MOCK_BUGREPORTZ_ERROR))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -270,17 +249,14 @@ describe('BugreportzCommand', () => {
     });
 
     it('should handle command execution errors', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Device disconnected')
-      );
+      device.shell.mockRejectedValue(new Error('Device disconnected'));
 
       await expect(command.exec({})).rejects.toThrow('Device disconnected');
     });
 
     it('should handle empty output', async () => {
-      const mockSocket = createMockShellSocket('');
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(''))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -288,9 +264,8 @@ describe('BugreportzCommand', () => {
     });
 
     it('should handle malformed zipped output', async () => {
-      const mockSocket = createMockShellSocket('Invalid output format');
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult('Invalid output format'))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -298,25 +273,19 @@ describe('BugreportzCommand', () => {
     });
 
     it('should handle timeout during bugreport generation', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Command timeout')
-      );
+      device.shell.mockRejectedValue(new Error('Command timeout'));
 
       await expect(command.exec({})).rejects.toThrow('Command timeout');
     });
 
     it('should handle device offline errors', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Device offline')
-      );
+      device.shell.mockRejectedValue(new Error('Device offline'));
 
       await expect(command.exec({})).rejects.toThrow('Device offline');
     });
 
     it('should handle permission errors', async () => {
-      vi.spyOn(mockAdb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Permission denied')
-      );
+      device.shell.mockRejectedValue(new Error('Permission denied'));
 
       await expect(command.exec({})).rejects.toThrow('Permission denied');
     });
@@ -326,9 +295,8 @@ describe('BugreportzCommand', () => {
     it('should handle bugreport from Pixel device', async () => {
       const pixelBugreport =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport-pixel7pro-TP1A.220905.004-2025-01-15-10-30-45.zip';
-      const mockSocket = createMockShellSocket(pixelBugreport);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(pixelBugreport))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -339,9 +307,8 @@ describe('BugreportzCommand', () => {
     it('should handle bugreport from Samsung device', async () => {
       const samsungBugreport =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport-SM-G998B-2025-01-15-10-30-45.zip';
-      const mockSocket = createMockShellSocket(samsungBugreport);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(samsungBugreport))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -351,9 +318,8 @@ describe('BugreportzCommand', () => {
     it('should handle bugreport from Xiaomi device', async () => {
       const xiaomiBugreport =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport-M2102K1G-2025-01-15-10-30-45.zip';
-      const mockSocket = createMockShellSocket(xiaomiBugreport);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(xiaomiBugreport))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -363,9 +329,8 @@ describe('BugreportzCommand', () => {
     it('should handle bugreport with build ID in filename', async () => {
       const buildIdBugreport =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport-device-RQ3A.211001.001-2025-01-15-10-30-45.zip';
-      const mockSocket = createMockShellSocket(buildIdBugreport);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(buildIdBugreport))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -375,9 +340,8 @@ describe('BugreportzCommand', () => {
     it('should handle long device model names', async () => {
       const longModelBugreport =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport-very-long-device-model-name-v12-2025-01-15-10-30-45.zip';
-      const mockSocket = createMockShellSocket(longModelBugreport);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(longModelBugreport))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -389,9 +353,8 @@ describe('BugreportzCommand', () => {
     it('should include all progress markers when present', async () => {
       const progressOutput = `BEGIN:/data/bugreport.zip\nPROGRESS:25/100\nPROGRESS:50/100\nPROGRESS:75/100\nPROGRESS:100/100\nOK:/data/bugreport.zip`;
 
-      const mockSocket = createMockShellSocket(progressOutput);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(progressOutput))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -404,9 +367,8 @@ describe('BugreportzCommand', () => {
     it('should work without progress markers (older Android)', async () => {
       const simpleOutput =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip';
-      const mockSocket = createMockShellSocket(simpleOutput);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(simpleOutput))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -417,9 +379,8 @@ describe('BugreportzCommand', () => {
     it('should handle incomplete progress sequences', async () => {
       const incompleteProgress = `BEGIN:/data/bugreport.zip\nPROGRESS:10/100\nPROGRESS:30/100\nOK:/data/bugreport.zip`;
 
-      const mockSocket = createMockShellSocket(incompleteProgress);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(incompleteProgress))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -438,9 +399,8 @@ describe('BugreportzCommand', () => {
 
       for (const filename of timestamps) {
         const output = `OK:/data/user_de/0/com.android.shell/files/bugreports/${filename}`;
-        const mockSocket = createMockShellSocket(output);
-        mockAdb = createMockAdb(mockSocket);
-        command = new BugreportzCommand(mockAdb);
+        device.shell.mockResolvedValue(makeShellResult(output))
+        command = new BugreportzCommand(device as any);
 
         const result = await command.exec({});
 
@@ -451,9 +411,8 @@ describe('BugreportzCommand', () => {
     it('should handle legacy timestamp format (if exists)', async () => {
       const legacyFormat =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport-device-20250115-103045.zip';
-      const mockSocket = createMockShellSocket(legacyFormat);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(legacyFormat))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -465,9 +424,8 @@ describe('BugreportzCommand', () => {
     it('should handle user ID 0 (primary user)', async () => {
       const output =
         'OK:/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip';
-      const mockSocket = createMockShellSocket(output);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(output))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -477,9 +435,8 @@ describe('BugreportzCommand', () => {
     it('should handle user ID 10 (secondary user)', async () => {
       const output =
         'OK:/data/user_de/10/com.android.shell/files/bugreports/bugreport.zip';
-      const mockSocket = createMockShellSocket(output);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(output))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 
@@ -489,9 +446,8 @@ describe('BugreportzCommand', () => {
     it('should handle work profile user IDs', async () => {
       const workProfileOutput =
         'OK:/data/user_de/11/com.android.shell/files/bugreports/bugreport.zip';
-      const mockSocket = createMockShellSocket(workProfileOutput);
-      mockAdb = createMockAdb(mockSocket);
-      command = new BugreportzCommand(mockAdb);
+      device.shell.mockResolvedValue(makeShellResult(workProfileOutput))
+      command = new BugreportzCommand(device as any);
 
       const result = await command.exec({});
 

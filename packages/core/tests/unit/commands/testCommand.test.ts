@@ -1,92 +1,77 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TestFileCommand } from '../../../../src/commands';
-import type { Adb } from '@yume-chan/adb';
-import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
+import { TestFileCommand } from '../../../src/commands';
+import { createMockDevice, makeShellResult, type MockDevice } from '../../helpers/test-helpers';
 
 describe('TestFileCommand', () => {
-  let mockAdb: Adb;
+  let device: MockDevice;
   let command: TestFileCommand;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAdb = createMockAdb() as unknown as Adb;
-    command = new TestFileCommand(mockAdb);
+    device = createMockDevice();
+    command = new TestFileCommand(device as any);
   });
 
   describe('Command Construction', () => {
     it('should build test command with -e flag', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ path: '/sdcard/test.txt' });
 
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-        expect.stringContaining('test -e')
+      expect(device.shell).toHaveBeenCalledWith(
+        expect.stringContaining('test -e'), expect.any(Object)
       );
     });
 
     it('should escape file path with single quotes', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ path: '/sdcard/test.txt' });
 
-      const spawnCall = vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mock.calls[0][0];
+      const spawnCall = (device.shell as any).mock.calls[0][0];
       expect(spawnCall).toContain("'/sdcard/test.txt'");
     });
 
     it('should handle file paths with spaces', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ path: '/sdcard/my file.txt' });
 
-      const spawnCall = vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mock.calls[0][0];
+      const spawnCall = (device.shell as any).mock.calls[0][0];
       expect(spawnCall).toContain("'/sdcard/my file.txt'");
     });
 
     it('should handle file paths with quotes by escaping', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ path: "/sdcard/file's name.txt" });
 
-      const spawnCall = vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mock.calls[0][0];
+      const spawnCall = (device.shell as any).mock.calls[0][0];
       expect(spawnCall).toContain("'/sdcard/file'\\''s name.txt'");
     });
 
     it('should include exists echo on success', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ path: '/sdcard/test.txt' });
 
-      const spawnCall = vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mock.calls[0][0];
+      const spawnCall = (device.shell as any).mock.calls[0][0];
       expect(spawnCall).toContain('&& echo "exists"');
     });
 
     it('should include not-found echo on failure', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('not-found')
-      );
+      device.shell.mockResolvedValue(makeShellResult('not-found'));
 
       await command.exec({ path: '/nonexistent.txt' });
 
-      const spawnCall = vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mock.calls[0][0];
+      const spawnCall = (device.shell as any).mock.calls[0][0];
       expect(spawnCall).toContain('|| echo "not-found"');
     });
   });
 
   describe('File Existence Detection', () => {
     it('should return true when file exists', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -94,9 +79,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should return false when file does not exist', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('not-found')
-      );
+      device.shell.mockResolvedValue(makeShellResult('not-found'));
 
       const result = await command.exec({ path: '/nonexistent.txt' });
 
@@ -104,9 +87,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should trim whitespace from output', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('  exists  \n')
-      );
+      device.shell.mockResolvedValue(makeShellResult('  exists  \n'));
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -114,9 +95,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should handle exact match for exists', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists\n')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists\n'));
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -124,9 +103,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should return false for any non-exists output', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('not-found')
-      );
+      device.shell.mockResolvedValue(makeShellResult('not-found'));
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -134,9 +111,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should return false for empty output', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('')
-      );
+      device.shell.mockResolvedValue(makeShellResult(''));
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -146,9 +121,7 @@ describe('TestFileCommand', () => {
 
   describe('Different File Types', () => {
     it('should detect regular files', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/document.txt' });
 
@@ -156,9 +129,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should detect directories', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/Documents' });
 
@@ -166,9 +137,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should detect symlinks', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/link.txt' });
 
@@ -176,9 +145,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should detect empty files', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/empty.txt' });
 
@@ -186,9 +153,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should detect binary files', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/app.apk' });
 
@@ -196,9 +161,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should detect image files', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/photo.jpg' });
 
@@ -208,9 +171,7 @@ describe('TestFileCommand', () => {
 
   describe('Different Path Types', () => {
     it('should test paths in /sdcard', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -218,9 +179,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should test paths in /system', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/system/build.prop' });
 
@@ -228,9 +187,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should test paths in /data', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/data/local/tmp/test.dat' });
 
@@ -238,9 +195,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should test paths in root', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/' });
 
@@ -249,9 +204,7 @@ describe('TestFileCommand', () => {
 
     it('should handle deep nested paths', async () => {
       const deepPath = '/sdcard/Documents/Work/Projects/2024/Q1/report.pdf';
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: deepPath });
 
@@ -260,9 +213,7 @@ describe('TestFileCommand', () => {
 
     it('should handle paths with unicode characters', async () => {
       const unicodePath = '/sdcard/文档/test.txt';
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: unicodePath });
 
@@ -272,31 +223,27 @@ describe('TestFileCommand', () => {
 
   describe('Timeout Handling', () => {
     it('should use default timeout of 5000ms', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ path: '/sdcard/test.txt' });
 
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should accept custom timeout', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       await command.exec({ 
         path: '/sdcard/test.txt',
         timeout: 10000 
       });
 
-      expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should handle timeout errors gracefully', async () => {
       const timeoutError = new Error('Command timed out');
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockRejectedValue(timeoutError);
+      device.shell.mockRejectedValue(timeoutError);
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -308,7 +255,7 @@ describe('TestFileCommand', () => {
   describe('Error Handling', () => {
     it('should return false when command fails', async () => {
       const error = new Error('Test command failed');
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockRejectedValue(error);
+      device.shell.mockRejectedValue(error);
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -317,7 +264,7 @@ describe('TestFileCommand', () => {
 
     it('should return false when permission denied', async () => {
       const error = new Error('Permission denied');
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockRejectedValue(error);
+      device.shell.mockRejectedValue(error);
 
       const result = await command.exec({ path: '/system/secure.file' });
 
@@ -325,13 +272,8 @@ describe('TestFileCommand', () => {
     });
 
     it('should return false when shellProtocol is null', async () => {
-      const invalidAdb = {
-        subprocess: {
-          shellProtocol: null
-        }
-      } as any;
-
-      const invalidCommand = new TestFileCommand(invalidAdb);
+      const invalidDevice = { shell: () => { throw new Error('Shell not available'); } } as any;
+      const invalidCommand = new TestFileCommand(invalidDevice);
 
       const result = await invalidCommand.exec({ path: '/sdcard/test.txt' });
 
@@ -340,7 +282,7 @@ describe('TestFileCommand', () => {
 
     it('should return false on any exception', async () => {
       const error = new Error('Unknown error');
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockRejectedValue(error);
+      device.shell.mockRejectedValue(error);
 
       const result = await command.exec({ path: '/sdcard/test.txt' });
 
@@ -351,9 +293,7 @@ describe('TestFileCommand', () => {
   describe('Edge Cases', () => {
     it('should handle file paths with special characters', async () => {
       const specialPath = '/sdcard/file[2024]_test@home.txt';
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: specialPath });
 
@@ -362,9 +302,7 @@ describe('TestFileCommand', () => {
 
     it('should handle very long paths', async () => {
       const longPath = '/sdcard/' + 'a'.repeat(200) + '/test.txt';
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: longPath });
 
@@ -372,9 +310,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should handle paths with dots', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/../../etc/hosts' });
 
@@ -382,9 +318,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should handle paths with trailing slashes', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/Documents/' });
 
@@ -392,9 +326,7 @@ describe('TestFileCommand', () => {
     });
 
     it('should handle case sensitive paths', async () => {
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-        createMockShellSocket('exists')
-      );
+      device.shell.mockResolvedValue(makeShellResult('exists'));
 
       const result = await command.exec({ path: '/sdcard/Test.TXT' });
 
@@ -411,9 +343,7 @@ describe('TestFileCommand', () => {
       ];
 
       for (const path of paths) {
-        vi.mocked(mockAdb.subprocess.shellProtocol.spawn).mockResolvedValue(
-          createMockShellSocket('exists')
-        );
+        device.shell.mockResolvedValue(makeShellResult('exists'));
 
         const result = await command.exec({ path });
         expect(result).toBe(true);
@@ -422,10 +352,10 @@ describe('TestFileCommand', () => {
 
     it('should handle mix of existing and non-existing files', async () => {
       // First call - file exists
-      vi.mocked(mockAdb.subprocess.shellProtocol.spawn)
-        .mockResolvedValueOnce(createMockShellSocket('exists'))
-        .mockResolvedValueOnce(createMockShellSocket('not-found'))
-        .mockResolvedValueOnce(createMockShellSocket('exists'));
+      device.shell
+        .mockResolvedValueOnce(makeShellResult('exists'))
+        .mockResolvedValueOnce(makeShellResult('not-found'))
+        .mockResolvedValueOnce(makeShellResult('exists'));
 
       const result1 = await command.exec({ path: '/sdcard/exists.txt' });
       const result2 = await command.exec({ path: '/sdcard/notfound.txt' });

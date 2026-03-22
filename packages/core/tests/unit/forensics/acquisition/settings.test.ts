@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SettingsAcquirer } from '../../../../src/forensics/acquisition/settings';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
+  makeShellResult,
+  makeSpawnResult,
 } from '../../../helpers/test-helpers';
-import type { Device } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
 
 describe('SettingsAcquirer', () => {
-  let device: Device;
+  let device: MockDevice;
   let acquirer: SettingsAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -49,12 +51,12 @@ user_setup_complete=1`;
     vi.clearAllMocks();
 
     // Create mock device that returns different outputs based on namespace
-    device = createMockADBDeviceWithCommands({
+    device = createMockDeviceForAcquirer({
       shellOutput: mockSettingsOutputGlobal,
-    }) as unknown as Device;
+    });
 
     // Override the spawn method to return different outputs based on namespace
-    vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockImplementation((command: string) => {
+    device.shell.mockImplementation((command: string) => {
       let output = mockSettingsOutputGlobal;
 
       if (command.includes('settings list global')) {
@@ -65,31 +67,11 @@ user_setup_complete=1`;
         output = mockSettingsOutputSecure;
       }
 
-      return Promise.resolve({
-        stdout: {
-          getReader: () => {
-            let readCount = 0;
-            const data = new TextEncoder().encode(output);
-            return {
-              read: async () => {
-                if (readCount === 0) {
-                  readCount++;
-                  return { done: false, value: data };
-                }
-                return { done: true, value: undefined };
-              },
-              releaseLock: vi.fn(),
-            };
-          },
-        },
-        stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      } as any);
+      return makeShellResult(output);
     });
 
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new SettingsAcquirer(device);
+    acquirer = new SettingsAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -103,7 +85,7 @@ user_setup_complete=1`;
 
     it('should create instance with custom config', () => {
       const customConfig = { timeout: 5000, computeHash: true };
-      const customAcquirer = new SettingsAcquirer(device, customConfig);
+      const customAcquirer = new SettingsAcquirer(device as any, customConfig);
       expect(customAcquirer).toBeInstanceOf(SettingsAcquirer);
     });
   });
@@ -126,7 +108,7 @@ user_setup_complete=1`;
     });
 
     it('should call CmdCommand for each namespace', async () => {
-      const spawnSpy = vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn');
+      const spawnSpy = device.shell;
 
       await acquirer.acquire();
 
@@ -189,7 +171,7 @@ user_setup_complete=1`;
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new SettingsAcquirer(device, { computeHash: true });
+      acquirer = new SettingsAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -198,29 +180,7 @@ user_setup_complete=1`;
     });
 
     it('should handle empty settings output', async () => {
-      vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockImplementation(() => {
-        return Promise.resolve({
-          stdout: {
-            getReader: () => {
-              let readCount = 0;
-              const data = new TextEncoder().encode('');
-              return {
-                read: async () => {
-                  if (readCount === 0) {
-                    readCount++;
-                    return { done: false, value: data };
-                  }
-                  return { done: true, value: undefined };
-                },
-                releaseLock: vi.fn(),
-              };
-            },
-          },
-          stderr: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }), releaseLock: vi.fn() }) },
-          stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 }),
-        } as any);
-      });
+      device.shell.mockResolvedValue(makeShellResult(''));
 
       const result = await acquirer.acquire();
 
@@ -362,13 +322,13 @@ user_setup_complete=1`;
 
   describe('integration with device', () => {
     it('should work with different device configurations', async () => {
-      const customDevice = createMockADBDeviceWithCommands({
+      const customDevice = createMockDeviceForAcquirer({
         shellOutput: 'custom_setting=custom_value',
         getPropOutput: {
           'ro.build.version.release': '15',
           'ro.product.model': 'Pixel 8 Pro',
         },
-      }) as unknown as Device;
+      });
 
       const customAcquirer = new SettingsAcquirer(customDevice);
       const result = await customAcquirer.acquire();

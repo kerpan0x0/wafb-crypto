@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { ShellCommand } from '../../../../src/commands/shellCommand';
-import { ADBCommandError } from '../../../../src/utils/errors';
+import { Shell } from '../../../src/adb/shell';
+import { ADBCommandError } from '../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
 import {
   createMockAdb,
   createMockShellSocket,
   createHangingShellSocket,
-} from '../../../helpers/test-helpers';
+} from '../../helpers/test-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -62,7 +62,7 @@ describe('ShellCommand', () => {
   describe('ShellResult', () => {
     it('should return a ShellResult with stdout, stderr and exitCode', async () => {
       mockAdb = createMockAdb(createMockShellSocketWithStderr('hello', '', 0));
-      const result = await new ShellCommand(mockAdb, 'echo hello').exec();
+      const result = await new Shell(mockAdb, 'echo hello').exec();
 
       expect(result).toMatchObject({ stdout: 'hello', stderr: '', exitCode: 0 });
     });
@@ -70,7 +70,7 @@ describe('ShellCommand', () => {
     it('should capture stdout correctly', async () => {
       const mockOutput = 'test output from command';
       mockAdb = createMockAdb(createMockShellSocket(mockOutput));
-      const result = await new ShellCommand(mockAdb, 'echo test').exec();
+      const result = await new Shell(mockAdb, 'echo test').exec();
 
       expect(result.stdout).toBe(mockOutput);
       expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('echo test');
@@ -78,7 +78,7 @@ describe('ShellCommand', () => {
 
     it('should capture stderr separately from stdout', async () => {
       mockAdb = createMockAdb(createMockShellSocketWithStderr('out', 'err msg', 0));
-      const result = await new ShellCommand(mockAdb, 'cmd').exec();
+      const result = await new Shell(mockAdb, 'cmd').exec();
 
       expect(result.stdout).toBe('out');
       expect(result.stderr).toBe('err msg');
@@ -86,21 +86,21 @@ describe('ShellCommand', () => {
 
     it('should capture the exit code', async () => {
       mockAdb = createMockAdb(createMockShellSocket('', 42));
-      const result = await new ShellCommand(mockAdb, 'exit 42').exec();
+      const result = await new Shell(mockAdb, 'exit 42').exec();
 
       expect(result.exitCode).toBe(42);
     });
 
     it('should report exitCode 0 for successful commands', async () => {
       mockAdb = createMockAdb(createMockShellSocket('ok', 0));
-      const result = await new ShellCommand(mockAdb, 'true').exec();
+      const result = await new Shell(mockAdb, 'true').exec();
 
       expect(result.exitCode).toBe(0);
     });
 
     it('should handle empty stdout', async () => {
       mockAdb = createMockAdb(createMockShellSocket(''));
-      const result = await new ShellCommand(mockAdb, 'echo').exec();
+      const result = await new Shell(mockAdb, 'echo').exec();
 
       expect(result.stdout).toBe('');
       expect(result.exitCode).toBe(0);
@@ -109,7 +109,7 @@ describe('ShellCommand', () => {
     it('should handle multiline stdout', async () => {
       const mockOutput = 'line1\nline2\nline3\nline4';
       mockAdb = createMockAdb(createMockShellSocket(mockOutput));
-      const result = await new ShellCommand(mockAdb, 'cat file.txt').exec();
+      const result = await new Shell(mockAdb, 'cat file.txt').exec();
 
       expect(result.stdout).toBe(mockOutput);
       expect(result.stdout.split('\n')).toHaveLength(4);
@@ -118,7 +118,7 @@ describe('ShellCommand', () => {
     it('should handle complex commands with arguments', async () => {
       const mockOutput = 'file1.txt\nfile2.txt\nfile3.txt';
       mockAdb = createMockAdb(createMockShellSocket(mockOutput));
-      const result = await new ShellCommand(mockAdb, 'ls -la /sdcard/').exec();
+      const result = await new Shell(mockAdb, 'ls -la /sdcard/').exec();
 
       expect(result.stdout).toBe(mockOutput);
       expect(mockAdb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('ls -la /sdcard/');
@@ -130,7 +130,7 @@ describe('ShellCommand', () => {
   describe('throwOnError', () => {
     it('should NOT throw by default when exit code is non-zero', async () => {
       mockAdb = createMockAdb(createMockShellSocketWithStderr('', 'permission denied', 1));
-      const result = await new ShellCommand(mockAdb, 'rm /root/file').exec();
+      const result = await new Shell(mockAdb, 'rm /root/file').exec();
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toBe('permission denied');
@@ -140,7 +140,7 @@ describe('ShellCommand', () => {
       mockAdb = createMockAdb(createMockShellSocketWithStderr('', 'permission denied', 1));
 
       await expect(
-        new ShellCommand(mockAdb, 'rm /root/file').exec({ throwOnError: true })
+        new Shell(mockAdb, 'rm /root/file').exec({ throwOnError: true })
       ).rejects.toThrow(ADBCommandError);
     });
 
@@ -148,7 +148,7 @@ describe('ShellCommand', () => {
       mockAdb = createMockAdb(createMockShellSocket('', 2));
 
       await expect(
-        new ShellCommand(mockAdb, 'cmd').exec({ throwOnError: true })
+        new Shell(mockAdb, 'cmd').exec({ throwOnError: true })
       ).rejects.toMatchObject({ exitCode: 2 });
     });
 
@@ -156,13 +156,13 @@ describe('ShellCommand', () => {
       mockAdb = createMockAdb(createMockShellSocketWithStderr('', 'no such file', 1));
 
       await expect(
-        new ShellCommand(mockAdb, 'cat /missing').exec({ throwOnError: true })
+        new Shell(mockAdb, 'cat /missing').exec({ throwOnError: true })
       ).rejects.toMatchObject({ stderr: 'no such file' });
     });
 
     it('should NOT throw when throwOnError=true but exit code is 0', async () => {
       mockAdb = createMockAdb(createMockShellSocket('success', 0));
-      const result = await new ShellCommand(mockAdb, 'echo').exec({ throwOnError: true });
+      const result = await new Shell(mockAdb, 'echo').exec({ throwOnError: true });
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe('success');
@@ -172,7 +172,7 @@ describe('ShellCommand', () => {
       mockAdb = createMockAdb(createMockShellSocket('', 127));
 
       await expect(
-        new ShellCommand(mockAdb, 'unknown-cmd').exec({ throwOnError: true })
+        new Shell(mockAdb, 'unknown-cmd').exec({ throwOnError: true })
       ).rejects.toThrow(/unknown-cmd.*127/);
     });
   });
@@ -185,8 +185,8 @@ describe('ShellCommand', () => {
         subprocess: { shellProtocol: null, spawn: vi.fn() },
       } as unknown as Adb;
 
-      await expect(new ShellCommand(mockAdb, 'echo test').exec()).rejects.toThrow(ADBCommandError);
-      await expect(new ShellCommand(mockAdb, 'echo test').exec()).rejects.toThrow(
+      await expect(new Shell(mockAdb, 'echo test').exec()).rejects.toThrow(ADBCommandError);
+      await expect(new Shell(mockAdb, 'echo test').exec()).rejects.toThrow(
         /Shell protocol not available/
       );
     });
@@ -197,13 +197,13 @@ describe('ShellCommand', () => {
         new Error('Connection lost')
       );
 
-      await expect(new ShellCommand(mockAdb, 'invalid command').exec()).rejects.toThrow(
+      await expect(new Shell(mockAdb, 'invalid command').exec()).rejects.toThrow(
         ADBCommandError
       );
-      await expect(new ShellCommand(mockAdb, 'invalid command').exec()).rejects.toThrow(
+      await expect(new Shell(mockAdb, 'invalid command').exec()).rejects.toThrow(
         /Failed to execute command "invalid command"/
       );
-      await expect(new ShellCommand(mockAdb, 'invalid command').exec()).rejects.toThrow(
+      await expect(new Shell(mockAdb, 'invalid command').exec()).rejects.toThrow(
         /Connection lost/
       );
     });
@@ -215,7 +215,7 @@ describe('ShellCommand', () => {
     it('should complete successfully before timeout', async () => {
       vi.useFakeTimers();
       mockAdb = createMockAdb(createMockShellSocket('quick response'));
-      const resultPromise = new ShellCommand(mockAdb, 'echo quick').exec({ timeout: 5000 });
+      const resultPromise = new Shell(mockAdb, 'echo quick').exec({ timeout: 5000 });
 
       await vi.advanceTimersByTimeAsync(100);
       const result = await resultPromise;
@@ -227,7 +227,7 @@ describe('ShellCommand', () => {
     it('should timeout when command takes too long', async () => {
       vi.useFakeTimers();
       mockAdb = createMockAdb(createHangingShellSocket());
-      const execPromise = new ShellCommand(mockAdb, 'sleep 1000').exec({ timeout: 1000 });
+      const execPromise = new Shell(mockAdb, 'sleep 1000').exec({ timeout: 1000 });
 
       const expectation = expect(execPromise).rejects.toThrow(ADBCommandError);
       await vi.advanceTimersByTimeAsync(1500);
@@ -239,7 +239,7 @@ describe('ShellCommand', () => {
     it('should use custom timeout value', async () => {
       vi.useFakeTimers();
       mockAdb = createMockAdb(createHangingShellSocket());
-      const execPromise = new ShellCommand(mockAdb, 'long command').exec({ timeout: 3000 });
+      const execPromise = new Shell(mockAdb, 'long command').exec({ timeout: 3000 });
 
       const expectation = expect(execPromise).rejects.toThrow(/timed out after 3000ms/);
       await vi.advanceTimersByTimeAsync(3500);
@@ -250,7 +250,7 @@ describe('ShellCommand', () => {
 
     it('should execute without timeout when timeout is 0', async () => {
       mockAdb = createMockAdb(createMockShellSocket('no timeout output'));
-      const result = await new ShellCommand(mockAdb, 'echo test').exec({ timeout: 0 });
+      const result = await new Shell(mockAdb, 'echo test').exec({ timeout: 0 });
 
       expect(result.stdout).toBe('no timeout output');
     });
@@ -258,7 +258,7 @@ describe('ShellCommand', () => {
     it('should use default timeout of 5000ms when not specified', async () => {
       vi.useFakeTimers();
       mockAdb = createMockAdb(createHangingShellSocket());
-      const execPromise = new ShellCommand(mockAdb, 'hanging command').exec();
+      const execPromise = new Shell(mockAdb, 'hanging command').exec();
 
       const expectation = expect(execPromise).rejects.toThrow(/timed out after 5000ms/);
       await vi.advanceTimersByTimeAsync(5500);

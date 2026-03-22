@@ -11,11 +11,11 @@ export class WhichCommand implements DeviceCommand<string> {
   constructor(private device: Device) { }
 
   async exec(options: WhichOptions): Promise<string> {
-    const args: string[] = [];
+    let cmd = ["which"]
 
-    if (options.all) args.push('-a');
+    if (options.all) cmd.push('-a');
 
-    return (await this.device.shell(`which ${args.join(' ')} ${options.binary}`, { ...options })).stdout.trim();
+    return (await this.device.shell(`${cmd.join(' ')} ${options.binary}`, { ...options })).stdout.trim();
   }
 
 }
