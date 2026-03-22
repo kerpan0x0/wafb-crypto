@@ -5,10 +5,10 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('SettingsAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: SettingsAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -51,7 +51,7 @@ user_setup_complete=1`;
     // Create mock device that returns different outputs based on namespace
     device = createMockADBDeviceWithCommands({
       shellOutput: mockSettingsOutputGlobal,
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
 
     // Override the spawn method to return different outputs based on namespace
     vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockImplementation((command: string) => {
@@ -368,7 +368,7 @@ user_setup_complete=1`;
           'ro.build.version.release': '15',
           'ro.product.model': 'Pixel 8 Pro',
         },
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       const customAcquirer = new SettingsAcquirer(customDevice);
       const result = await customAcquirer.acquire();

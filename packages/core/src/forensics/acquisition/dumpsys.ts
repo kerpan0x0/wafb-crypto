@@ -1,13 +1,13 @@
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import type { ADBDevice } from '../../adb/device';
-import { DumpsysCommand, DumpsysStreamCommand } from '../../adb/commands';
+import type { Device } from '../../adb/device';
+import { DumpsysCommand, DumpsysStreamCommand } from '../../commands';
 
 export interface DumpsysConfig extends AcquisitionConfig { }
 
 export class DumpsysAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: DumpsysConfig = {}
   ) {
     super(device, config, 'dumpsys');
@@ -49,7 +49,7 @@ export class DumpsysAcquirer extends Acquirer {
         this.notifyProgress(onProgress, 90, 'Processing dumpsys output...', 'running');
 
         const timeout = this.config.timeout ?? 600000;
-        const output = await new DumpsysCommand(this.device.adb).exec({ timeout });
+        const output = await new DumpsysCommand(this.device).exec({ timeout });
 
         const textBytes = new TextEncoder().encode(output);
         const blob = new Blob([textBytes], { type: 'text/plain' });
@@ -74,7 +74,7 @@ export class DumpsysAcquirer extends Acquirer {
         // is consumed. Hash computation is skipped.
         this.notifyProgress(onProgress, 90, 'Streaming dumpsys output into archive...', 'running');
 
-        const { stream: dumpsysStream } = await new DumpsysStreamCommand(this.device.adb).exec();
+        const { stream: dumpsysStream } = await new DumpsysStreamCommand(this.device).exec();
 
         file = {
           fileName,

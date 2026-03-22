@@ -4,7 +4,7 @@ import { Adb as AdbClass } from '@yume-chan/adb';
 import { AdbDaemonWebUsbDeviceManager } from '@yume-chan/adb-daemon-webusb';
 import { AdbDaemonTransport } from '@yume-chan/adb';
 import AdbWebCredentialStore from '@yume-chan/adb-credential-web';
-import { ADBDevice } from '.';
+import { Device } from '.';
 import { ADBConnectionError, ADBDeviceNotFoundError } from '../utils/errors';
 import { Logger } from '../utils/logger';
 
@@ -28,7 +28,7 @@ export class ADBConnection {
     this.credentialStore = new AdbWebCredentialStore('wafb-adb-credentials');
   }
 
-  async connect(options: ConnectionOptions = {}): Promise<ADBDevice> {
+  async connect(options: ConnectionOptions = {}): Promise<Device> {
     const { retryAttempts = 3, retryDelay = 1000 } = options;
 
     if (this.connectionState === 'connected') {
@@ -74,7 +74,7 @@ export class ADBConnection {
           this.connectionState = 'connected';
           this.logger.info('ADB connection established');
           
-          return new ADBDevice(this.adb, deviceInfo, this);
+          return new Device(this.adb, deviceInfo, this);
 
         } catch (error) {
           lastError = error as Error;

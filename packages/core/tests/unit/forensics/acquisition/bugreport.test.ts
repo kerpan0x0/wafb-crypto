@@ -5,10 +5,10 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('BugreportAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: BugreportAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -18,7 +18,7 @@ describe('BugreportAcquirer', () => {
     device = createMockADBDeviceWithCommands({
       checkCommandExists: true,
       readFile: new TextEncoder().encode('mock bugreport zip content'),
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
     domMocks = setupAcquirerDOMMocks();
     acquirer = new BugreportAcquirer(device);
   });
@@ -160,7 +160,7 @@ describe('BugreportAcquirer', () => {
         checkCommandExists: false,
         shellOutput: '',
         readFile: new TextEncoder().encode('mock bugreport content'),
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       // Get the original implementation before we mock it
       const originalImpl = vi.fn(
@@ -570,7 +570,7 @@ describe('BugreportAcquirer', () => {
           'ro.build.version.sdk': '33',
           // Missing model - getProperties returns default from mockDevice
         },
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
 
       acquirer = new BugreportAcquirer(device);
@@ -639,7 +639,7 @@ describe('BugreportAcquirer', () => {
       const mockDevice = createMockADBDeviceWithCommands({
         checkCommandExists: true,
         readFile: new TextEncoder().encode('mock bugreport zip content'),
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       domMocks.cleanup();
       domMocks = setupAcquirerDOMMocks();
@@ -748,7 +748,7 @@ describe('BugreportAcquirer', () => {
   describe('Real-World Device Scenarios', () => {
     it('should handle old device with legacy bugreport preference', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({ checkCommandExists: true }) as unknown as ADBDevice;
+      device = createMockADBDeviceWithCommands({ checkCommandExists: true }) as unknown as Device;
 
       vi.mocked(device.getProperties).mockResolvedValue({
         androidVersion: '4.4',
@@ -776,7 +776,7 @@ describe('BugreportAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         checkCommandExists: true,
         readFile: new TextEncoder().encode('mock bugreport zip content'),
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       vi.mocked(device.getProperties).mockResolvedValue({
         androidVersion: '13',
@@ -802,7 +802,7 @@ describe('BugreportAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         checkCommandExists: true,
         readFile: new TextEncoder().encode('mock bugreport zip content'),
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       vi.mocked(device.getProperties).mockResolvedValue({
         androidVersion: '13',
@@ -845,7 +845,7 @@ describe('BugreportAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         checkCommandExists: true,
         readFile: largeContent,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
 
       acquirer = new BugreportAcquirer(device);

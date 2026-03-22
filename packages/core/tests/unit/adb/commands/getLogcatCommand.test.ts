@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GetLogcatCommand } from '../../../../src/adb/commands/logcatCommand';
+import { GetLogcatCommand } from '../../../../src/commands/logcatCommand';
 import type { Adb } from '@yume-chan/adb';
 import { createMockAdb, createMockShellSocket, MOCK_LOGCAT_OUTPUT } from '../../../helpers/test-helpers';
 

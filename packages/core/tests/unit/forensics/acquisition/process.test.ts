@@ -5,10 +5,10 @@ import {
   createMockProgressCallback,
   createMockReadableStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('ProcessAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: ProcessAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -24,7 +24,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
     device = createMockADBDeviceWithProcesses({
       psOutput: MOCK_PS_OUTPUT,
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
 
     domMocks = setupAcquirerDOMMocks();
     acquirer = new ProcessAcquirer(device);
@@ -147,7 +147,7 @@ u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0             
 
       device = createMockADBDeviceWithProcesses({
         psOutput: psWithSpaces,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new ProcessAcquirer(device);
 
       const result = await acquirer.acquire();
@@ -167,7 +167,7 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
 
       device = createMockADBDeviceWithProcesses({
         psOutput: malformedPs,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new ProcessAcquirer(device);
 
       const result = await acquirer.acquire();
@@ -179,7 +179,7 @@ u:r:system_server:s0 system 1234 1 3456789 98765 0 0 S system_server`;
     it('should handle empty process list', async () => {
       device = createMockADBDeviceWithProcesses({
         psOutput: 'LABEL USER PID PPID VSZ RSS WCHAN ADDR S NAME',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new ProcessAcquirer(device);
 
       const result = await acquirer.acquire();
@@ -226,7 +226,7 @@ u:r:app:s0 custom_user 9999 1 12345 678 0 0 S custom_app`;
 
       device = createMockADBDeviceWithProcesses({
         psOutput: customPs,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new ProcessAcquirer(device);
 
       const result = await acquirer.acquire();
@@ -243,7 +243,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
 
       device = createMockADBDeviceWithProcesses({
         psOutput: multiUserPs,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new ProcessAcquirer(device);
 
       const result = await acquirer.acquire();
@@ -319,7 +319,7 @@ u:r:app:s0 u1_a456 9999 1 12345 678 0 0 S secondary_user_app`;
     it('should exclude SELinux context when disabled', async () => {
       device = createMockADBDeviceWithProcesses({
         psOutput: MOCK_PS_OUTPUT.replace(/u:r:\w+:s0\s+/g, ''),
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new ProcessAcquirer(device, { includeSELinuxContext: false });
 
       await acquirer.acquire();

@@ -1,6 +1,6 @@
 import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { ADBDevice, DeviceProperties } from '../..';
-import { EnvCommand, LsCommand, ReadFileCommand } from '../../adb/commands';
+import { Device, DeviceProperties } from '../../adb';
+import { EnvCommand, LsCommand, ReadFileCommand } from '../../commands';
 import { Acquirer } from './acquirer';
 
 export interface TmpAcquirerConfig extends AcquisitionConfig {}
@@ -8,7 +8,7 @@ export interface TmpAcquirerConfig extends AcquisitionConfig {}
 const defaultTmpDir = `/data/local/tmp`;
 
 export class TmpAcquirer extends Acquirer {
-  constructor(device: ADBDevice, config: TmpAcquirerConfig = {}) {
+  constructor(device: Device, config: TmpAcquirerConfig = {}) {
     super(device, config, 'tmp');
   }
 
@@ -77,7 +77,7 @@ export class TmpAcquirer extends Acquirer {
 
   private async getTmpDir(): Promise<string> {
     try {
-      const env = await new EnvCommand(this.device.adb).exec();
+      const env = await new EnvCommand(this.device).exec();
       const tmpDirLine = env.split('\n').find(line => line.startsWith('TMPDIR='));
       if (tmpDirLine) {
         const tmpDir = tmpDirLine.split('=')[1].trim();
@@ -96,7 +96,7 @@ export class TmpAcquirer extends Acquirer {
   private async listTmpFiles(): Promise<string[]> {
     const result: string[] = [];
 
-    const lsOutput = await new LsCommand(this.device.adb).exec({
+    const lsOutput = await new LsCommand(this.device).exec({
       path: defaultTmpDir,
       recursive: true,
     });
@@ -143,7 +143,7 @@ export class TmpAcquirer extends Acquirer {
     for (const file of files) {
       this.logger.info(`Processing tmp file: ${file}`);
 
-      const fileData = await new ReadFileCommand(this.device.adb).exec({
+      const fileData = await new ReadFileCommand(this.device).exec({
         path: file,
       });
       this.logger.debug(`Read tmp file: ${fileData.length} bytes`);

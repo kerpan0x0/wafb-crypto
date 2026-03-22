@@ -1,13 +1,13 @@
 import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
-import { RootBinariesCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+import { WhichCommand } from '../../commands';
+import type { Device } from '../../adb';
 
 export interface RootBinariesConfig extends AcquisitionConfig { }
 
 export class RootBinariesAcquirer extends Acquirer {
   constructor(
-    protected device: ADBDevice,
+    protected device: Device,
     protected config: RootBinariesConfig = {}
   ) {
     super(device, config, 'rootBinaries');
@@ -131,7 +131,7 @@ export class RootBinariesAcquirer extends Acquirer {
 
     for (const binary of binaries) {
       try {
-        const result = await new RootBinariesCommand(this.device.adb).exec({ command: binary });
+        const result = await new WhichCommand(this.device).exec({ all: true, binary: binary });
 
         // Parse multi-line output from `which -a` (e.g., "/path1\n/path2")
         const paths = result

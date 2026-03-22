@@ -1,4 +1,4 @@
-import type { ADBDevice } from '../../adb';
+import type { Device } from '../../adb';
 import { Logger } from '../../utils/logger';
 import { AcquisitionConfig, AcquisitionType, AcquisitionProgress } from '.';
 
@@ -7,7 +7,7 @@ export abstract class Acquirer {
   protected logger: Logger;
 
   constructor(
-    protected device: ADBDevice,
+    protected device: Device,
     protected config: AcquisitionConfig = {},
     protected acquisitionType: AcquisitionType
   ) {

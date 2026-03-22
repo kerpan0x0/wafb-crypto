@@ -3,7 +3,7 @@
 // ============================================================================
 
 export { ADBConnection } from './adb/connection';
-export { ADBDevice } from './adb';
+export { Device } from './adb';
 
 // Export all ADB types from single source
 export type {
@@ -97,9 +97,6 @@ export {
   ADBDeviceNotFoundError,
   ADBCommandError,
 } from './utils/errors';
-
-export { ShellCommand } from './adb/commands/shellCommand';
-export type { ShellResult, CommandOptions } from './adb/commands';
 
 export {
   readStreamAsText,

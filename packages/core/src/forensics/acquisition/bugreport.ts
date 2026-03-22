@@ -4,9 +4,9 @@ import {
   BugreportCommand,
   BugreportzCommand,
   ReadFileCommand,
-} from '../../adb/commands';
-import type { BugreportStream } from '../../adb/commands/bugreportCommand';
-import type { ADBDevice } from '../../adb';
+} from '../../commands';
+import type { BugreportStream } from '../../commands/bugreportCommand';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
@@ -19,7 +19,7 @@ export class BugreportAcquirer extends Acquirer {
   private cleanupPerformed: boolean = false;
 
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: BugreportConfig = {}
   ) {
     super(device, config, 'bugreport');
@@ -74,7 +74,7 @@ export class BugreportAcquirer extends Acquirer {
 
         this.notifyProgress(onProgress, 70, 'Downloading bugreport zip from device...', 'running');
 
-        const bugreportData = await new ReadFileCommand(this.device.adb).exec({
+        const bugreportData = await new ReadFileCommand(this.device).exec({
           path: bugreportPath,
         });
 
@@ -187,7 +187,7 @@ export class BugreportAcquirer extends Acquirer {
       if (!useZip || bugreportPath.startsWith('/sdcard/')) {
         this.logger.info('Attempting cleanup of bugreport file', { path: bugreportPath });
 
-        await new DeleteFileCommand(this.device.adb).exec({ path: bugreportPath });
+        await new DeleteFileCommand(this.device).exec({ path: bugreportPath });
 
         this.cleanupPerformed = true;
         this.logger.info('Cleaned up bugreport file from device');
@@ -210,7 +210,7 @@ export class BugreportAcquirer extends Acquirer {
     }
 
     try {
-      const path = await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' });
+      const path = await new WhichCommand(this.device).exec({ binary: 'bugreportz' });
       return path.startsWith('/');
     } catch (error) {
       this.logger.warn('Failed to check bugreportz support, falling back to legacy bugreport', error);
@@ -224,7 +224,7 @@ export class BugreportAcquirer extends Acquirer {
   > {
     if (useZip) {
       try {
-        const output = await new BugreportzCommand(this.device.adb).exec({
+        const output = await new BugreportzCommand(this.device).exec({
           timeout: this.config.timeout || 180000,
           idleTimeout: 180000,
           throwOnError: true,
@@ -238,7 +238,7 @@ export class BugreportAcquirer extends Acquirer {
 
     // Legacy `bugreport` writes to stdout — stream directly into the ZIP,
     // no temporary file on the device needed.
-    const stream = await new BugreportCommand(this.device.adb).exec();
+    const stream = await new BugreportCommand(this.device).exec();
     return { usedZip: false, stream };
   }
 

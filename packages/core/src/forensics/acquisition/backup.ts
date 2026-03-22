@@ -1,7 +1,7 @@
 import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { BackupCommand, WhichCommand } from '../../adb/commands';
-import { ADBDevice } from '../..';
+import { BackupCommand, WhichCommand } from '../../commands';
 import { ADBCommandError } from '../../utils/errors';
+import { Device } from '../../adb';
 
 export interface BackupConfig extends AcquisitionConfig {
   type?: string;
@@ -12,7 +12,7 @@ const BU_CANDIDATES = ['/system/bin/bu', '/system/xbin/bu', 'bu'];
 
 export class BackupAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: BackupConfig = { type: 'full' }
   ) {
     super(device, config, 'backup');
@@ -65,7 +65,7 @@ export class BackupAcquirer extends Acquirer {
       const { backupType, timeout } = this.resolveBackupParams(config.type);
       this.logger.info(`Backup type: ${backupType}, buPath: ${buPath}`);
 
-      const { stream, exited } = await new BackupCommand(this.device.adb).exec({
+      const { stream, exited } = await new BackupCommand(this.device).exec({
         type: backupType,
         buPath,
         timeout,
@@ -140,7 +140,7 @@ export class BackupAcquirer extends Acquirer {
   private async findBuBinary(): Promise<string | null> {
     for (const candidate of BU_CANDIDATES) {
       try {
-        const found = await new WhichCommand(this.device.adb).exec({ command: candidate });
+        const found = await new WhichCommand(this.device).exec({ binary: candidate });
         if (found.startsWith('/')) return found;
       } catch {
         // not found — try next

@@ -1,7 +1,5 @@
-import type { Adb } from '@yume-chan/adb';
-import type { CommandOptions } from '.';
-import { ADBCommands } from '.';
-import { ShellCommand } from './shellCommand';
+import type { DeviceCommand } from '.';
+import { Device, ShellOptions } from '../adb';
 
 /**
  * Legacy `bugreport` command — available on all Android versions.
@@ -17,11 +15,11 @@ export interface BugreportStream {
   exited: Promise<number>;
 }
 
-export class BugreportCommand implements ADBCommands<BugreportStream> {
-  constructor(private adb: Adb) { }
+export class BugreportCommand implements DeviceCommand<BugreportStream> {
+  constructor(private device: Device) { }
 
-  async exec(options: CommandOptions = {}): Promise<BugreportStream> {
-    const { stdout, exited } = await new ShellCommand(this.adb, 'bugreport').spawn();
+  async exec(options: ShellOptions = {}): Promise<BugreportStream> {
+    const { stdout, exited } = await this.device.spawn('bugreport', options.idleTimeout);
     return { stream: stdout, exited };
   }
 }
@@ -32,10 +30,10 @@ export class BugreportCommand implements ADBCommands<BugreportStream> {
  * Writes a compressed zip to device storage and prints `OK:/path/to/file.zip`
  * on stdout.  The file must be downloaded separately with ReadFileCommand.
  */
-export class BugreportzCommand implements ADBCommands<string> {
-  constructor(private adb: Adb) { }
+export class BugreportzCommand implements DeviceCommand<string> {
+  constructor(private device: Device) { }
 
-  async exec(options: CommandOptions = {}): Promise<string> {
-    return (await new ShellCommand(this.adb, 'bugreportz').exec({ ...options })).stdout;
+  async exec(options: ShellOptions = {}): Promise<string> {
+    return (await this.device.shell('bugreportz', { ...options})).stdout;
   }
 }

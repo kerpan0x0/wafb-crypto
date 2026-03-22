@@ -1,20 +1,18 @@
-import type { Adb } from '@yume-chan/adb';
-import type { CommandOptions } from '.';
-import { ADBCommands } from '.';
-import { ShellCommand } from './shellCommand';
-import { Logger } from '../../utils/logger';
+import type { DeviceCommand, ShellOptions } from '.';
+import { Logger } from '../utils/logger';
+import { Device } from '../adb';
 
-export interface StatOptions extends CommandOptions {
+export interface StatOptions extends ShellOptions {
   path: string;
   format?: string;
 }
 
-export class StatCommand implements ADBCommands<string> {
+export class StatCommand implements DeviceCommand<string> {
   private logger: Logger;
 
   private static readonly DEFAULT_FORMAT = '%s|%F|%Y|%X|%Z|%a|%A|%U|%G|%u|%g|%i|%C';
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('StatCommand');
   }
 
@@ -26,7 +24,7 @@ export class StatCommand implements ADBCommands<string> {
     const command = `stat -c "${format}" ${this.escapeShellArg(path)} 2>/dev/null || echo ""`;
 
     try {
-      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
+      const output = (await this.device.shell(command, { ...options })).stdout;
 
       this.logger.debug('Stat command completed', {
         path,
@@ -45,16 +43,16 @@ export class StatCommand implements ADBCommands<string> {
   }
 }
 
-export interface StatBatchOptions extends CommandOptions {
+export interface StatBatchOptions extends ShellOptions {
   paths: string[];
   format?: string;
 }
 
-export class StatBatchCommand implements ADBCommands<string> {
+export class StatBatchCommand implements DeviceCommand<string> {
   private logger: Logger;
   private static readonly DEFAULT_FORMAT = '%s|%F|%Y|%X|%Z|%a|%A|%U|%G|%u|%g|%i|%C';
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('StatBatchCommand');
   }
 
@@ -74,7 +72,7 @@ export class StatBatchCommand implements ADBCommands<string> {
       .join(' ; ');
 
     try {
-      const output = (await new ShellCommand(this.adb, commands).exec({ timeout })).stdout;
+      const output = (await this.device.shell(commands, { ...options })).stdout;
 
       this.logger.debug('Batch stat command completed', {
         count: paths.length,

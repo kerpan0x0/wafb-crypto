@@ -1,10 +1,8 @@
-import type { Adb } from '@yume-chan/adb';
-import type { CommandOptions } from '.';
-import { ADBCommands } from '.';
-import { ShellCommand } from './shellCommand';
-import { Logger } from '../../utils/logger';
+import type { DeviceCommand, ShellOptions } from '.';
+import { Logger } from '../utils/logger';
+import { Device } from '../adb';
 
-export interface FindOptions extends CommandOptions {
+export interface FindOptions extends ShellOptions {
   path: string;
   name?: string;
   type?: 'f' | 'd' | 'l';
@@ -12,10 +10,10 @@ export interface FindOptions extends CommandOptions {
   excludePaths?: string[];
 }
 
-export class FindCommand implements ADBCommands<string> {
+export class FindCommand implements DeviceCommand<string> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('FindCommand');
   }
 
@@ -54,7 +52,7 @@ export class FindCommand implements ADBCommands<string> {
     command += ` 2>/dev/null || echo ""`;
 
     try {
-      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
+      const output = (await this.device.shell(command, { ...options })).stdout;
       
       const resultCount = output ? output.split('\n').filter(l => l.trim()).length : 0;
       this.logger.debug('Find command completed', { path, resultCount });

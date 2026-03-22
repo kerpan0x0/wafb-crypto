@@ -5,10 +5,10 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('LogcatAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: LogcatAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -22,7 +22,7 @@ describe('LogcatAcquirer', () => {
     vi.clearAllMocks();
     device = createMockADBDeviceWithCommands({
       getLogcat: mockLogcatOutput,
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
     domMocks = setupAcquirerDOMMocks();
     acquirer = new LogcatAcquirer(device);
   });
@@ -73,7 +73,7 @@ describe('LogcatAcquirer', () => {
       // Create new device with empty logcat
       device = createMockADBDeviceWithCommands({
         getLogcat: '',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       // Recreate DOM mocks
       domMocks = setupAcquirerDOMMocks();
@@ -166,7 +166,7 @@ describe('LogcatAcquirer', () => {
     it('should handle logs without priority markers', async () => {
       device = createMockADBDeviceWithCommands({
         getLogcat: 'Plain log line\nAnother plain line',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new LogcatAcquirer(device);
 
       const result = await acquirer.acquire();

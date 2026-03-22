@@ -1,11 +1,11 @@
 import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { ADBDevice } from '../..';
-import { CmdCommand } from '../../adb/commands';
+import { Device } from '../../adb';
+import { CmdCommand } from '../../commands';
 
 export interface SettingsConfig extends AcquisitionConfig { }
 
 export class SettingsAcquirer extends Acquirer {
-  constructor(device: ADBDevice, config: SettingsConfig = {}) {
+  constructor(device: Device, config: SettingsConfig = {}) {
     super(device, config, 'settings');
   }
 
@@ -38,7 +38,7 @@ export class SettingsAcquirer extends Acquirer {
 
         let output = '';
         try {
-          output = await new CmdCommand(this.device.adb).exec({ namespace: `${ns}` });
+          output = await new CmdCommand(this.device).exec({ namespace: `${ns}` });
           this.logger.debug(`Settings data for namespace ${ns}: ${output}`);
         } catch (error) {
           this.logger.warn(`Failed to acquire settings for namespace: ${ns}`, error);

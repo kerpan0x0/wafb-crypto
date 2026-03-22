@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
+import { ADBConnection, Device, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
 import {
   MountAcquirer,
   EnvAcquirer,
@@ -47,7 +47,7 @@ declare global {
 }
 
 export function AcquisitionPage() {
-  const [device, setDevice] = useState<ADBDevice | null>(null);
+  const [device, setDevice] = useState<Device | null>(null);
   const [_connection, setConnection] = useState<ADBConnection | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -207,7 +207,7 @@ export function AcquisitionPage() {
   // Execute single acquisition
   const executeAcquisition = async (
     type: AcquisitionType,
-    device: ADBDevice
+    device: Device
   ): Promise<AcquisitionResult> => {
     const acquirerConfig = {
       bugreport: {

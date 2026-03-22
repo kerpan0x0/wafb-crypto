@@ -1,9 +1,9 @@
 import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { ADBDevice } from '../../adb';
-import { MountCommand, ProcMountCommand } from '../../adb/commands';
+import { Device } from '../../adb';
+import { MountCommand, ProcMountCommand } from '../../commands';
 
 export class MountAcquirer extends Acquirer {
-  constructor(device: ADBDevice, config: AcquisitionConfig = {}) {
+  constructor(device: Device, config: AcquisitionConfig = {}) {
     super(device, config, 'mount');
   }
 
@@ -26,14 +26,14 @@ export class MountAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 30, 'Run Mount command.', 'running');
 
-      const mountOutput = await new MountCommand(this.device.adb).exec();
+      const mountOutput = await new MountCommand(this.device).exec();
       const mountData = mountOutput
         .split('\n')
         .map(line => line.trim())
         .filter(line => line !== '');
 
       this.notifyProgress(onProgress, 50, 'Run ProcMount command.', 'running');
-      const procMountOutput = await new ProcMountCommand(this.device.adb).exec();
+      const procMountOutput = await new ProcMountCommand(this.device).exec();
       const procMountData = procMountOutput
         .split('\n')
         .map(line => line.trim())

@@ -1,8 +1,7 @@
-import { ADBCommands, CommandOptions } from '.';
-import { Adb, Logger } from '../..';
-import { ShellCommand } from './shellCommand';
+import { DeviceCommand, ShellOptions } from '.';
+import { Device } from '../adb';
 
-export interface PmOptions extends CommandOptions {
+export interface PmOptions extends ShellOptions {
   includeSystem?: boolean;
   /** Include APK file paths (-f flag) */
   includeFiles?: boolean;
@@ -12,8 +11,8 @@ export interface PmOptions extends CommandOptions {
   disabledOnly?: boolean;
 }
 
-export class PmCommand implements ADBCommands<string> {
-  constructor(private adb: Adb) {}
+export class PmCommand implements DeviceCommand<string> {
+  constructor(private device: Device) { }
 
   async exec(options: PmOptions = {}): Promise<string> {
     const {
@@ -31,6 +30,6 @@ export class PmCommand implements ADBCommands<string> {
     if (disabledOnly) command += ' -d';
     if (!includeSystem && !disabledOnly) command += ' -3';
 
-    return (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
+    return (await this.device.shell(command, { ...options })).stdout;
   }
 }

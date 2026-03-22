@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ADBDevice } from '../../../src/adb/device';
+import { Device } from '../../../src/adb/device';
 import {
   createMockAdb,
   createMockDeviceInfo,
@@ -9,7 +9,7 @@ import {
 import type { Adb } from '@yume-chan/adb';
 
 describe('ADBDevice - Refactored', () => {
-  let device: ADBDevice;
+  let device: Device;
   let mockAdb: Adb;
   let mockConnection: any;
 
@@ -17,7 +17,7 @@ describe('ADBDevice - Refactored', () => {
     vi.clearAllMocks();
     mockAdb = createMockAdb() as unknown as Adb;
     mockConnection = createMockConnection();
-    device = new ADBDevice(
+    device = new Device(
       mockAdb, 
       createMockDeviceInfo(), 
       mockConnection

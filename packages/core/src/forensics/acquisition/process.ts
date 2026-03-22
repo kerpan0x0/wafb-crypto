@@ -1,7 +1,7 @@
-import type { ADBDevice } from '../../adb';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { PsCommand } from '../../adb/commands';
+import { PsCommand } from '../../commands';
 
 export interface ProcessConfig extends AcquisitionConfig {
   includeThreads?: boolean;
@@ -53,7 +53,7 @@ export interface ProcessData {
  */
 export class ProcessAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: ProcessConfig = {}
   ) {
     super(device, config, 'process');
@@ -185,7 +185,7 @@ export class ProcessAcquirer extends Acquirer {
     };
 
     // Execute command - get RAW output
-    const rawOutput = await new PsCommand(this.device.adb).exec(options);
+    const rawOutput = await new PsCommand(this.device).exec(options);
 
     // Parse output HERE (TODO: move to ProcessAdapter)
     return this.parseProcessOutput(rawOutput);

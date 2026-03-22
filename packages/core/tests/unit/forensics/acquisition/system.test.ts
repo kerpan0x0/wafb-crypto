@@ -12,7 +12,7 @@ import {
 import type { Adb } from '@yume-chan/adb';
 
 // Import commands to spy on them
-import { GetNetworkInfoCommand, GetStorageInfoCommand } from '../../../../src/adb/commands';
+import { GetNetworkInfoCommand, GetStorageInfoCommand } from '../../../../src/commands';
 
 // Mock the command modules (but NOT DumpsysCommand!)
 vi.mock('../../../../src/adb/commands', async () => {

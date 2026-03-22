@@ -1,7 +1,7 @@
-import type { ADBDevice, DeviceProperties } from '../../adb';
+import type { Device, DeviceProperties } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../adb/commands';
+import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../commands';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
   includeBattery?: boolean;
@@ -79,7 +79,7 @@ export interface SystemInfoData {
 
 export class SystemInfoAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: SystemInfoConfig = {}
   ) {
     super(device, config, 'system_info');
@@ -420,7 +420,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getBatteryInfo(): Promise<BatteryInfo> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'battery' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'battery' });
       return this.buildBatteryinfo(output);
     } catch (error) {
       this.logger.warn('Failed to get battery info', error);
@@ -430,7 +430,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getNetworkInfo(): Promise<NetworkInfo> {
     try {
-      const output = await new GetNetworkInfoCommand(this.device.adb).exec();
+      const output = await new GetNetworkInfoCommand(this.device).exec();
       return this.buildNetworkInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get network info', error);
@@ -440,7 +440,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getStorageInfo(): Promise<StorageInfo> {
     try {
-      const output = await new GetStorageInfoCommand(this.device.adb).exec();
+      const output = await new GetStorageInfoCommand(this.device).exec();
       return this.buildStorageInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get storage info', error);
@@ -450,7 +450,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getMemoryInfo(): Promise<MemoryInfo> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'meminfo' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'meminfo' });
       return this.buildMemoryInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get memory info', error);
@@ -460,7 +460,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getSensors(): Promise<SensorInfo[]> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'sensorservice' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'sensorservice' });
       return this.buildSensorInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get sensors info', error);

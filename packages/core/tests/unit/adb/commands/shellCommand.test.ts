@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { ShellCommand } from '../../../../src/adb/commands/shellCommand';
+import { ShellCommand } from '../../../../src/commands/shellCommand';
 import { ADBCommandError } from '../../../../src/utils/errors';
 import type { Adb } from '@yume-chan/adb';
 import {

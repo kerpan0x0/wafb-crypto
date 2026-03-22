@@ -1,9 +1,8 @@
-import { ADBCommands, CommandOptions } from '.';
-import { Adb } from '../..';
-import { ShellCommand } from './shellCommand';
-import { ADBCommandError } from '../../utils/errors';
+import { DeviceCommand } from '.';
+import { Device, ShellOptions } from '../adb';
+import { ADBCommandError } from '../utils/errors';
 
-export interface BackupOptions extends CommandOptions { 
+export interface BackupOptions extends ShellOptions { 
   type: string; 
   buPath: string;
 }
@@ -22,8 +21,8 @@ export interface BackupStream {
  * No file is created on the device — `bu backup` writes to stdout and the
  * data flows through the ADB shell channel directly to the browser.
  */
-export class BackupCommand implements ADBCommands<BackupStream> {
-  constructor(private adb: Adb) {}
+export class BackupCommand implements DeviceCommand<BackupStream> {
+  constructor(private device: Device) {}
 
   async exec(options: BackupOptions): Promise<BackupStream> {
     const { type, buPath } = options;
@@ -36,7 +35,7 @@ export class BackupCommand implements ADBCommands<BackupStream> {
     // bu backup requires user confirmation on the device (password dialog).
     // Use a 5-minute idle timeout so the stream is not closed before the
     // user has a chance to interact with the prompt.
-    const { stdout, exited } = await new ShellCommand(this.adb, cmd).spawn(300000);
+    const { stdout, exited } = await this.device.spawn(cmd, 300000);
 
     return { stream: stdout, exited };
   }

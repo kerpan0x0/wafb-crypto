@@ -1,5 +1,5 @@
-import { GetLogcatCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+import { GetLogcatCommand } from '../../commands';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
@@ -34,7 +34,7 @@ export interface LogcatData {
 
 export class LogcatAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: LogcatConfig = {}
   ) {
     super(device, config, 'logcat');
@@ -67,7 +67,7 @@ export class LogcatAcquirer extends Acquirer {
         'running'
       );
 
-      const logOutput = await new GetLogcatCommand(this.device.adb).exec({
+      const logOutput = await new GetLogcatCommand(this.device).exec({
         buffer: this.config.buffer,
         maxLines: this.config.maxLines,
         filter: this.config.filter,

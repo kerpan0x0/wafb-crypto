@@ -1,5 +1,5 @@
-import type { ADBDevice } from '../../adb';
-import { PmCommand, DumpsysCommand, ReadFileCommand } from '../../adb/commands';
+import type { Device } from '../../adb';
+import { PmCommand, DumpsysCommand, ReadFileCommand } from '../../commands';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
@@ -59,7 +59,7 @@ export class PackagesAcquirer extends Acquirer {
   private readonly DEFAULT_DOWNLOAD_ALL_SPLITS = false;
 
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: PackagesConfig = {}
   ) {
     super(device, config, 'packages');
@@ -90,7 +90,7 @@ export class PackagesAcquirer extends Acquirer {
       this.notifyProgress(onProgress, 20, `Connected to ${deviceInfo.model}`, 'running', deviceInfo);
 
       this.notifyProgress(onProgress, 25, 'Listing installed packages...', 'running');
-      const pmCommand = new PmCommand(this.device.adb);
+      const pmCommand = new PmCommand(this.device);
 
       const packagesWithFilesOutput = await pmCommand.exec({
         includeSystem: this.config.includeSystem,
@@ -127,7 +127,7 @@ export class PackagesAcquirer extends Acquirer {
 
         if (this.config.includeDetails !== false) {
           try {
-            const dumpsysOutput = await new DumpsysCommand(this.device.adb).exec({
+            const dumpsysOutput = await new DumpsysCommand(this.device).exec({
               service: 'package',
               packageName: name,
               timeout: 100000,
@@ -323,7 +323,7 @@ export class PackagesAcquirer extends Acquirer {
 
           for (const file of pkg.files) {
             try {
-              const apkData = await new ReadFileCommand(this.device.adb).exec({
+              const apkData = await new ReadFileCommand(this.device).exec({
                 path: file.path,
                 timeout: 60000,
               });
@@ -372,7 +372,7 @@ export class PackagesAcquirer extends Acquirer {
 
           this.logger.debug(`Smart selection: ${apkPath}`);
 
-          const apkData = await new ReadFileCommand(this.device.adb).exec({
+          const apkData = await new ReadFileCommand(this.device).exec({
             path: apkPath,
             timeout: 60000,
           });

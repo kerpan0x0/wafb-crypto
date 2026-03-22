@@ -5,10 +5,10 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('EnvAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: EnvAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -28,7 +28,7 @@ LD_LIBRARY_PATH=/system/lib`;
 
     device = createMockADBDeviceWithCommands({
       shellOutput: mockEnvOutput,
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
 
     domMocks = setupAcquirerDOMMocks();
     acquirer = new EnvAcquirer(device);
@@ -93,7 +93,7 @@ LD_LIBRARY_PATH=/system/lib`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: '',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -175,7 +175,7 @@ LD_LIBRARY_PATH=/system/lib`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: 'PATH=/system/bin:/system/xbin',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -189,7 +189,7 @@ LD_LIBRARY_PATH=/system/lib`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: 'ANDROID_DATA=/data',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -205,7 +205,7 @@ VAR3=value3`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: multiLineEnv,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -218,7 +218,7 @@ VAR3=value3`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: 'PATH=/system/bin:/system/xbin:$HOME',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -231,7 +231,7 @@ VAR3=value3`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: 'DESCRIPTION=Android System Variables',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -413,7 +413,7 @@ BOOTCLASSPATH=/system/framework/core.jar`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: standardEnv,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -432,7 +432,7 @@ SHELL=/system/bin/sh`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: shellEnv,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 
@@ -448,7 +448,7 @@ LD_PRELOAD=/system/lib/libpreload.so`;
       domMocks.cleanup();
       device = createMockADBDeviceWithCommands({
         shellOutput: libEnv,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       domMocks = setupAcquirerDOMMocks();
       acquirer = new EnvAcquirer(device);
 

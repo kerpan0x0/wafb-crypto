@@ -1,21 +1,21 @@
 import type { Adb } from '@yume-chan/adb';
-import { ADBCommandError } from '../../utils/errors';
-import { Logger } from '../../utils/logger';
-import { ADBCommands, CommandOptions, ShellResult } from '.';
-import { wrapWithIdleTimeout } from '../../utils/stream-helpers';
+import { ADBCommandError } from '../utils/errors';
+import { Logger } from '../utils/logger';
+import { ShellOptions, ShellResult } from '.'
+import { wrapWithIdleTimeout } from '../utils/stream-helpers';
 
 /** @internal */
-export class ShellCommand implements ADBCommands<ShellResult> {
+export class Shell {
   private logger: Logger;
 
   constructor(
     private adb: Adb,
     private command: string
   ) {
-    this.logger = new Logger('ShellCommand');
+    this.logger = new Logger('Shell');
   }
 
-  async exec(options: CommandOptions = { timeout: 5000 }): Promise<ShellResult> {
+  async exec(options: ShellOptions = { timeout: 5000 }): Promise<ShellResult> {
     const { timeout, idleTimeout = 5000, throwOnError = false } = options;
 
     this.logger.debug('Executing shell command', { command: this.command, timeout, idleTimeout });

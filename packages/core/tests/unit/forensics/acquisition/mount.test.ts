@@ -5,10 +5,10 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('MountAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: MountAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -35,7 +35,7 @@ sysfs /sys sysfs rw,relatime 0 0
 
     device = createMockADBDeviceWithCommands({
       shellOutput: mockMountOutput,
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
 
     // Mock shell spawn to return different outputs for different commands
     const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
@@ -198,7 +198,7 @@ sysfs /sys sysfs rw,relatime 0 0
     it('should handle empty mount output', async () => {
       const emptyDevice = createMockADBDeviceWithCommands({
         shellOutput: '',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockImplementation(() => {
         return Promise.resolve({
@@ -236,7 +236,7 @@ sysfs /sys sysfs rw,relatime 0 0
     it('should handle mount output with duplicate entries', async () => {
       const duplicateDevice = createMockADBDeviceWithCommands({
         shellOutput: mockMountOutput,
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       // Mock both mount and proc mount to return the same output
       const mockShellSpawn = vi.fn().mockImplementation(() => {
@@ -275,7 +275,7 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should handle mount command failure gracefully', async () => {
-      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
+      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Command failed'));
       failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
@@ -290,7 +290,7 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should report failure in progress callback on error', async () => {
-      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
+      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Mount acquisition failed'));
       failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
@@ -339,7 +339,7 @@ sysfs /sys sysfs rw,relatime 0 0
       
       `;
 
-      const messyDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
+      const messyDevice = createMockADBDeviceWithCommands({}) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockImplementation(() => {
         return Promise.resolve({
@@ -396,7 +396,7 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should maintain consistent result structure on failure', async () => {
-      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
+      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as Device;
       const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Test error'));
       failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
 

@@ -1,13 +1,13 @@
 import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
-import { EnvCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+import { EnvCommand } from '../../commands';
+import type { Device } from '../../adb';
 
 export interface EnvConfig extends AcquisitionConfig { }
 
 export class EnvAcquirer extends Acquirer {
   constructor(
-    protected device: ADBDevice,
+    protected device: Device,
     protected config: EnvConfig = {}
   ) {
     super(device, config, 'env');
@@ -122,7 +122,7 @@ export class EnvAcquirer extends Acquirer {
   }
 
   private async getEnv(): Promise<string> {
-    const result = await new EnvCommand(this.device.adb).exec();
+    const result = await new EnvCommand(this.device).exec();
     this.logger.info(`Retrieved environment variables`);
     return result;
   }

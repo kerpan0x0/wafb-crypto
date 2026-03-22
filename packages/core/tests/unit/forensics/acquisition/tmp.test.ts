@@ -6,10 +6,10 @@ import {
   createMockProgressCallback,
   createMockDeviceProperties
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('TmpAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: TmpAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -24,13 +24,13 @@ describe('TmpAcquirer', () => {
 
   describe('constructor', () => {
     it('should create instance with default config', () => {
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+      device = createMockADBDeviceWithCommands() as unknown as Device;
       acquirer = new TmpAcquirer(device);
       expect(acquirer).toBeInstanceOf(TmpAcquirer);
     });
 
     it('should create instance with custom config', () => {
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+      device = createMockADBDeviceWithCommands() as unknown as Device;
       const customConfig = {};
       const customAcquirer = new TmpAcquirer(device, customConfig);
       expect(customAcquirer).toBeInstanceOf(TmpAcquirer);
@@ -53,7 +53,7 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
       device = createMockADBDeviceWithCommands({
         shellOutput: envOutput,
         readFile: fileContent
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       // Override the shell spawn to handle different commands
       const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
@@ -138,7 +138,7 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
 
       device = createMockADBDeviceWithCommands({
         shellOutput: envOutput
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
         if (command === 'env') {
@@ -199,7 +199,7 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
       device = createMockADBDeviceWithCommands({
         shellOutput: envOutputWithoutTmpdir,
         readFile: new Uint8Array([0x74, 0x65, 0x73, 0x74]) // "test"
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
         if (command === 'env') {
@@ -261,7 +261,7 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
     });
 
     it('should handle errors during acquisition', async () => {
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+      device = createMockADBDeviceWithCommands() as unknown as Device;
 
       // Mock device.getProperties to throw an error
       device.getProperties = vi.fn().mockRejectedValue(new Error('Device connection failed'));
@@ -278,7 +278,7 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
     });
 
     it('should handle errors when getting environment variables', async () => {
-      device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+      device = createMockADBDeviceWithCommands() as unknown as Device;
 
       // Mock successful device properties
       device.getProperties = vi.fn().mockResolvedValue(createMockDeviceProperties());
@@ -316,7 +316,7 @@ drwxr-xr-x 2 root root 4096 2024-01-01 12:02 subdir`;
       device = createMockADBDeviceWithCommands({
         shellOutput: envOutput,
         readFile: fileContent
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
         if (command === 'env') {
@@ -406,7 +406,7 @@ lrwxrwxrwx 1 root root   10 Jan  1 12:04 symlink -> target`;
       device = createMockADBDeviceWithCommands({
         shellOutput: envOutput,
         readFile: new Uint8Array([0x44, 0x61, 0x74, 0x61]) // "Data"
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
 
       const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
         if (command === 'env') {

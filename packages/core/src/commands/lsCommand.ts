@@ -1,8 +1,7 @@
-import type { Adb } from '@yume-chan/adb';
-import { ShellCommand } from './shellCommand';
-import { ADBCommands, CommandOptions } from '.';
+import { DeviceCommand, ShellOptions } from '.';
+import { Device } from '../adb';
 
-export interface LsOptions extends CommandOptions {
+export interface LsOptions extends ShellOptions {
   path?: string;
   all?: boolean;
   long?: boolean;
@@ -11,8 +10,8 @@ export interface LsOptions extends CommandOptions {
   filter?: string;
 }
 
-export class LsCommand implements ADBCommands<string> {
-  constructor(private adb: Adb) { }
+export class LsCommand implements DeviceCommand<string> {
+  constructor(private device: Device) { }
 
   async exec(options: LsOptions = {}): Promise<string> {
     const command = 'ls';
@@ -33,6 +32,6 @@ export class LsCommand implements ADBCommands<string> {
       fullCommand += ` | grep "${options.filter}"`;
     }
 
-    return (await new ShellCommand(this.adb, fullCommand).exec(options)).stdout;
+    return (await this.device.shell(fullCommand, { ...options })).stdout;
   }
 }

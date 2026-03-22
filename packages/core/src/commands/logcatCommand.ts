@@ -1,17 +1,16 @@
-import type { Adb } from '@yume-chan/adb';
-import { ADBCommands, CommandOptions } from '.';
-import { ShellCommand } from './shellCommand';
+import { DeviceCommand } from '.';
+import { Device, ShellOptions } from '../adb';
 
-export interface LogcatOptions extends CommandOptions {
+export interface LogcatOptions extends ShellOptions {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'default' | 'all';
   filter?: string;
   maxLines?: number;
   dump?: boolean;
 }
 
-export class GetLogcatCommand implements ADBCommands<string> {
+export class GetLogcatCommand implements DeviceCommand<string> {
 
-  constructor(private adb: Adb) { }
+  constructor(private device: Device) { }
 
   async exec(options: LogcatOptions = {}): Promise<string> {
     const command = 'logcat';
@@ -22,6 +21,6 @@ export class GetLogcatCommand implements ADBCommands<string> {
     if (options.maxLines) args.push(`-t ${options.maxLines}`);
     if (options.filter) args.push(options.filter);
 
-    return (await new ShellCommand(this.adb, `${command} ${args.join(' ')}`).exec(options)).stdout;
+    return (await this.device.shell(`${command} ${args.join(' ')}`, { ...options })).stdout;
   }
 }

@@ -1,11 +1,9 @@
-import type { Adb } from '@yume-chan/adb';
+import type { Adb, AdbSync } from '@yume-chan/adb';
 import type { ADBConnection } from './connection';
-import { GetPropCommand } from './commands';
 import { Logger } from '../utils/logger';
-import {
-  IsRootedCommand,
-} from './commands';
 import { DeviceInfo } from '.';
+import { Shell } from './shell';
+import type { ShellResult, SpawnResult, ShellOptions } from '.';
 
 export interface DeviceProperties {
   androidVersion: string;
@@ -21,7 +19,7 @@ export interface DeviceProperties {
   fingerprint?: string;
 }
 
-export class ADBDevice {
+export class Device {
   private logger: Logger;
   public readonly info: DeviceInfo;
   public readonly adb: Adb;
@@ -37,10 +35,47 @@ export class ADBDevice {
     this.logger.info('Device initialized', { serial: deviceInfo.serialNumber });
   }
 
+  // ---------------------------------------------------------------------------
+  // Transport — used internally by Command classes
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Executes a shell command and returns the buffered result.
+   * Command classes call this instead of constructing ShellCommand directly.
+   */
+  shell(cmd: string, opts: ShellOptions = {}): Promise<ShellResult> {
+    return new Shell(this.adb, cmd).exec(opts);
+  }
+
+  /**
+   * Spawns a shell command and returns a streaming result.
+   * Use for large outputs that should not be buffered in memory.
+   */
+  spawn(cmd: string, idleTimeout?: number): Promise<SpawnResult> {
+    return new Shell(this.adb, cmd).spawn(idleTimeout);
+  }
+
+  sync(): Promise<AdbSync> {
+    return this.adb.sync();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Device API
+  // ---------------------------------------------------------------------------
+
   async getProperties(): Promise<DeviceProperties> {
     this.logger.debug('Fetching device properties...');
 
-    const props = await new GetPropCommand(this.adb).exec();
+    const output = (await this.shell('getprop')).stdout;
+    const props: Record<string, string> = {};
+    const regex = /\[([^\]]+)\]:\s*\[([^\]]*)\]/g;
+
+    let match;
+    while ((match = regex.exec(output)) !== null) {
+      if (match[1] && match[2] !== undefined) {
+        props[match[1]] = match[2];
+      }
+    }
 
     return {
       androidVersion: props['ro.build.version.release'] || 'Unknown',
@@ -56,13 +91,14 @@ export class ADBDevice {
         props['selinux.reload_policy'],
       bootloader: props['ro.bootloader'],
       hardware: props['ro.hardware'],
-      fingerprint: props['ro.build.fingerprint']
+      fingerprint: props['ro.build.fingerprint'],
     };
   }
 
   async isRooted(): Promise<boolean> {
     try {
-      return await new IsRootedCommand(this.adb).exec();
+      const output = (await this.shell('su -c "id"')).stdout;
+      return output.includes('uid=0');
     } catch {
       return false;
     }

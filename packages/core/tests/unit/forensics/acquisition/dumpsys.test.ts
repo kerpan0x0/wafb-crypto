@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DumpsysAcquirer } from '../../../../src/forensics/acquisition/dumpsys';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 import {
   createMockADBDeviceWithCommands,
   setupAcquirerDOMMocks,
@@ -21,14 +21,14 @@ const MOCK_DUMPSYS_OUTPUT = `SYSTEM SERVICES:\n  Battery Service:\n    AC powere
 // ============================================================================
 
 describe('DumpsysAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: DumpsysAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+    device = createMockADBDeviceWithCommands() as unknown as Device;
 
     // Override spawn to return dumpsys output for the 'dumpsys' command
     // @ts-ignore

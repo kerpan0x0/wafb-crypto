@@ -1,5 +1,5 @@
-import type { ADBDevice, DeviceProperties } from '../../adb';
-import { LsCommand, ReadFileCommand } from '../../adb/commands';
+import type { Device, DeviceProperties } from '../../adb';
+import { LsCommand, ReadFileCommand } from '../../commands';
 import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig, AcquisitionFile } from '.';
 import { ADBCommandError } from '../../utils/errors';
 
@@ -34,7 +34,7 @@ export class LogAcquirer extends Acquirer {
   static readonly logFolders = ['/data/anr/', '/data/log/', '/sdcard/log/'];
 
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: LogConfig = {}
   ) {
     super(device, config, 'logs');
@@ -125,7 +125,7 @@ export class LogAcquirer extends Acquirer {
       try {
         this.logger.debug(`Pulling: ${logFile}`);
 
-        const fileData = await new ReadFileCommand(this.device.adb).exec({
+        const fileData = await new ReadFileCommand(this.device).exec({
           path: logFile,
         });
         const logContent = new TextDecoder('utf-8', { fatal: false }).decode(fileData);
@@ -238,7 +238,7 @@ export class LogAcquirer extends Acquirer {
 
     for (const logFolder of logFolders) {
       try {
-        const lsOutput = await new LsCommand(this.device.adb).exec({
+        const lsOutput = await new LsCommand(this.device).exec({
           path: logFolder,
           recursive: true,
         });

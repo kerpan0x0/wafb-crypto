@@ -5,7 +5,7 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 // Set test timeout to 10 seconds to prevent hanging tests
 vi.setConfig({ testTimeout: 10000 });
@@ -23,7 +23,7 @@ const mockJSZip = {
 vi.mock('jszip', () => mockJSZip);
 
 describe('LogAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: LogAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -44,7 +44,7 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..
     device = createMockADBDeviceWithCommands({
       shellOutput: mockLsOutput,
       readFile: mockLogFileBytes,
-    }) as unknown as ADBDevice;
+    }) as unknown as Device;
 
     domMocks = setupAcquirerDOMMocks();
     acquirer = new LogAcquirer(device);

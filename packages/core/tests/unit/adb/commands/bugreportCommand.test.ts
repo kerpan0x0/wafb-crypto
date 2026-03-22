@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BugreportCommand, BugreportzCommand } from '../../../../src/adb/commands';
+import { BugreportCommand, BugreportzCommand } from '../../../../src/commands';
 import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
 import type { Adb } from '@yume-chan/adb';
 

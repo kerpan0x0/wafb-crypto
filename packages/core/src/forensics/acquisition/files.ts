@@ -1,15 +1,14 @@
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import type { ADBDevice } from '../../adb/device';
+import type { Device } from '../../adb/device';
 import {
   FindCommand,
   HashBatchCommand,
   HashCommand,
   ReadFileCommand,
   StatBatchCommand,
-} from '../../adb/commands';
+} from '../../commands';
 import { ADBCommandError } from '../../utils/errors';
-import { files } from 'jszip';
 
 export interface FileAcquisitionConfig extends AcquisitionConfig {
   downloadFiles?: boolean;
@@ -78,7 +77,7 @@ export class FileAcquirer extends Acquirer {
   private readonly EXCLUDED_PATHS = ['/proc', '/sys', '/dev', '/acct'];
 
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: FileAcquisitionConfig = {}
   ) {
     super(device, config, 'files');
@@ -223,7 +222,7 @@ export class FileAcquirer extends Acquirer {
 
     for (const algo of algorithms) {
       try {
-        const hashCmd = new HashCommand(this.device.adb);
+        const hashCmd = new HashCommand(this.device);
         // Test on a small system file that should exist
         const output = await hashCmd.exec({
           path: '/system/build.prop',
@@ -353,7 +352,7 @@ export class FileAcquirer extends Acquirer {
           }
         );
 
-        const hashBatchCmd = new HashBatchCommand(this.device.adb);
+        const hashBatchCmd = new HashBatchCommand(this.device);
         const rawOutput = await hashBatchCmd.exec({
           files: hashRequests,
           timeout: estimatedTime,
@@ -479,7 +478,7 @@ export class FileAcquirer extends Acquirer {
   ): Promise<void> {
     for (const file of files) {
       try {
-        const readCmd = new ReadFileCommand(this.device.adb);
+        const readCmd = new ReadFileCommand(this.device);
         const fileData = await readCmd.exec({
           path: file.path,
           timeout: 30000,
@@ -570,7 +569,7 @@ export class FileAcquirer extends Acquirer {
     try {
       this.logger.debug(`Scanning folder: ${folder}`);
 
-      const findCmd = new FindCommand(this.device.adb);
+      const findCmd = new FindCommand(this.device);
       const output = await findCmd.exec({
         path: folder,
         type: 'f',
@@ -610,7 +609,7 @@ export class FileAcquirer extends Acquirer {
 
       try {
         // Step 1: Stat batch to get metadata
-        const statBatchCmd = new StatBatchCommand(this.device.adb);
+        const statBatchCmd = new StatBatchCommand(this.device);
         const output = await statBatchCmd.exec({
           paths: batch,
           timeout: 120000,
@@ -804,7 +803,7 @@ export class FileAcquirer extends Acquirer {
       );
 
       try {
-        const readCmd = new ReadFileCommand(this.device.adb);
+        const readCmd = new ReadFileCommand(this.device);
         await readCmd.exec({
           path: file.path,
           timeout: 30000,

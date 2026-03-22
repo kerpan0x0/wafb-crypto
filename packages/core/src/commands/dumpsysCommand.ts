@@ -1,7 +1,6 @@
-import type { Adb } from '@yume-chan/adb';
-import { ADBCommands, CommandOptions } from '.';
-import { ShellCommand } from './shellCommand';
-import { Logger } from '../../utils/logger';
+import { DeviceCommand, ShellOptions } from '.';
+import { Logger } from '../utils/logger';
+import { Device } from '../adb';
 
 export type DumpsysService =
   | 'battery'
@@ -25,7 +24,7 @@ export type DumpsysService =
   | 'sensorservice';
 
 
-export interface DumpsysOptions extends CommandOptions {
+export interface DumpsysOptions extends ShellOptions {
   service?: DumpsysService | string;
   packageName?: string;
   args?: string[];
@@ -39,21 +38,21 @@ export interface DumpsysStream {
   exited: Promise<number>;
 }
 
-export class DumpsysCommand implements ADBCommands<string> {
+export class DumpsysCommand implements DeviceCommand<string> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('DumpsysCommand');
   }
 
   async exec(options: DumpsysOptions): Promise<string> {
-    const { service, packageName, args, timeout = 30000 } = options;
+    const { service, packageName, args } = options;
     this.logger.debug('Executing dumpsys command', { service, packageName, args });
 
     const command = this.buildCommand(service, packageName, args);
 
     try {
-      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
+      const output = (await this.device.shell(command, { ...options })).stdout;
 
       this.logger.debug('Dumpsys command completed', {
         service,
@@ -95,16 +94,16 @@ export class DumpsysCommand implements ADBCommands<string> {
  * to a ZIP entry. ShellCommand.spawn() already wraps the stream with an
  * idle timeout via wrapWithIdleTimeout in stream-helpers.
  */
-export class DumpsysStreamCommand implements ADBCommands<DumpsysStream> {
+export class DumpsysStreamCommand implements DeviceCommand<DumpsysStream> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('DumpsysStreamCommand');
   }
 
   async exec(): Promise<DumpsysStream> {
     this.logger.debug('Executing dumpsys stream command');
-    const { stdout, exited } = await new ShellCommand(this.adb, 'dumpsys').spawn();
+    const { stdout, exited } = await this.device.spawn('dumpsys');
     return { stream: stdout, exited };
   }
 }

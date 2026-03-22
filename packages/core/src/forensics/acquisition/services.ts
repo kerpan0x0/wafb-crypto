@@ -1,7 +1,7 @@
-import type { ADBDevice } from '../../adb';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { DumpsysCommand } from '../../adb/commands/';
+import { DumpsysCommand } from '../../commands';
 
 export interface ServicesConfig extends AcquisitionConfig {
   includeSystemServices?: boolean;
@@ -33,7 +33,7 @@ export interface ServicesData {
 
 export class ServicesAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: ServicesConfig = {}
   ) {
     super(device, config, 'services' as any);
@@ -154,7 +154,7 @@ export class ServicesAcquirer extends Acquirer {
   }
 
   private async getServicesList(): Promise<ServiceInfo[]> {
-    const output = await new DumpsysCommand(this.device.adb).exec({
+    const output = await new DumpsysCommand(this.device).exec({
       args: ['-l'],
       timeout: 30000,
     });
@@ -164,7 +164,7 @@ export class ServicesAcquirer extends Acquirer {
 
   private async enrichServicesWithDetails(services: ServiceInfo[]): Promise<void> {
     try {
-      const activityOutput = await new DumpsysCommand(this.device.adb).exec({
+      const activityOutput = await new DumpsysCommand(this.device).exec({
         service: 'activity',
         args: ['services'],
         timeout: 300000,

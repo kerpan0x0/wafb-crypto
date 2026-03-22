@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TestFileCommand } from '../../../../src/adb/commands/';
+import { TestFileCommand } from '../../../../src/commands';
 import type { Adb } from '@yume-chan/adb';
 import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
 

@@ -12,5 +12,22 @@ export interface ConnectionOptions {
   timeout?: number;
 }
 
-export type DeviceProperties = import('./device').DeviceProperties;
-export { ADBDevice } from './device';
+export interface ShellOptions {
+  timeout?: number;
+  idleTimeout?: number;
+  throwOnError?: boolean;
+}
+
+export interface ShellResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface SpawnResult {
+  stdout: ReadableStream<Uint8Array>;
+  exited: Promise<number>;
+}
+
+export type { DeviceProperties } from './device';
+export { Device } from './device';

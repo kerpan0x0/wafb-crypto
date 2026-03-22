@@ -7,10 +7,10 @@ import {
   MOCK_FIND_OUTPUT,
   MOCK_STAT_BATCH_OUTPUT,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('FileAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: FileAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -18,7 +18,7 @@ describe('FileAcquirer', () => {
     vi.clearAllMocks();
 
     // Usa l'helper specifico per FileAcquirer che configura find e stat
-    device = createMockADBDeviceForFileAcquirer() as unknown as ADBDevice;
+    device = createMockADBDeviceForFileAcquirer() as unknown as Device;
 
     domMocks = setupAcquirerDOMMocks();
     acquirer = new FileAcquirer(device);
@@ -192,7 +192,7 @@ describe('FileAcquirer', () => {
       const emptyDevice = createMockADBDeviceForFileAcquirer({
         findOutput: '',
         statBatchOutput: '',
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       const emptyAcquirer = new FileAcquirer(emptyDevice);
 
       const result = await emptyAcquirer.acquire();

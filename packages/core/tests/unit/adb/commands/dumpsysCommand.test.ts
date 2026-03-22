@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DumpsysCommand } from '../../../../src/adb/commands/dumpsysCommand';
+import { DumpsysCommand } from '../../../../src/commands/dumpsysCommand';
 import type { Adb } from '@yume-chan/adb';
 import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
 

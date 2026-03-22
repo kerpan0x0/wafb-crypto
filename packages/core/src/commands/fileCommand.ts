@@ -1,11 +1,10 @@
-import type { Adb } from '@yume-chan/adb';
-import { ADBCommandError } from '../../utils/errors';
-import { Logger } from '../../utils/logger';
-import { ADBCommands, CommandOptions } from '.';
-import { ShellCommand } from './shellCommand';
-import { readStreamAsBytes } from '../..';
+import { ADBCommandError } from '../utils/errors';
+import { Logger } from '../utils/logger';
+import { DeviceCommand } from '.';
+import { readStreamAsBytes } from '..';
+import { Device, ShellOptions } from '../adb';
 
-export interface FileOptions extends CommandOptions {
+export interface FileOptions extends ShellOptions {
   path: string,
 }
 
@@ -13,16 +12,16 @@ export interface WriteFileOptions extends FileOptions {
   content: Uint8Array,
 }
 
-export class WriteFileCommand implements ADBCommands<void> {
+export class WriteFileCommand implements DeviceCommand<void> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('WriteFileCommand');
   }
 
   async exec(option: WriteFileOptions): Promise<void> {
     const filePath = option.path;
-    const sync = await this.adb.sync();
+    const sync = await this.device.sync();
 
 
     try {
@@ -55,16 +54,16 @@ export class WriteFileCommand implements ADBCommands<void> {
   }
 }
 
-export class ReadFileCommand implements ADBCommands<Uint8Array> {
+export class ReadFileCommand implements DeviceCommand<Uint8Array> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('ReadFileCommand');
   }
   async exec(option: FileOptions): Promise<Uint8Array> {
     const filePath = option.path.toString();
 
-    const sync = await this.adb.sync();
+    const sync = await this.device.sync();
 
     try {
       const readable = await sync.read(filePath);
@@ -89,10 +88,10 @@ export class ReadFileCommand implements ADBCommands<Uint8Array> {
   }
 }
 
-export class DeleteFileCommand implements ADBCommands<void> {
-  constructor(private adb: Adb) { }
+export class DeleteFileCommand implements DeviceCommand<void> {
+  constructor(private device: Device) { }
 
   async exec(option: FileOptions): Promise<void> {
-    await new ShellCommand(this.adb, `rm ${option.path}`).exec();
+    (await this.device.shell(`rm ${option.path}`));
   }
 }

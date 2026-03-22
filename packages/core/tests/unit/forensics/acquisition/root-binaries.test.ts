@@ -6,10 +6,10 @@ import {
   createMockProgressCallback,
   createMockReadableStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 describe('RootBinariesAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: RootBinariesAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -30,7 +30,7 @@ describe('RootBinariesAcquirer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+    device = createMockADBDeviceWithCommands() as unknown as Device;
 
     domMocks = setupAcquirerDOMMocks();
     acquirer = new RootBinariesAcquirer(device);

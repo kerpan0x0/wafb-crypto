@@ -6,7 +6,7 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { Device } from '../../../../src/adb/device';
 
 /**
  * Helper: parse the blob from the acquisition result into PackageInfo[]
@@ -17,13 +17,13 @@ async function parseBlobAsPackages(blob: Blob): Promise<PackageInfo[]> {
 }
 
 describe('PackagesAcquirer', () => {
-  let device: ADBDevice;
+  let device: Device;
   let acquirer: PackagesAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+    device = createMockADBDeviceWithCommands() as unknown as Device;
     domMocks = setupAcquirerDOMMocks();
     // Disable APK download by default to keep tests focused on metadata
     acquirer = new PackagesAcquirer(device, { downloadApks: false });
@@ -88,7 +88,7 @@ describe('PackagesAcquirer', () => {
     it('should call dumpsys package for each package when includeDetails is true', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app', 'com.example.app2'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { includeDetails: true, downloadApks: false });
 
       await acquirer.acquire();
@@ -101,7 +101,7 @@ describe('PackagesAcquirer', () => {
     it('should handle empty package list', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: [],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -133,7 +133,7 @@ describe('PackagesAcquirer', () => {
     it('should include all required fields per package', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -165,7 +165,7 @@ describe('PackagesAcquirer', () => {
     it('should NOT include old-format fields', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -220,7 +220,7 @@ describe('PackagesAcquirer', () => {
     it('should include file entries with correct structure', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -243,7 +243,7 @@ describe('PackagesAcquirer', () => {
     it('should include certificate stub with correct structure', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -267,7 +267,7 @@ describe('PackagesAcquirer', () => {
     it('should have APK paths from dumpsys output', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -284,7 +284,7 @@ describe('PackagesAcquirer', () => {
         splitApks: {
           'com.example.app': ['split_config.arm64_v8a.apk', 'split_config.xxhdpi.apk'],
         },
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -309,7 +309,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
         // com.example.app defaults to /data/app/~~hash~~/com.example.app-hash==/base.apk
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -325,7 +325,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.android.vending'],
         // com.android.vending defaults to /system/priv-app/Phonesky/Phonesky.apk
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -340,7 +340,7 @@ describe('PackagesAcquirer', () => {
     it('should have third_party as inverse of system', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.android.vending', 'com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -355,7 +355,7 @@ describe('PackagesAcquirer', () => {
     it('should correctly count system and user packages in result data', async () => {
       device = createMockADBDeviceWithCommands({
         // Default: com.android.vending (system), com.example.app (user), com.google.android.gms (system)
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -386,7 +386,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.android.vending'],
         // com.android.vending has uid 10070 in defaultPackagePaths
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -406,7 +406,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app', 'com.example.disabled'],
         disabledPackages: ['com.example.disabled'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -424,7 +424,7 @@ describe('PackagesAcquirer', () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
         disabledPackages: [],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -446,7 +446,7 @@ describe('PackagesAcquirer', () => {
         installers: {
           'com.example.app': 'com.android.vending',
         },
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -462,7 +462,7 @@ describe('PackagesAcquirer', () => {
         installers: {
           'com.example.app': 'null',
         },
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -531,7 +531,7 @@ describe('PackagesAcquirer', () => {
     it('should continue when dumpsys fails for a single package', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app1', 'com.example.app2'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { includeDetails: true, downloadApks: false });
 
       // Capture the original routing implementation before overriding
@@ -648,7 +648,7 @@ describe('PackagesAcquirer', () => {
     it('should skip dumpsys when includeDetails is false', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { includeDetails: false, downloadApks: false });
 
       const result = await acquirer.acquire();
@@ -663,7 +663,7 @@ describe('PackagesAcquirer', () => {
     it('should still produce valid output when includeDetails is false', async () => {
       device = createMockADBDeviceWithCommands({
         listPackages: ['com.example.app'],
-      }) as unknown as ADBDevice;
+      }) as unknown as Device;
       acquirer = new PackagesAcquirer(device, { includeDetails: false, downloadApks: false });
 
       const result = await acquirer.acquire();

@@ -1,18 +1,16 @@
-import type { Adb } from '@yume-chan/adb';
-import type { CommandOptions } from '.';
-import { ADBCommands } from '.';
-import { ShellCommand } from './shellCommand';
-import { Logger } from '../../utils/logger';
+import type { DeviceCommand, ShellOptions } from '.';
+import { Logger } from '../utils/logger';
+import { Device } from '../adb';
 
-export interface HashOptions extends CommandOptions {
+export interface HashOptions extends ShellOptions {
   path: string;
   algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512';
 }
 
-export class HashCommand implements ADBCommands<string> {
+export class HashCommand implements DeviceCommand<string> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('HashCommand');
   }
 
@@ -24,7 +22,7 @@ export class HashCommand implements ADBCommands<string> {
     const command = this.buildHashCommand(path, algorithm);
 
     try {
-      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
+      const output = (await this.device.shell(command, { ...options })).stdout;
       
       this.logger.debug('Hash command completed', { 
         path, 
@@ -57,14 +55,14 @@ export class HashCommand implements ADBCommands<string> {
   }
 }
 
-export interface HashBatchOptions extends CommandOptions {
+export interface HashBatchOptions extends ShellOptions {
   files: Array<{ path: string; algorithm: string }>;
 }
 
-export class HashBatchCommand implements ADBCommands<string> {
+export class HashBatchCommand implements DeviceCommand<string> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('HashBatchCommand');
   }
 
@@ -85,7 +83,7 @@ export class HashBatchCommand implements ADBCommands<string> {
     }).join(' ; ');
 
     try {
-      const output = (await new ShellCommand(this.adb, commands).exec({ timeout })).stdout;
+      const output = (await this.device.shell(commands, { ...options })).stdout;
       
       this.logger.debug('Batch hash command completed', { 
         count: files.length,

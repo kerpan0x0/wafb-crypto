@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { WhichCommand } from '../../../../src/adb/commands/';
+import { WhichCommand } from '../../../../src/commands';
 import { createMockAdb, createMockShellSocket } from '../../../helpers/test-helpers';
 import type { Adb } from '@yume-chan/adb';
 

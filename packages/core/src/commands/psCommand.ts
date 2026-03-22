@@ -1,9 +1,8 @@
-import type { Adb } from '@yume-chan/adb';
-import { ADBCommands, CommandOptions } from '.';
-import { ShellCommand } from './shellCommand';
+import { DeviceCommand, ShellOptions } from '.';
+import { Device } from '../adb';
 
 
-export interface PsOptions extends CommandOptions {
+export interface PsOptions extends ShellOptions {
   all?: boolean;
   selinux?: boolean;
   threads?: boolean;
@@ -14,13 +13,13 @@ export interface PsOptions extends CommandOptions {
 }
 
 
-export class PsCommand implements ADBCommands<string> {
-  constructor(private adb: Adb) { }
+export class PsCommand implements DeviceCommand<string> {
+  constructor(private device: Device) { }
 
 
   async exec(options: PsOptions = {}): Promise<string> {
     const command = this.buildCommand(options);
-    return (await new ShellCommand(this.adb, command).exec(options)).stdout;
+    return (await this.device.shell(command, { ...options })).stdout;
   }
 
 

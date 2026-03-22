@@ -1,17 +1,15 @@
-import type { Adb } from '@yume-chan/adb';
-import type { CommandOptions } from '.';
-import { ADBCommands } from '.';
-import { ShellCommand } from './shellCommand';
-import { Logger } from '../../utils/logger';
+import type { DeviceCommand, ShellOptions } from '.';
+import { Logger } from '../utils/logger';
+import { Device } from '../adb';
 
-export interface TestFileOptions extends CommandOptions {
+export interface TestFileOptions extends ShellOptions {
   path: string;
 }
 
-export class TestFileCommand implements ADBCommands<boolean> {
+export class TestFileCommand implements DeviceCommand<boolean> {
   private logger: Logger;
 
-  constructor(private adb: Adb) {
+  constructor(private device: Device) {
     this.logger = new Logger('TestFileCommand');
   }
 
@@ -23,11 +21,11 @@ export class TestFileCommand implements ADBCommands<boolean> {
     const command = `test -e '${path.replace(/'/g, "'\\''")}' && echo "exists" || echo "not-found"`;
 
     try {
-      const output = (await new ShellCommand(this.adb, command).exec({ timeout })).stdout;
+      const output = (await this.device.shell(command, { ...options })).stdout;
       const exists = output.trim() === 'exists';
-      
+
       this.logger.debug('File existence test result', { path, exists });
-      
+
       return exists;
     } catch (error) {
       this.logger.error('Test file command failed', { path, error });
