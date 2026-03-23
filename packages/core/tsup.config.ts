@@ -20,7 +20,8 @@ export default defineConfig({
     '@yume-chan/android-bin',
     '@yume-chan/scrcpy',
     '@yume-chan/stream-extra',
-    '@yume-chan/struct'
+    '@yume-chan/struct',
+    'hash-wasm'
   ],
   esbuildOptions(options) {
     options.banner = {

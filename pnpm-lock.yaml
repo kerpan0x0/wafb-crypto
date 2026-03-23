@@ -11,6 +11,9 @@ importers:
       '@yume-chan/android-bin':
         specifier: ^2.1.0
         version: 2.1.0
+      hash-wasm:
+        specifier: ^4.12.0
+        version: 4.12.0
     devDependencies:
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.0.0
@@ -1349,6 +1352,9 @@ packages:
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
+
+  hash-wasm@4.12.0:
+    resolution: {integrity: sha512-+/2B2rYLb48I/evdOIhP+K/DD2ca2fgBjp6O+GBEnCDk2e4rpeXIK8GvIyRPjTezgmWn9gmKwkQjjx6BtqDHVQ==}
 
   hasown@2.0.2:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
@@ -3435,6 +3441,8 @@ snapshots:
       whatwg-mimetype: 3.0.0
 
   has-flag@4.0.0: {}
+
+  hash-wasm@4.12.0: {}
 
   hasown@2.0.2:
     dependencies:
