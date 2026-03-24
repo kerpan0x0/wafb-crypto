@@ -31,17 +31,6 @@ export abstract class Acquirer {
     }
   }
 
-  protected async computeHash(data: Uint8Array): Promise<string> {
-    if (typeof crypto === 'undefined' || !crypto.subtle) {
-      throw new Error('Web Crypto API not available');
-    }
-
-    const normalizedData = new Uint8Array(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', normalizedData);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
   protected generateFileName(prefix: string, extension: string): string {
     return `${prefix}.${extension}`;
   }
