@@ -1,12 +1,26 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ServicesAcquirer } from '../../../../src/forensics/acquisition/services';
+import type { ServicesConfig } from '../../../../src/forensics/acquisition/services';
 import {
   createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -41,8 +55,8 @@ const MOCK_ACTIVITY_SERVICES = `ACTIVITY MANAGER SERVICES (dumpsys activity serv
       app=null
       packageName=com.stopped.app`;
 
-async function parseBlob(blob: Blob) {
-  return JSON.parse(await blob.text());
+async function parseBlob(stream: ReadableStream<Uint8Array>) {
+  return JSON.parse(await readStream(stream));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -97,44 +111,44 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should return blob on successful acquisition', async () => {
-      expect((await acquirer.acquire()).files[0].blob).toBeInstanceOf(Blob);
+      expect((await acquirer.acquire()).files[0].stream).toBeInstanceOf(ReadableStream);
     });
   });
 
   describe('Service Parsing', () => {
     it('should parse service names from dumpsys -l', async () => {
-      const data = await parseBlob((await acquirer.acquire()).files[0].blob!);
+      const data = await parseBlob((await acquirer.acquire()).files[0].stream!);
       expect(data.services.some((s: any) => s.name === 'activity')).toBe(true);
       expect(data.services.some((s: any) => s.name === 'package')).toBe(true);
     });
 
     it('should skip header line from dumpsys -l', async () => {
-      const data = await parseBlob((await acquirer.acquire()).files[0].blob!);
+      const data = await parseBlob((await acquirer.acquire()).files[0].stream!);
       expect(data.services.some((s: any) => s.name.includes('Currently running'))).toBe(false);
     });
 
     it('should identify running services', async () => {
       const result = await new ServicesAcquirer(device as any, { includeServiceDetails: true }).acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseBlob(result.files[0].stream!);
       expect(data.runningServices).toBeGreaterThan(0);
     });
 
     it('should identify stopped services', async () => {
       const result = await new ServicesAcquirer(device as any, { includeServiceDetails: true }).acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseBlob(result.files[0].stream!);
       expect(data.stoppedServices).toBeGreaterThanOrEqual(0);
     });
 
     it('should parse process details when available', async () => {
       const result = await new ServicesAcquirer(device as any, { includeServiceDetails: true }).acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseBlob(result.files[0].stream!);
       expect(data.services.filter((s: any) => s.pid !== undefined).length).toBeGreaterThan(0);
     });
   });
 
   describe('Service Classification', () => {
     it('should classify android.* as system services', async () => {
-      const data = await parseBlob((await acquirer.acquire()).files[0].blob!);
+      const data = await parseBlob((await acquirer.acquire()).files[0].stream!);
       expect(data.systemServices).toBeGreaterThan(0);
     });
 
@@ -143,13 +157,13 @@ describe('ServicesAcquirer', () => {
         if (cmd.includes('dumpsys -l')) return makeShellResult('com.android.systemui\ncom.example.app');
         return makeShellResult('');
       });
-      const data = await parseBlob((await new ServicesAcquirer(device as any).acquire()).files[0].blob!);
+      const data = await parseBlob((await new ServicesAcquirer(device as any).acquire()).files[0].stream!);
       expect(data.systemServices).toBe(1);
       expect(data.userServices).toBe(1);
     });
 
     it('should calculate correct counts', async () => {
-      const data = await parseBlob((await acquirer.acquire()).files[0].blob!);
+      const data = await parseBlob((await acquirer.acquire()).files[0].stream!);
       expect(data.systemServices + data.userServices).toBe(data.totalServices);
     });
   });
@@ -171,23 +185,19 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should filter system services when configured', async () => {
-      const data = await parseBlob(
-        (await new ServicesAcquirer(device as any, { includeSystemServices: false }).acquire()).files[0].blob!
-      );
+      const data = await parseBlob((await new ServicesAcquirer(device as any, { includeSystemServices: false }).acquire()).files[0].stream!);
       expect(data.services.some((s: any) => s.name.startsWith('android.') || s.name.startsWith('com.android.'))).toBe(false);
     });
 
     it('should filter user services when configured', async () => {
-      const data = await parseBlob(
-        (await new ServicesAcquirer(device as any, { includeUserServices: false }).acquire()).files[0].blob!
-      );
+      const data = await parseBlob((await new ServicesAcquirer(device as any, { includeUserServices: false }).acquire()).files[0].stream!);
       expect(data.services.some((s: any) => s.name.includes('com.example'))).toBe(false);
     });
 
     it('should compute hash when configured', async () => {
       const result = await new ServicesAcquirer(device as any, { computeHash: true }).acquire();
       expect(result.success).toBe(true);
-      expect(typeof result.files[0].hash).toBe('string');
+      expect(typeof await drainAndHash(result, 0)).toBe('string');
     });
 
     it('should respect timeout configuration', async () => {
@@ -295,12 +305,12 @@ describe('ServicesAcquirer', () => {
 
   describe('Output Format', () => {
     it('should create valid JSON', async () => {
-      const text = await (await acquirer.acquire()).files[0].blob!.text();
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(() => JSON.parse(text)).not.toThrow();
     });
 
     it('should include all required fields', async () => {
-      const data = await parseBlob((await acquirer.acquire()).files[0].blob!);
+      const data = await parseBlob((await acquirer.acquire()).files[0].stream!);
       ['totalServices', 'runningServices', 'stoppedServices', 'systemServices',
        'userServices', 'services', 'deviceInfo', 'acquisitionTime', 'timestamp'].forEach(f => {
         expect(data).toHaveProperty(f);
@@ -308,13 +318,13 @@ describe('ServicesAcquirer', () => {
     });
 
     it('should format service entries correctly', async () => {
-      const data = await parseBlob((await acquirer.acquire()).files[0].blob!);
+      const data = await parseBlob((await acquirer.acquire()).files[0].stream!);
       expect(data.services[0]).toHaveProperty('name');
       expect(data.services[0]).toHaveProperty('state');
     });
 
     it('should return blob with correct type', async () => {
-      expect((await acquirer.acquire()).files[0].blob!.type).toBe('application/json');
+      expect((await acquirer.acquire()).files[0].mimeType).toBe('application/json');
     });
 
     it('should generate correct filename', async () => {

@@ -6,8 +6,18 @@ import {
   createMockProgressCallback,
   makeShellResult,
   makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any): Promise<string | undefined> {
+  if (!result.files[0].hashPromise) return undefined;
+  // Drain stream so TransformStream flush() is called and hashPromise resolves
+  const reader = result.files[0].stream!.getReader();
+  while (!(await reader.read()).done) {}
+  return result.files[0].hashPromise;
+}
+
 
 describe('BugreportAcquirer', () => {
   let device: MockDevice;
@@ -54,8 +64,9 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
+      const hash = await drainAndHash(result);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
     });
 
     it('should handle bugreport generation errors', async () => {
@@ -81,7 +92,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should include device info in result', async () => {
@@ -120,12 +131,8 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should handle timeout', async () => {
-      device.shell.mockRejectedValue(
-        new Error('Command timed out')
-      );
-      device.spawn.mockRejectedValue(
-        new Error('Command timed out')
-      );
+      device.shell.mockRejectedValue(new Error('Command timed out'));
+      device.spawn.mockRejectedValue(new Error('Command timed out'));
 
       const result = await acquirer.acquire();
 
@@ -136,7 +143,6 @@ describe('BugreportAcquirer', () => {
     it('should handle file read errors', async () => {
       // sync is used in the zip path to download the bugreport file from device
       device.sync.mockRejectedValue(new Error('Failed to read file'));
-      device.spawn.mockRejectedValue(new Error('Failed to read file'));
 
       const result = await acquirer.acquire();
 
@@ -148,7 +154,6 @@ describe('BugreportAcquirer', () => {
       // Zip path: sync fails during download → acquisition fails
       // bugreportPath is set before the failure so cleanup is attempted
       device.sync.mockRejectedValue(new Error('Read failed'));
-      device.spawn.mockRejectedValue(new Error('Read failed'));
 
       acquirer = new BugreportAcquirer(device as any, { cleanupAfter: true });
       const result = await acquirer.acquire();
@@ -226,7 +231,8 @@ describe('BugreportAcquirer', () => {
       acquirer = new BugreportAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
-      expect(result.files[0].hash).toBeDefined();
+      const hash = await drainAndHash(result);
+      expect(hash).toBeDefined();
     });
 
     it('should respect timeout config', async () => {
@@ -339,9 +345,10 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
-      expect(result.files[0].hash!.length).toBeGreaterThan(0);
+      const hash = await drainAndHash(result);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
+      expect(hash!.length).toBeGreaterThan(0);
     });
 
     it('should skip hash computation when computeHash is false', async () => {
@@ -349,7 +356,7 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should respect custom timeout configuration', async () => {
@@ -720,15 +727,15 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should return blob with correct MIME type for zip', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob!.type).toBe('application/zip');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/zip');
     });
 
     it('should return stream for legacy text format', async () => {
@@ -739,7 +746,6 @@ describe('BugreportAcquirer', () => {
       expect(result.success).toBe(true);
       expect(result.files[0].stream).toBeDefined();
       expect(result.files[0].mimeType).toBe('text/plain');
-      expect(result.files[0].blob).toBeUndefined();
     });
   });
 

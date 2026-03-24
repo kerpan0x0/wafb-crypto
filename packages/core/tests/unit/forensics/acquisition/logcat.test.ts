@@ -5,8 +5,21 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +73,7 @@ describe('LogcatAcquirer', () => {
       const result = await new LogcatAcquirer(device as any, { computeHash: true }).acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
+      expect(await drainAndHash(result, 0)).toBeDefined();
     });
 
     it('should handle empty logcat output', async () => {
@@ -187,17 +200,17 @@ describe('LogcatAcquirer', () => {
 
   describe('output format', () => {
     it('should include metadata header in output', async () => {
-      const text = await (await acquirer.acquire()).files[0].blob!.text();
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(text).toContain('# Logcat Acquisition Metadata');
     });
 
     it('should include JSON metadata section', async () => {
-      const text = await (await acquirer.acquire()).files[0].blob!.text();
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(text).toContain('METADATA (JSON)');
     });
 
     it('should include original logcat output section', async () => {
-      const text = await (await acquirer.acquire()).files[0].blob!.text();
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(text).toContain('LOGCAT OUTPUT');
     });
   });

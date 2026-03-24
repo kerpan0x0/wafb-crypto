@@ -5,8 +5,27 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   makeShellResult,
+  readStream,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function parseStream(stream: ReadableStream<Uint8Array>): Promise<any> {
+  return JSON.parse(await readStream(stream));
+}
+
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -19,8 +38,8 @@ const MOCK_PS_OUTPUT = [
   'u:r:untrusted_app:s0           u0_a123 5678   2000  456789  23456 0                   0 S com.example.app',
 ].join('\n');
 
-async function parseBlob(blob: Blob) {
-  return JSON.parse(await blob.text());
+async function parseBlob(stream: ReadableStream<Uint8Array>) {
+  return JSON.parse(await readStream(stream));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -75,7 +94,7 @@ describe('ProcessAcquirer', () => {
 
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
       expect(result.files[0].fileName).toBe('processes.json');
     });
   });
@@ -83,35 +102,35 @@ describe('ProcessAcquirer', () => {
   describe('Process Parsing', () => {
     it('should parse PID correctly', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes[0].pid).toBe(1);
       expect(data.processes[1].pid).toBe(1234);
     });
 
     it('should parse PPID correctly', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes[0].ppid).toBe(0);
       expect(data.processes[1].ppid).toBe(1);
     });
 
     it('should parse user correctly', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes[0].user).toBe('root');
       expect(data.processes[1].user).toBe('system');
     });
 
     it('should parse process name correctly', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes[0].name).toBe('init');
       expect(data.processes[1].name).toBe('system_server');
     });
 
     it('should parse memory info correctly', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes[0].vsz).toBeGreaterThan(0);
       expect(data.processes[0].rss).toBeGreaterThan(0);
     });
@@ -119,7 +138,7 @@ describe('ProcessAcquirer', () => {
     it('should parse SELinux context when enabled', async () => {
       acquirer = new ProcessAcquirer(device as any, { includeSELinuxContext: true });
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.some((p: any) => p.selinuxContext)).toBe(true);
     });
 
@@ -132,7 +151,7 @@ describe('ProcessAcquirer', () => {
       acquirer = new ProcessAcquirer(device as any);
 
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.find((p: any) => p.pid === 9999).name).toBe('my app name');
     });
 
@@ -169,19 +188,19 @@ describe('ProcessAcquirer', () => {
   describe('User ID Mapping', () => {
     it('should map root user to UID 0', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.find((p: any) => p.user === 'root').uid).toBe(0);
     });
 
     it('should map system user to UID 1000', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.find((p: any) => p.user === 'system').uid).toBe(1000);
     });
 
     it('should parse app user format (u0_aXXX)', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.find((p: any) => p.user === 'u0_a123').uid).toBe(10123);
     });
 
@@ -193,7 +212,7 @@ describe('ProcessAcquirer', () => {
         return makeShellResult('');
       });
       const result = await new ProcessAcquirer(device as any).acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes[0].uid).toBe(-1);
     });
 
@@ -205,7 +224,7 @@ describe('ProcessAcquirer', () => {
         return makeShellResult('');
       });
       const result = await new ProcessAcquirer(device as any).acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       // u1_a456 = 1*100000 + 10000 + 456 = 110456
       expect(data.processes[0].uid).toBe(110456);
     });
@@ -214,20 +233,20 @@ describe('ProcessAcquirer', () => {
   describe('Process Classification', () => {
     it('should classify system_server as system process', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.find((p: any) => p.name === 'system_server').uid).toBe(1000);
       expect(data.systemProcesses).toBeGreaterThan(0);
     });
 
     it('should classify zygote processes as system', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.processes.find((p: any) => p.name.includes('zygote'))).toBeDefined();
     });
 
     it('should calculate correct system/user counts', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.systemProcesses + data.userProcesses).toBe(data.totalProcesses);
     });
   });
@@ -254,7 +273,7 @@ describe('ProcessAcquirer', () => {
     it('should compute hash when configured', async () => {
       const result = await new ProcessAcquirer(device as any, { computeHash: true }).acquire();
       expect(result.success).toBe(true);
-      expect(typeof result.files[0].hash).toBe('string');
+      expect(typeof await drainAndHash(result, 0)).toBe('string');
     });
 
     it('should respect timeout configuration', async () => {
@@ -372,13 +391,13 @@ describe('ProcessAcquirer', () => {
   describe('Output Format', () => {
     it('should create valid JSON', async () => {
       const result = await acquirer.acquire();
-      const text = await result.files[0].blob!.text();
+      const text = await readStream(result.files[0].stream!);
       expect(() => JSON.parse(text)).not.toThrow();
     });
 
     it('should include all required fields', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data).toHaveProperty('totalProcesses');
       expect(data).toHaveProperty('systemProcesses');
       expect(data).toHaveProperty('userProcesses');
@@ -390,7 +409,7 @@ describe('ProcessAcquirer', () => {
 
     it('should format process entries correctly', async () => {
       const result = await acquirer.acquire();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       const p = data.processes[0];
       expect(p).toHaveProperty('pid');
       expect(p).toHaveProperty('ppid');
@@ -404,7 +423,7 @@ describe('ProcessAcquirer', () => {
 
     it('should have correct blob type', async () => {
       const result = await acquirer.acquire();
-      expect(result.files[0].blob!.type).toBe('application/json');
+      expect(result.files[0].mimeType).toBe('application/json');
     });
 
     it('should generate correct filename', async () => {
@@ -417,7 +436,7 @@ describe('ProcessAcquirer', () => {
       const result = await acquirer.acquire();
       expect(result.success).toBe(true);
       expect((result.data as any).totalProcesses).toBeGreaterThan(0);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should work with different device models', async () => {
@@ -434,7 +453,7 @@ describe('ProcessAcquirer', () => {
       const before = Date.now();
       const result = await acquirer.acquire();
       const after = Date.now();
-      const data = await parseBlob(result.files[0].blob!);
+      const data = await parseStream(result.files[0].stream!);
       expect(data.timestamp).toBeGreaterThanOrEqual(before);
       expect(data.timestamp).toBeLessThanOrEqual(after);
     });

@@ -7,14 +7,27 @@ import {
   createMockProgressCallback,
   makeShellResult,
   makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 /**
  * Helper: parse the blob from the acquisition result into PackageInfo[]
  */
-async function parseBlobAsPackages(blob: Blob): Promise<PackageInfo[]> {
-  const text = await blob.text();
+async function parseBlobAsPackages(stream: ReadableStream<Uint8Array>): Promise<PackageInfo[]> {
+  const text = await readStream(stream);
   return JSON.parse(text);
 }
 
@@ -49,7 +62,7 @@ describe('PackagesAcquirer', () => {
       expect(result.files!.length).toBeGreaterThan(0);
       const jsonFile = result.files![0];
       expect(jsonFile.fileName).toBe('packages.json');
-      expect(jsonFile.blob).toBeDefined();
+      expect(jsonFile.stream!).toBeDefined();
       expect(device.shell).toHaveBeenCalled();
     });
 
@@ -59,9 +72,9 @@ describe('PackagesAcquirer', () => {
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       const jsonFile = result.files![0];
-      expect(jsonFile.blob).toBeDefined();
+      expect(jsonFile.stream!).toBeDefined();
 
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
       expect(Array.isArray(packages)).toBe(true);
       expect(packages.length).toBe(3); // default: com.android.vending, com.example.app, com.google.android.gms
     });
@@ -112,7 +125,7 @@ describe('PackagesAcquirer', () => {
       expect((result.data as any).totalPackages).toBe(0);
 
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
       expect(packages).toEqual([]);
     });
 
@@ -122,8 +135,9 @@ describe('PackagesAcquirer', () => {
 
       expect(result.success).toBe(true);
       const jsonFile = result.files![0];
-      expect(jsonFile.hash).toBeDefined();
-      expect(typeof jsonFile.hash).toBe('string');
+      const _hash_jsonFile = await drainAndHash({ files: [jsonFile] });
+      expect(_hash_jsonFile).toBeDefined();
+      expect(typeof _hash_jsonFile).toBe('string');
     });
   });
 
@@ -140,7 +154,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages.length).toBe(1);
       const pkg = packages[0];
@@ -172,7 +186,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
       const pkg = packages[0] as any;
 
       // These fields were removed in the androidqf format migration
@@ -189,7 +203,7 @@ describe('PackagesAcquirer', () => {
     it('should use 4-space indentation in JSON output', async () => {
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const text = await jsonFile.blob.text();
+      const text = await readStream(jsonFile.stream!);
 
       // Verify 4-space indent: the first property in the first object
       // JSON.stringify with 4 spaces creates lines like:
@@ -207,7 +221,7 @@ describe('PackagesAcquirer', () => {
     it('should produce a direct JSON array (not wrapped in object)', async () => {
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const text = await jsonFile.blob.text();
+      const text = await readStream(jsonFile.stream!);
 
       expect(text.trim().startsWith('[')).toBe(true);
       expect(text.trim().endsWith(']')).toBe(true);
@@ -227,7 +241,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
       const file: PackageFile = packages[0].files[0];
 
       expect(file).toHaveProperty('path');
@@ -250,7 +264,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
       const cert = packages[0].files[0].certificate;
 
       expect(cert).toEqual({
@@ -274,7 +288,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages[0].files.length).toBeGreaterThanOrEqual(1);
       expect(packages[0].files[0].path).toContain('.apk');
@@ -291,7 +305,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       // Should have base.apk + 2 splits = 3 files
       expect(packages[0].files.length).toBe(3);
@@ -316,7 +330,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       const pkg = packages[0];
       expect(pkg.system).toBe(false);
@@ -332,7 +346,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       const pkg = packages[0];
       expect(pkg.system).toBe(true);
@@ -347,7 +361,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       for (const pkg of packages) {
         expect(pkg.third_party).toBe(!pkg.system);
@@ -376,7 +390,7 @@ describe('PackagesAcquirer', () => {
     it('should include numeric uid for each package', async () => {
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       for (const pkg of packages) {
         expect(typeof pkg.uid).toBe('number');
@@ -393,7 +407,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages[0].uid).toBe(10000);
     });
@@ -413,7 +427,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       const enabledPkg = packages.find(p => p.name === 'com.example.app');
       const disabledPkg = packages.find(p => p.name === 'com.example.disabled');
@@ -431,7 +445,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages[0].disabled).toBe(false);
     });
@@ -453,7 +467,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages[0].installer).toBe('com.android.vending');
     });
@@ -469,7 +483,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages[0].installer).toBe('null');
     });
@@ -670,7 +684,7 @@ describe('PackagesAcquirer', () => {
 
       const result = await acquirer.acquire();
       const jsonFile = result.files![0];
-      const packages = await parseBlobAsPackages(jsonFile.blob);
+      const packages = await parseBlobAsPackages(jsonFile.stream!);
 
       expect(packages.length).toBe(1);
       expect(packages[0]).toHaveProperty('name');

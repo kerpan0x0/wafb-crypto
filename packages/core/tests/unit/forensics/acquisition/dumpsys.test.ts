@@ -6,8 +6,21 @@ import {
   createMockProgressCallback,
   makeShellResult,
   makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) { }
+  }
+  return file.hashPromise;
+}
+
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +103,6 @@ describe('DumpsysAcquirer', () => {
     it('should return stream (not blob) in default mode', async () => {
       const result = await acquirer.acquire();
       expect(result.files[0].stream).toBeDefined();
-      expect(result.files[0].blob).toBeUndefined();
       expect(result.files[0].mimeType).toBe('text/plain');
     });
   });
@@ -129,17 +141,18 @@ describe('DumpsysAcquirer', () => {
       const result = await new DumpsysAcquirer(device as any, { computeHash: true }).acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
-      expect(result.files[0].hash!.length).toBeGreaterThan(0);
-      // Buffered mode returns blob, not stream
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].stream).toBeUndefined();
+      const hash = await drainAndHash(result, 0);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
+      expect(hash!.length).toBeGreaterThan(0);
+      // In hash mode, we still return a stream (with hash computed on the fly)
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].hashPromise).toBeDefined();
     });
 
     it('should not compute hash when computeHash is false/undefined', async () => {
       const result = await acquirer.acquire();
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should respect custom timeout', async () => {
@@ -219,7 +232,6 @@ describe('DumpsysAcquirer', () => {
     it('should return a readable stream in default mode', async () => {
       const result = await acquirer.acquire();
       expect(result.files[0].stream).toBeDefined();
-      expect(result.files[0].blob).toBeUndefined();
       expect(result.files[0].mimeType).toBe('text/plain');
     });
   });

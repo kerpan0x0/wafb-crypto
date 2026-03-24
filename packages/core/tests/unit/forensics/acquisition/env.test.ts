@@ -6,8 +6,21 @@ import {
   createMockProgressCallback,
   makeShellResult,
   makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 describe('EnvAcquirer', () => {
   let device: MockDevice;
@@ -73,14 +86,14 @@ LD_LIBRARY_PATH=/system/lib`;
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].hash).toBeDefined();
+      expect(await drainAndHash(result, 0)).toBeDefined();
     });
 
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob.type).toBe('application/text');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/text');
     });
 
     it('should include device information in result', async () => {
@@ -114,7 +127,7 @@ LD_LIBRARY_PATH=/system/lib`;
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
       expect(result.files[0].fileName).toBe('env.txt');
     });
   });
@@ -468,7 +481,7 @@ LD_PRELOAD=/system/lib/libpreload.so`;
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should work with empty configuration', async () => {

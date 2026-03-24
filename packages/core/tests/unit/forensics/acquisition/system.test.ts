@@ -5,8 +5,21 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +94,7 @@ describe('SystemInfoAcquirer', () => {
       const result = await acquirer.acquire();
       expect(result.success).toBe(true);
       expect(result.type).toBe('system_info');
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
       expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
@@ -104,13 +117,13 @@ describe('SystemInfoAcquirer', () => {
 
     it('should create valid JSON blob', async () => {
       const result = await acquirer.acquire();
-      const text = await result.files[0].blob!.text();
+      const text = await readStream(result.files[0].stream!);
       expect(() => JSON.parse(text)).not.toThrow();
     });
 
     it('should include all required JSON fields', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data).toHaveProperty('device');
       expect(data).toHaveProperty('systemProperties');
       expect(data).toHaveProperty('acquisitionTime');
@@ -118,7 +131,7 @@ describe('SystemInfoAcquirer', () => {
 
     it('should include device model info in JSON', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.device.model).toBe('Test Device');
       expect(data.device.manufacturer).toBe('Test Manufacturer');
     });
@@ -127,8 +140,9 @@ describe('SystemInfoAcquirer', () => {
       acquirer = new SystemInfoAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
+      const hash = await drainAndHash(result, 0);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
     });
 
     it('should generate correct filename', async () => {
@@ -140,21 +154,21 @@ describe('SystemInfoAcquirer', () => {
   describe('component configuration', () => {
     it('should include battery info by default', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.battery).toBeDefined();
     });
 
     it('should skip battery when disabled', async () => {
       acquirer = new SystemInfoAcquirer(device as any, { includeBattery: false });
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.battery).toBeUndefined();
       expect(result.data?.componentsCollected?.battery).toBe(false);
     });
 
     it('should include network info by default', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.network).toBeDefined();
     });
 
@@ -166,7 +180,7 @@ describe('SystemInfoAcquirer', () => {
 
     it('should include storage info by default', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.storage).toBeDefined();
     });
 
@@ -178,7 +192,7 @@ describe('SystemInfoAcquirer', () => {
 
     it('should include memory info by default', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.memory).toBeDefined();
     });
 
@@ -190,7 +204,7 @@ describe('SystemInfoAcquirer', () => {
 
     it('should include sensors by default', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.sensors).toBeDefined();
     });
 
@@ -218,19 +232,19 @@ describe('SystemInfoAcquirer', () => {
   describe('battery info parsing', () => {
     it('should parse battery level', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.battery?.level).toBe(85);
     });
 
     it('should parse battery temperature', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.battery?.temperature).toBe(28); // 280/10
     });
 
     it('should parse battery voltage', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.battery?.voltage).toBe(4200);
     });
 
@@ -244,14 +258,14 @@ describe('SystemInfoAcquirer', () => {
   describe('memory info parsing', () => {
     it('should parse total RAM', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.memory?.totalRam).toBeDefined();
       expect(data.memory?.totalRam).toContain('8,192,000K');
     });
 
     it('should parse available RAM', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.memory?.availableRam).toBeDefined();
     });
   });
@@ -259,19 +273,19 @@ describe('SystemInfoAcquirer', () => {
   describe('network info parsing', () => {
     it('should detect wifi enabled', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.network?.wifiEnabled).toBe(true);
     });
 
     it('should detect mobile data disabled', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.network?.mobileDataEnabled).toBe(false);
     });
 
     it('should detect airplane mode off', async () => {
       const result = await acquirer.acquire();
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.network?.airplaneModeOn).toBe(false);
     });
   });

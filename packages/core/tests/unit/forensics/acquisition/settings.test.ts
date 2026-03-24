@@ -6,6 +6,7 @@ import {
   createMockProgressCallback,
   makeShellResult,
   makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
 
@@ -145,7 +146,7 @@ user_setup_complete=1`;
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
       expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
@@ -155,8 +156,8 @@ user_setup_complete=1`;
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob.type).toBe('application/json');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/json');
     });
 
     it('should include device information in progress callback', async () => {

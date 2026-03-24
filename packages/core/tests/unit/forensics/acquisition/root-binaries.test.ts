@@ -5,8 +5,21 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 describe('RootBinariesAcquirer', () => {
   let device: MockDevice;
@@ -87,7 +100,7 @@ describe('RootBinariesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
+      expect(await drainAndHash(result, 0)).toBeDefined();
     });
 
     it('should generate valid JSON output', async () => {
@@ -95,7 +108,7 @@ describe('RootBinariesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.format).toBe('text');
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should include device information in result', async () => {
@@ -119,8 +132,8 @@ describe('RootBinariesAcquirer', () => {
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob!.type).toBe('application/json');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/json');
     });
   });
 

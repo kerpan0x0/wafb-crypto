@@ -5,8 +5,21 @@ import {
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 describe('MountAcquirer', () => {
   let device: MockDevice;
@@ -69,10 +82,8 @@ sysfs /sys sysfs rw,relatime 0 0
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('mount');
-      expect(result.files).toBeDefined()
-      const files = result.files!;
-      expect(files![0].fileName).toContain('mounts');
-      expect(files![0].fileName).toContain('.json');
+      expect(result.files[0].fileName).toContain('mounts');
+      expect(result.files[0].fileName).toContain('.json');
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
       expect(result.duration).toBeGreaterThanOrEqual(0);
@@ -130,14 +141,15 @@ sysfs /sys sysfs rw,relatime 0 0
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
+      const hash = await drainAndHash(result, 0);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
     });
 
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob!.type).toBe('application/json');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/json');
     });
 
     it('should generate simple filename', async () => {
@@ -202,14 +214,14 @@ sysfs /sys sysfs rw,relatime 0 0
 
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should create JSON output with proper formatting', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.files[0].blob!.type).toBe('application/json');
-      const parsed = JSON.parse(await result.files[0].blob!.text());
+      expect(result.files[0].mimeType).toBe('application/json');
+      const parsed = JSON.parse(await readStream(result.files[0].stream!));
       expect(Array.isArray(parsed)).toBe(true);
     });
 

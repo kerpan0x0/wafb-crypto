@@ -1,13 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SELinuxAcquirer } from '../../../../src/forensics/acquisition/selinux';
+import type { SELinuxConfig } from '../../../../src/forensics/acquisition/selinux';
 import {
   createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
   createMockSync,
   makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
 import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -197,9 +211,9 @@ describe('SELinuxAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
 
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(Array.isArray(data.fileContexts)).toBe(true);
       expect(
         data.fileContexts.some((line: string) =>
@@ -214,7 +228,7 @@ describe('SELinuxAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      const data = JSON.parse(await result.files[0].blob!.text());
+      const data = JSON.parse(await readStream(result.files[0].stream!));
       expect(data.fileContexts.some((line: string) => line.startsWith('# /'))).toBe(true);
     });
 
@@ -314,15 +328,16 @@ describe('SELinuxAcquirer', () => {
       acquirer = new SELinuxAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeTruthy();
-      expect(result.files[0].hash).toHaveLength(64);
+      const hash = await drainAndHash(result, 0);
+      expect(hash).toBeTruthy();
+      expect(hash).toHaveLength(64);
     });
 
     it('should not compute hash when not requested', async () => {
       acquirer = new SELinuxAcquirer(device as any, { computeHash: false });
       const result = await acquirer.acquire();
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
   });
 
@@ -332,7 +347,7 @@ describe('SELinuxAcquirer', () => {
     });
 
     it('should create downloadable blob', async () => {
-      expect((await acquirer.acquire()).files[0].blob).toBeInstanceOf(Blob);
+      expect((await acquirer.acquire()).files[0].stream).toBeInstanceOf(ReadableStream);
     });
   });
 });
