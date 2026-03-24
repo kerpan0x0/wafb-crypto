@@ -8,6 +8,7 @@ import {
   LsCommand,
 } from '../../commands';
 import type { Device } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface SELinuxConfig extends AcquisitionConfig {
   includeContexts?: boolean;
@@ -145,20 +146,15 @@ export class SELinuxAcquirer extends Acquirer {
       const jsonData = JSON.stringify(selinuxData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('selinux', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'SELinux policy and configuration',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'SELinux policy and configuration', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'SELinux policy and configuration', mimeType: 'application/json' };
       }
 
       const endTime = new Date();

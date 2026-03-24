@@ -2,6 +2,7 @@ import { GetLogcatCommand } from '../../commands';
 import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface LogcatConfig extends AcquisitionConfig {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';
@@ -98,20 +99,15 @@ export class LogcatAcquirer extends Acquirer {
       const combinedOutput = this.formatOutput(logcatData, logOutput);
       const logBytes = new TextEncoder().encode(combinedOutput);
 
-      const blob = new Blob([logBytes], { type: 'text/plain' });
       const fileName = this.generateFileName('logcat', 'txt');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'System logs (logcat)',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(logBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: logBytes.length, stream: readable, hashPromise, description: 'System logs (logcat)', mimeType: 'text/plain' };
+      } else {
+        file = { fileName: fileName, fileSize: logBytes.length, stream: bytesToStream(logBytes), description: 'System logs (logcat)', mimeType: 'text/plain' };
       }
 
       const endTime = new Date();

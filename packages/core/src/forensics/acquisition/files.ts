@@ -9,6 +9,7 @@ import {
   StatBatchCommand,
 } from '../../commands';
 import { ADBCommandError } from '../../utils/errors';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface FileAcquisitionConfig extends AcquisitionConfig {
   downloadFiles?: boolean;
@@ -149,20 +150,15 @@ export class FileAcquirer extends Acquirer {
       const outputJson = JSON.stringify(this.fileDetails, null, 2);
       const outputBytes = new TextEncoder().encode(outputJson);
 
-      const blob = new Blob([outputBytes], { type: 'application/json' });
       const fileName = this.generateFileName('files', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'Acquired files archive',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(outputBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName, fileSize: outputBytes.length, stream: readable, hashPromise, description: 'Acquired files archive', mimeType: 'application/json' };
+      } else {
+        file = { fileName, fileSize: outputBytes.length, stream: bytesToStream(outputBytes), description: 'Acquired files archive', mimeType: 'application/json' };
       }
 
       const endTime = new Date();

@@ -1,6 +1,7 @@
 import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Device } from '../../adb';
 import { CmdCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface SettingsConfig extends AcquisitionConfig { }
 
@@ -66,21 +67,15 @@ export class SettingsAcquirer extends Acquirer {
       const jsonData = JSON.stringify(combinedData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('settings', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'System settings database',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        this.notifyProgress(onProgress, 90, 'Computing hash...', 'running');
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'System settings database', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'System settings database', mimeType: 'application/json' };
       }
 
       // Step 5: Complete acquisition

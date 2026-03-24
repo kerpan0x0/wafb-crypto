@@ -2,6 +2,7 @@ import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, Ac
 import { BackupCommand, WhichCommand } from '../../commands';
 import { ADBCommandError } from '../../utils/errors';
 import { Device } from '../../adb';
+import { hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface BackupConfig extends AcquisitionConfig {
   type?: string;
@@ -87,13 +88,30 @@ export class BackupAcquirer extends Acquirer {
       // The ZIP writer will record the real size via the data descriptor.
       const fileName = this.generateFileName('backup', 'ab');
 
-      const acquisitionFile: AcquisitionFile = {
-        stream,
-        fileName,
-        mimeType: 'application/vnd.android.backup',
-        fileSize: 0,  // unknown until stream is consumed
-        description: 'Android backup',
-      };
+      let acquisitionFile: AcquisitionFile;
+
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        stream.pipeTo(writable).catch(err => {
+          this.logger.error('Backup stream pipe error', err);
+        });
+        acquisitionFile = {
+          stream: readable,
+          hashPromise,
+          fileName,
+          mimeType: 'application/vnd.android.backup',
+          fileSize: 0,
+          description: 'Android backup',
+        };
+      } else {
+        acquisitionFile = {
+          stream,
+          fileName,
+          mimeType: 'application/vnd.android.backup',
+          fileSize: 0,
+          description: 'Android backup',
+        };
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();

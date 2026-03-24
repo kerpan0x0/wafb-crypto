@@ -7,6 +7,7 @@ import {
 } from '../../commands';
 import type { BugreportStream } from '../../commands/bugreportCommand';
 import type { Device } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
@@ -80,22 +81,29 @@ export class BugreportAcquirer extends Acquirer {
 
         this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
-        const blob = new Blob([bugreportData.buffer as ArrayBuffer], {
-          type: 'application/zip',
-        });
-
         const fileName = this.generateFileName('bugreport', 'zip');
 
-        acquisitionFile = {
-          blob,
-          fileName,
-          mimeType: 'application/zip',
-          fileSize: blob.size,
-          description: 'System bugreport archive',
-        };
-
         if (this.config.computeHash) {
-          acquisitionFile.hash = await this.computeHash(bugreportData);
+          const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+          bytesToStream(bugreportData).pipeTo(writable).catch(err => {
+            this.logger.error('Bugreport hash pipe error', err);
+          });
+          acquisitionFile = {
+            stream: readable,
+            hashPromise,
+            fileName,
+            mimeType: 'application/zip',
+            fileSize: bugreportData.length,
+            description: 'System bugreport archive',
+          };
+        } else {
+          acquisitionFile = {
+            stream: bytesToStream(bugreportData),
+            fileName,
+            mimeType: 'application/zip',
+            fileSize: bugreportData.length,
+            description: 'System bugreport archive',
+          };
         }
 
         // Cleanup the file left on the device

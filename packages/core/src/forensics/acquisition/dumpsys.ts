@@ -1,7 +1,8 @@
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { hashingPassthrough, bytesToStream } from '../../utils/stream-helpers';
 import type { Device } from '../../adb/device';
-import { DumpsysCommand, DumpsysStreamCommand } from '../../commands';
+import { DumpsysStreamCommand } from '../../commands';
 
 export interface DumpsysConfig extends AcquisitionConfig { }
 
@@ -43,35 +44,30 @@ export class DumpsysAcquirer extends Acquirer {
       let file: AcquisitionFile;
 
       if (this.config.computeHash) {
-        // Buffered mode: load the full output into memory so we can hash it.
-        // Use only when forensic integrity is required — large outputs (50-200 MB)
-        // will be held in browser memory for the duration of the acquisition.
-        this.notifyProgress(onProgress, 90, 'Processing dumpsys output...', 'running');
+        // Hash mode: stream through hashingPassthrough so CRC is computed
+        // incrementally — O(1) memory, no buffering of the full output.
+        this.notifyProgress(onProgress, 90, 'Streaming dumpsys output with hash...', 'running');
 
-        const timeout = this.config.timeout ?? 600000;
-        const output = await new DumpsysCommand(this.device).exec({ timeout });
+        const { stream: rawStream } = await new DumpsysStreamCommand(this.device).exec();
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
 
-        const textBytes = new TextEncoder().encode(output);
-        const blob = new Blob([textBytes], { type: 'text/plain' });
+        rawStream.pipeTo(writable).catch(err => {
+          this.logger.error('Dumpsys stream pipe error', err);
+        });
 
         file = {
           fileName,
-          fileSize: blob.size,
-          blob,
+          fileSize: 0,
+          stream: readable,
+          hashPromise,
           description: 'Dumpsys output',
           mimeType: 'text/plain',
         };
 
-        file.hash = await this.computeHash(textBytes);
-
-        this.logger.info('Dumpsys acquisition completed (buffered)', {
-          fileName,
-          fileSize: blob.size,
-        });
+        this.logger.info('Dumpsys stream (with hash) ready, handing off to ZIP writer', { fileName });
       } else {
         // Streaming mode (default): pipe stdout directly into the ZIP writer
-        // without buffering in memory. fileSize is unknown until the stream
-        // is consumed. Hash computation is skipped.
+        // without buffering in memory.
         this.notifyProgress(onProgress, 90, 'Streaming dumpsys output into archive...', 'running');
 
         const { stream: dumpsysStream } = await new DumpsysStreamCommand(this.device).exec();

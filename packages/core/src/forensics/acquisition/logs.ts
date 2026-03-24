@@ -1,7 +1,7 @@
 import type { Device, DeviceProperties } from '../../adb';
 import { LsCommand, ReadFileCommand } from '../../commands';
 import { Acquirer, AcquisitionResult, AcquisitionProgress, AcquisitionConfig, AcquisitionFile } from '.';
-import { ADBCommandError } from '../../utils/errors';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface LogConfig extends AcquisitionConfig {
   includeSystemLogs?: boolean;
@@ -140,12 +140,7 @@ export class LogAcquirer extends Acquirer {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        const stderrHint = error instanceof ADBCommandError ? (error.stderr ?? '') : '';
-        const isPermissionDenied =
-          stderrHint.toLowerCase().includes('permission denied') ||
-          errorMessage.toLowerCase().includes('permission denied');
-
-        if (isPermissionDenied) {
+        if (errorMessage.toLowerCase().includes('permission denied')) {
           this.logger.debug(`Permission denied for ${logFile}`);
           result.skippedFiles++;
         } else {
@@ -175,23 +170,19 @@ export class LogAcquirer extends Acquirer {
         
         const fileName = `logs/${normalizedPath}`;
 
-        const blob = new Blob([logEntry.data], { type: 'text/plain' });
+        const logBytes = new TextEncoder().encode(logEntry.data);
 
-        const file: AcquisitionFile = {
-          fileName: fileName,
-          fileSize: blob.size,
-          blob: blob,
-          description: `Log file from ${logEntry.path}`,
-          mimeType: 'text/plain',
-        };
-
+        let file: AcquisitionFile;
         if (this.config.computeHash) {
-          const data = new TextEncoder().encode(logEntry.data);
-          file.hash = await this.computeHash(data);
+          const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+          bytesToStream(logBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+          file = { fileName, fileSize: logBytes.length, stream: readable, hashPromise, description: `Log file from ${logEntry.path}`, mimeType: 'text/plain' };
+        } else {
+          file = { fileName, fileSize: logBytes.length, stream: bytesToStream(logBytes), description: `Log file from ${logEntry.path}`, mimeType: 'text/plain' };
         }
 
         files.push(file);
-        this.logger.debug(`Added log file: ${fileName} (${this.formatBytes(blob.size)})`);
+        this.logger.debug(`Added log file: ${fileName} (${this.formatBytes(logBytes.length)})`);
       }
     }
 
@@ -211,19 +202,15 @@ export class LogAcquirer extends Acquirer {
     };
 
     const metadataJson = JSON.stringify(metadata, null, 2);
-    const metadataBlob = new Blob([metadataJson], { type: 'application/json' });
+    const metadataBlobBytes = new TextEncoder().encode(metadataJson);
 
-    const metadataFile: AcquisitionFile = {
-      fileName: 'logs/acquisition-metadata.json',
-      fileSize: metadataBlob.size,
-      blob: metadataBlob,
-      description: 'Log acquisition metadata',
-      mimeType: 'application/json',
-    };
-
+    let metadataFile: AcquisitionFile;
     if (this.config.computeHash) {
-      const data = new TextEncoder().encode(metadataJson);
-      metadataFile.hash = await this.computeHash(data);
+      const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+      bytesToStream(metadataBlobBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+      metadataFile = { fileName: 'logs/acquisition-metadata.json', fileSize: metadataBlobBytes.length, stream: readable, hashPromise, description: 'Log acquisition metadata', mimeType: 'application/json' };
+    } else {
+      metadataFile = { fileName: 'logs/acquisition-metadata.json', fileSize: metadataBlobBytes.length, stream: bytesToStream(metadataBlobBytes), description: 'Log acquisition metadata', mimeType: 'application/json' };
     }
 
     files.push(metadataFile);

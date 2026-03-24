@@ -2,6 +2,7 @@ import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionF
 import { Acquirer } from './acquirer';
 import { EnvCommand } from '../../commands';
 import type { Device } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface EnvConfig extends AcquisitionConfig { }
 
@@ -51,24 +52,20 @@ export class EnvAcquirer extends Acquirer {
       this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
       // Step 4: Create blob and trigger download
-      const blob = new Blob([env], { type: 'application/text' });
+      const blobBytes = new TextEncoder().encode(env);
 
       const fileName = `env.txt`;
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'Environment variables',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(blobBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: blobBytes.length, stream: readable, hashPromise, description: 'Environment variables', mimeType: 'application/text' };
+      } else {
+        file = { fileName: fileName, fileSize: blobBytes.length, stream: bytesToStream(blobBytes), description: 'Environment variables', mimeType: 'application/text' };
       }
 
       this.notifyProgress(

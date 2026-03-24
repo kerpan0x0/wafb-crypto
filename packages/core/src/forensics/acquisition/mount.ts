@@ -1,6 +1,7 @@
 import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Device } from '../../adb';
 import { MountCommand, ProcMountCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export class MountAcquirer extends Acquirer {
   constructor(device: Device, config: AcquisitionConfig = {}) {
@@ -47,21 +48,17 @@ export class MountAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 90, 'Preparing download.', 'running');
 
-      const blob = new Blob([mountJson], { type: 'application/json' });
+      const blobBytes = new TextEncoder().encode(mountJson);
 
       const fileName = this.generateFileName('mounts', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'Mount points information',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(blobBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: blobBytes.length, stream: readable, hashPromise, description: 'Mount points information', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: blobBytes.length, stream: bytesToStream(blobBytes), description: 'Mount points information', mimeType: 'application/json' };
       }
 
       this.notifyProgress(
