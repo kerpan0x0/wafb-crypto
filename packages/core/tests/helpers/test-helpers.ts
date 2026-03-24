@@ -484,3 +484,25 @@ export const MOCK_PACKAGE_LIST =
   `package:com.example.app1\n` +
   `package:com.example.app2\n` +
   `package:com.google.android.gms`;
+
+// ============================================================================
+// STREAM READING HELPER — for acquirer tests
+// ============================================================================
+
+/**
+ * Drains a ReadableStream<Uint8Array> and returns the content as a string.
+ * Use this in tests instead of blob.text() now that all acquirers return streams.
+ */
+export async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  const total = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let off = 0;
+  for (const c of chunks) { total.set(c, off); off += c.length; }
+  return new TextDecoder().decode(total);
+}

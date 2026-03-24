@@ -1,4 +1,3 @@
-
 /**
  * Legge un ReadableStream e ritorna il contenuto come stringa
  * Nota: Usiamo 'any' per il parametro readable per evitare conflitti tra 
@@ -240,4 +239,25 @@ export async function hashingPassthrough(
     readable: transform.readable,
     hashPromise,
   };
+}
+
+// ============================================================================
+// BYTES → READABLE STREAM
+// ============================================================================
+
+/**
+ * Wraps a Uint8Array in a ReadableStream.
+ *
+ * Acquirers use this to return buffered outputs (JSON, text) as streams,
+ * so the ZIP writer can handle all AcquisitionFile entries uniformly via
+ * `addAcquisitionFile` regardless of whether the data was streamed from
+ * the device or computed in memory.
+ */
+export function bytesToStream(data: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  });
 }

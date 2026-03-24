@@ -54,6 +54,13 @@ export interface AcquisitionFile {
    */
   stream?: ReadableStream<Uint8Array>;
   hash?: string;
+  /**
+   * Resolves with the hex-encoded hash after the stream is fully consumed.
+   * Only present when `computeHash` was requested on the acquirer.
+   * `StreamingZipWriter.addAcquisitionFile` awaits this and stores the
+   * result in `hash` before writing the manifest.
+   */
+  hashPromise?: Promise<string>;
   description?: string;
   mimeType?: string;
 }
