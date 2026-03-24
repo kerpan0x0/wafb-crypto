@@ -119,7 +119,6 @@ export class ServicesAcquirer extends Acquirer {
           stoppedServices: stoppedCount,
           systemServices: systemCount,
           userServices: userCount,
-          deviceInfo,
         },
       };
 

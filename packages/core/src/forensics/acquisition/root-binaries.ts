@@ -88,7 +88,6 @@ export class RootBinariesAcquirer extends Acquirer {
         duration,
         data: {
           format: 'text',
-          deviceInfo: deviceInfo,
         },
       };
 

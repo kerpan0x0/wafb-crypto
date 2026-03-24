@@ -104,12 +104,6 @@ describe('ServicesAcquirer', () => {
       expect((await acquirer.acquire()).data.userServices).toBeGreaterThan(0);
     });
 
-    it('should include device information', async () => {
-      const result = await acquirer.acquire();
-      expect((result.data as any).deviceInfo).toBeDefined();
-      expect(device.getProperties).toHaveBeenCalled();
-    });
-
     it('should return blob on successful acquisition', async () => {
       expect((await acquirer.acquire()).files[0].stream).toBeInstanceOf(ReadableStream);
     });

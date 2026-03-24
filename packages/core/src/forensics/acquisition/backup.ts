@@ -131,7 +131,6 @@ export class BackupAcquirer extends Acquirer {
         data: {
           backupType: config.type,
           buPath,
-          deviceInfo,
         },
       };
     } catch (error) {

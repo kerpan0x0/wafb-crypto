@@ -95,7 +95,7 @@ export class DumpsysAcquirer extends Acquirer {
         startTime,
         endTime,
         duration,
-        data: { deviceInfo },
+        data: {},
       };
     } catch (error) {
       const endTime = new Date();

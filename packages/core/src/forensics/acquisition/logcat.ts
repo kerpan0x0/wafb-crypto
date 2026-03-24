@@ -128,7 +128,6 @@ export class LogcatAcquirer extends Acquirer {
           errorCount: stats.errorCount,
           warningCount: stats.warningCount,
           buffer: this.config.buffer || 'all',
-          deviceInfo,
         },
       };
 

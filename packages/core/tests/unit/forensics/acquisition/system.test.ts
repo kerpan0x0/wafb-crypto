@@ -98,12 +98,6 @@ describe('SystemInfoAcquirer', () => {
       expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
-    it('should include device info in result', async () => {
-      const result = await acquirer.acquire();
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
-    });
-
     it('should include all component flags in data', async () => {
       const result = await acquirer.acquire();
       const components = result.data?.componentsCollected;

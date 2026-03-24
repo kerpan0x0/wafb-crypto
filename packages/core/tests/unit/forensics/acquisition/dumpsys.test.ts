@@ -94,12 +94,6 @@ describe('DumpsysAcquirer', () => {
       expect(device.spawn).toHaveBeenCalledWith('dumpsys');
     });
 
-    it('should include device information in result', async () => {
-      const result = await acquirer.acquire();
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
-    });
-
     it('should return stream (not blob) in default mode', async () => {
       const result = await acquirer.acquire();
       expect(result.files[0].stream).toBeDefined();
@@ -216,11 +210,6 @@ describe('DumpsysAcquirer', () => {
 
     it('should include file size of 0 in streaming mode', async () => {
       expect((await acquirer.acquire()).files[0].fileSize).toBe(0);
-    });
-
-    it('should include device info in data', async () => {
-      const result = await acquirer.acquire();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
     });
   });
 

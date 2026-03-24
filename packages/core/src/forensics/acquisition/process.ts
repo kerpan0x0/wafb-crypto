@@ -134,7 +134,6 @@ export class ProcessAcquirer extends Acquirer {
           totalProcesses: processes.length,
           systemProcesses: systemCount,
           userProcesses: userCount,
-          deviceInfo,
         },
       };
 

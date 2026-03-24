@@ -254,7 +254,6 @@ export class PackagesAcquirer extends Acquirer {
           systemPackages: systemCount,
           userPackages: userCount,
           downloadedApks: downloadedCount,
-          deviceInfo,
         },
       };
 

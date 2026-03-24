@@ -219,7 +219,6 @@ export class SystemInfoAcquirer extends Acquirer {
         endTime,
         duration,
         data: {
-          deviceInfo,
           componentsCollected: {
             battery: !!systemInfoData.battery,
             network: !!systemInfoData.network,

@@ -176,7 +176,6 @@ export class SELinuxAcquirer extends Acquirer {
           processContextsCount: selinuxData.processContexts?.length || 0,
           fileContextsCount: selinuxData.fileContexts?.length || 0,
           denialsCount: selinuxData.denials?.length || 0,
-          deviceInfo,
         },
       };
 

@@ -85,7 +85,6 @@ export class EnvAcquirer extends Acquirer {
         duration,
         data: {
           format: 'text',
-          deviceInfo: deviceInfo,
         },
       };
 

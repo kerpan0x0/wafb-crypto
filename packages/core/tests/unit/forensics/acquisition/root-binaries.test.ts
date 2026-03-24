@@ -111,14 +111,6 @@ describe('RootBinariesAcquirer', () => {
       expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
-    it('should include device information in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(device.getProperties).toHaveBeenCalled();
-    });
-
     it('should handle binaries not found on device', async () => {
       // Mock all binaries as not found
       device.shell.mockResolvedValue(makeShellResult(''));
@@ -324,20 +316,6 @@ describe('RootBinariesAcquirer', () => {
 
       expect(device.getProperties).toHaveBeenCalledTimes(1);
       expect(device.shell).toHaveBeenCalled();
-    });
-
-    it('should pass device info to result', async () => {
-      const mockProperties = {
-        model: 'Pixel 7',
-        manufacturer: 'Google',
-        androidVersion: '14',
-        serialNumber: 'ABC123',
-      };
-      device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-
-      const result = await acquirer.acquire();
-
-      expect(result.data?.deviceInfo).toEqual(mockProperties);
     });
   });
 });

@@ -95,15 +95,6 @@ describe('BugreportAcquirer', () => {
       expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
-    it('should include device info in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
-      expect((result.data as any).deviceInfo).toBeDefined();
-      expect((result.data as any).deviceInfo.model).toBe('Test Device');
-    });
-
     it('should fallback to legacy bugreport if bugreportz fails', async () => {
       // preferZip: false forces legacy path — legacy now streams stdout directly
       // (no temporary file on device, no blob — returns a ReadableStream instead)
@@ -543,15 +534,6 @@ describe('BugreportAcquirer', () => {
       expect(result.files[0].fileSize).toBeDefined();
       expect(result.files[0].fileSize).toBeGreaterThan(0);
       expect(typeof result.files[0].fileSize).toBe('number');
-    });
-
-    it('should include device info in result data', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.data).toBeDefined();
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
-      expect(result.data?.deviceInfo.manufacturer).toBe('Test Manufacturer');
     });
 
     it('should include format type in result data', async () => {

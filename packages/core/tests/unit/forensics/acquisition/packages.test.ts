@@ -633,13 +633,6 @@ describe('PackagesAcquirer', () => {
       expect((result.data as any).userPackages).toBeDefined();
       expect(typeof (result.data as any).totalPackages).toBe('number');
     });
-
-    it('should include device info in data', async () => {
-      const result = await acquirer.acquire();
-
-      expect((result.data as any).deviceInfo).toBeDefined();
-      expect((result.data as any).deviceInfo.model).toBeDefined();
-    });
   });
 
   // ==========================================================================

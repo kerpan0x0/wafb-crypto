@@ -145,7 +145,6 @@ export class BugreportAcquirer extends Acquirer {
         duration,
         data: {
           format: useZip ? 'zip' : 'text',
-          deviceInfo: deviceInfo,
           cleanupPerformed: this.cleanupPerformed,
         },
       };

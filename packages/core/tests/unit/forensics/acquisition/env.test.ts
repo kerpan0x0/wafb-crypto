@@ -96,14 +96,6 @@ LD_LIBRARY_PATH=/system/lib`;
       expect(result.files[0].mimeType).toBe('application/text');
     });
 
-    it('should include device information in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(device.getProperties).toHaveBeenCalled();
-    });
-
     it('should handle empty environment variables', async () => {
       domMocks.cleanup();
       device = createMockDeviceForAcquirer({
@@ -386,34 +378,6 @@ VAR3=value3`;
 
       expect(device.getProperties).toHaveBeenCalledTimes(1);
       expect(device.shell).toHaveBeenCalled();
-    });
-
-    it('should pass device info to result', async () => {
-      const mockProperties = {
-        model: 'Galaxy S23',
-        manufacturer: 'Samsung',
-        androidVersion: '14',
-        serialNumber: 'XYZ789',
-      };
-      device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-
-      const result = await acquirer.acquire();
-
-      expect(result.data?.deviceInfo).toEqual(mockProperties);
-    });
-
-    it('should work with different device models', async () => {
-      const mockProperties = {
-        model: 'OnePlus 12',
-        manufacturer: 'OnePlus',
-        androidVersion: '14',
-      };
-      device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data?.deviceInfo.model).toBe('OnePlus 12');
     });
   });
 

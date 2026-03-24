@@ -86,12 +86,6 @@ describe('ProcessAcquirer', () => {
       expect((await acquirer.acquire()).data.userProcesses).toBeGreaterThan(0);
     });
 
-    it('should include device information', async () => {
-      const result = await acquirer.acquire();
-      expect((result.data as any).deviceInfo).toBeDefined();
-      expect(device.getProperties).toHaveBeenCalled();
-    });
-
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
       expect(result.files[0].stream).toBeInstanceOf(ReadableStream);

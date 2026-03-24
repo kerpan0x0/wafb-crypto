@@ -187,7 +187,6 @@ export class LogAcquirer extends Acquirer {
     }
 
     const metadata = {
-      deviceInfo: logData.deviceInfo,
       acquisitionTime: logData.acquisitionTime,
       totalFiles: logData.totalFiles,
       successfulFiles: logData.successfulFiles,
