@@ -68,7 +68,7 @@ export class StreamingZipWriter {
     let size = 0;
 
     try {
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         if (!value) continue;

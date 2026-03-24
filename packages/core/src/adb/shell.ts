@@ -118,7 +118,7 @@ export class Shell {
     const chunks: Uint8Array[] = [];
 
     try {
-      while (true) {
+      for(;;) {
         let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
         const idlePromise = new Promise<{ done: true; value: undefined }>(resolve => {
