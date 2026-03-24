@@ -147,22 +147,23 @@ export function AcquisitionPage() {
         // before it is closed; for blob-based files it just buffers once.
         if (result.success && result.files) {
           for (const file of result.files) {
-            const filePath = `${folderName}/${file.fileName}`;
+            updateProgress(type, 50, `Saving ${file.fileName} to disk...`, 'running');
 
+            // Wrap stream with progress tracking before handing to ZIP writer
             if (file.stream) {
-              updateProgress(type, 50, `Saving ${file.fileName} to disk...`, 'running');
-              await zip.addFileFromStream(
-                filePath,
-                trackStreamProgress(file.stream, (bytes) => {
-                  // Pulse progress while streaming — we don't know total size upfront
-                  const mb = (bytes / (1024 * 1024)).toFixed(1);
-                  updateProgress(type, 70, `Saving ${file.fileName}: ${mb} MB written...`, 'running');
-                })
-              );
-              updateProgress(type, 100, `${file.fileName} saved.`, 'completed');
-            } else if (file.blob) {
-              await zip.addFile(filePath, new Uint8Array(await file.blob.arrayBuffer()));
+              file.stream = trackStreamProgress(file.stream, (bytes) => {
+                const mb = (bytes / (1024 * 1024)).toFixed(1);
+                updateProgress(type, 70, `Saving ${file.fileName}: ${mb} MB written...`, 'running');
+              });
             }
+
+            // addAcquisitionFile handles both stream and blob, and awaits
+            // hashPromise (if present) to store the resolved hash on file.hash
+            // before we write the manifest.
+            const filePath = `${folderName}/${file.fileName}`;
+            await zip.addAcquisitionFile({ ...file, fileName: filePath });
+
+            updateProgress(type, 100, `${file.fileName} saved.`, 'completed');
           }
         }
       } catch (err) {
