@@ -92,13 +92,10 @@ export class StreamingZipWriter {
    * After consuming the stream, awaits hashPromise and stores the hash.
    */
   async addAcquisitionFile(file: AcquisitionFile): Promise<void> {
-    if (file.stream) {
-      await this.addFileFromStream(file.fileName, file.stream);
-    } else if (file.blob) {
-      await this.addFile(file.fileName, new Uint8Array(await file.blob.arrayBuffer()));
-    } else {
-      throw new Error(`AcquisitionFile "${file.fileName}" has neither stream nor blob`);
+    if (!file.stream) {
+      throw new Error(`AcquisitionFile "${file.fileName}" has no stream`);
     }
+    await this.addFileFromStream(file.fileName, file.stream);
 
     // Resolve hash now that the stream has been fully consumed
     const hashPromise = (file as any).hashPromise as Promise<string> | undefined;
@@ -142,14 +139,14 @@ export class StreamingZipWriter {
     const nameBytes = new TextEncoder().encode(name);
     const h = new Uint8Array(30 + nameBytes.length);
     const v = new DataView(h.buffer);
-    v.setUint32(0,  0x04034b50, true);
-    v.setUint16(4,  20, true);
-    v.setUint16(6,  streaming ? 0x0008 : 0, true); // bit 3 = Data Descriptor
-    v.setUint16(8,  0, true);                        // STORE
+    v.setUint32(0, 0x04034b50, true);
+    v.setUint16(4, 20, true);
+    v.setUint16(6, streaming ? 0x0008 : 0, true); // bit 3 = Data Descriptor
+    v.setUint16(8, 0, true);                        // STORE
     v.setUint16(10, 0, true); v.setUint16(12, 0, true);
     v.setUint32(14, streaming ? 0 : crc32, true);
-    v.setUint32(18, streaming ? 0 : size,  true);
-    v.setUint32(22, streaming ? 0 : size,  true);
+    v.setUint32(18, streaming ? 0 : size, true);
+    v.setUint32(22, streaming ? 0 : size, true);
     v.setUint16(26, nameBytes.length, true);
     v.setUint16(28, 0, true);
     h.set(nameBytes, 30);
@@ -160,10 +157,10 @@ export class StreamingZipWriter {
   private createDataDescriptor(crc32: number, size: number): Uint8Array {
     const dd = new Uint8Array(16);
     const v = new DataView(dd.buffer);
-    v.setUint32(0,  0x08074b50, true); // signature (optional but improves compat)
-    v.setUint32(4,  crc32, true);
-    v.setUint32(8,  size,  true);
-    v.setUint32(12, size,  true);
+    v.setUint32(0, 0x08074b50, true); // signature (optional but improves compat)
+    v.setUint32(4, crc32, true);
+    v.setUint32(8, size, true);
+    v.setUint32(12, size, true);
     return dd;
   }
 
@@ -171,13 +168,13 @@ export class StreamingZipWriter {
     const nameBytes = new TextEncoder().encode(name);
     const h = new Uint8Array(46 + nameBytes.length);
     const v = new DataView(h.buffer);
-    v.setUint32(0,  0x02014b50, true);
-    v.setUint16(4,  20, true); v.setUint16(6, 20, true);
-    v.setUint16(8,  0, true);  v.setUint16(10, 0, true);
-    v.setUint16(12, 0, true);  v.setUint16(14, 0, true);
+    v.setUint32(0, 0x02014b50, true);
+    v.setUint16(4, 20, true); v.setUint16(6, 20, true);
+    v.setUint16(8, 0, true); v.setUint16(10, 0, true);
+    v.setUint16(12, 0, true); v.setUint16(14, 0, true);
     v.setUint32(16, crc32, true);
-    v.setUint32(20, size,  true);
-    v.setUint32(24, size,  true);
+    v.setUint32(20, size, true);
+    v.setUint32(24, size, true);
     v.setUint16(28, nameBytes.length, true);
     v.setUint16(30, 0, true); v.setUint16(32, 0, true);
     v.setUint16(34, 0, true); v.setUint16(36, 0, true);
@@ -190,11 +187,11 @@ export class StreamingZipWriter {
   private createEndOfCentralDirectory(entries: number, cdSize: number, cdOffset: number): Uint8Array {
     const r = new Uint8Array(22);
     const v = new DataView(r.buffer);
-    v.setUint32(0,  0x06054b50, true);
-    v.setUint16(4,  0, true); v.setUint16(6, 0, true);
-    v.setUint16(8,  entries, true);
+    v.setUint32(0, 0x06054b50, true);
+    v.setUint16(4, 0, true); v.setUint16(6, 0, true);
+    v.setUint16(8, entries, true);
     v.setUint16(10, entries, true);
-    v.setUint32(12, cdSize,   true);
+    v.setUint32(12, cdSize, true);
     v.setUint32(16, cdOffset, true);
     v.setUint16(20, 0, true);
     return r;
