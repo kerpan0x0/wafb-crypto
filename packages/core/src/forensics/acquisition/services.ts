@@ -1,7 +1,8 @@
-import type { ADBDevice } from '../../adb';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { DumpsysCommand } from '../../adb/commands/';
+import { DumpsysCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface ServicesConfig extends AcquisitionConfig {
   includeSystemServices?: boolean;
@@ -33,7 +34,7 @@ export interface ServicesData {
 
 export class ServicesAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: ServicesConfig = {}
   ) {
     super(device, config, 'services' as any);
@@ -89,20 +90,15 @@ export class ServicesAcquirer extends Acquirer {
       const jsonData = JSON.stringify(servicesData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('services', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'System services status',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'System services status', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'System services status', mimeType: 'application/json' };
       }
 
       const endTime = new Date();
@@ -123,7 +119,6 @@ export class ServicesAcquirer extends Acquirer {
           stoppedServices: stoppedCount,
           systemServices: systemCount,
           userServices: userCount,
-          deviceInfo,
         },
       };
 
@@ -154,7 +149,7 @@ export class ServicesAcquirer extends Acquirer {
   }
 
   private async getServicesList(): Promise<ServiceInfo[]> {
-    const output = await new DumpsysCommand(this.device.adb).exec({
+    const output = await new DumpsysCommand(this.device).exec({
       args: ['-l'],
       timeout: 30000,
     });
@@ -164,7 +159,7 @@ export class ServicesAcquirer extends Acquirer {
 
   private async enrichServicesWithDetails(services: ServiceInfo[]): Promise<void> {
     try {
-      const activityOutput = await new DumpsysCommand(this.device.adb).exec({
+      const activityOutput = await new DumpsysCommand(this.device).exec({
         service: 'activity',
         args: ['services'],
         timeout: 300000,

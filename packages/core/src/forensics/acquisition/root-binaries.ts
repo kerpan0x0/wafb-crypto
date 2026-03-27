@@ -1,13 +1,14 @@
 import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
-import { RootBinariesCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
+import { WhichCommand } from '../../commands';
+import type { Device } from '../../adb';
 
 export interface RootBinariesConfig extends AcquisitionConfig { }
 
 export class RootBinariesAcquirer extends Acquirer {
   constructor(
-    protected device: ADBDevice,
+    protected device: Device,
     protected config: RootBinariesConfig = {}
   ) {
     super(device, config, 'rootBinaries');
@@ -60,22 +61,16 @@ export class RootBinariesAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
-      // Step 4: Create blob and trigger download
-      const blob = new Blob([rootBinaries], { type: 'application/json' });
-
+      const rootBinariesBytes = new TextEncoder().encode(rootBinaries);
       const fileName = `root_binaries.json`;
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'Root binaries information',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(rootBinariesBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName, fileSize: rootBinariesBytes.length, stream: readable, hashPromise, description: 'Root binaries information', mimeType: 'application/json' };
+      } else {
+        file = { fileName, fileSize: rootBinariesBytes.length, stream: bytesToStream(rootBinariesBytes), description: 'Root binaries information', mimeType: 'application/json' };
       }
 
       const endTime = new Date();
@@ -93,7 +88,6 @@ export class RootBinariesAcquirer extends Acquirer {
         duration,
         data: {
           format: 'text',
-          deviceInfo: deviceInfo,
         },
       };
 
@@ -131,7 +125,7 @@ export class RootBinariesAcquirer extends Acquirer {
 
     for (const binary of binaries) {
       try {
-        const result = await new RootBinariesCommand(this.device.adb).exec({ command: binary });
+        const result = await new WhichCommand(this.device).exec({ all: true, binary: binary });
 
         // Parse multi-line output from `which -a` (e.g., "/path1\n/path2")
         const paths = result

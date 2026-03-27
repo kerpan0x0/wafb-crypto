@@ -1,7 +1,8 @@
-import type { ADBDevice } from '../../adb';
-import { PmCommand, DumpsysCommand, ReadFileCommand } from '../../adb/commands';
+import type { Device } from '../../adb';
+import { PmCommand, DumpsysCommand, ReadFileCommand } from '../../commands';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 
 export interface PackagesConfig extends AcquisitionConfig {
@@ -59,7 +60,7 @@ export class PackagesAcquirer extends Acquirer {
   private readonly DEFAULT_DOWNLOAD_ALL_SPLITS = false;
 
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: PackagesConfig = {}
   ) {
     super(device, config, 'packages');
@@ -90,7 +91,7 @@ export class PackagesAcquirer extends Acquirer {
       this.notifyProgress(onProgress, 20, `Connected to ${deviceInfo.model}`, 'running', deviceInfo);
 
       this.notifyProgress(onProgress, 25, 'Listing installed packages...', 'running');
-      const pmCommand = new PmCommand(this.device.adb);
+      const pmCommand = new PmCommand(this.device);
 
       const packagesWithFilesOutput = await pmCommand.exec({
         includeSystem: this.config.includeSystem,
@@ -127,7 +128,7 @@ export class PackagesAcquirer extends Acquirer {
 
         if (this.config.includeDetails !== false) {
           try {
-            const dumpsysOutput = await new DumpsysCommand(this.device.adb).exec({
+            const dumpsysOutput = await new DumpsysCommand(this.device).exec({
               service: 'package',
               packageName: name,
               timeout: 100000,
@@ -198,19 +199,16 @@ export class PackagesAcquirer extends Acquirer {
       const files: AcquisitionFile[] = [];
 
       const jsonData = JSON.stringify(packages, null, 4);
-      const jsonBlob = new Blob([jsonData], { type: 'application/json' });
+      const jsonBytes = new TextEncoder().encode(jsonData);
       const jsonFileName = this.generateFileName('packages', 'json');
 
-      const jsonFile: AcquisitionFile = {
-        fileName: jsonFileName,
-        fileSize: jsonBlob.size,
-        blob: jsonBlob,
-        description: 'Package metadata',
-        mimeType: 'application/json',
-      };
-
+      let jsonFile: AcquisitionFile;
       if (this.config.computeHash) {
-        jsonFile.hash = await this.computeHash(new Uint8Array(await jsonBlob.arrayBuffer()));
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        jsonFile = { fileName: jsonFileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'Package metadata', mimeType: 'application/json' };
+      } else {
+        jsonFile = { fileName: jsonFileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'Package metadata', mimeType: 'application/json' };
       }
 
       files.push(jsonFile);
@@ -256,7 +254,6 @@ export class PackagesAcquirer extends Acquirer {
           systemPackages: systemCount,
           userPackages: userCount,
           downloadedApks: downloadedCount,
-          deviceInfo,
         },
       };
 
@@ -323,7 +320,7 @@ export class PackagesAcquirer extends Acquirer {
 
           for (const file of pkg.files) {
             try {
-              const apkData = await new ReadFileCommand(this.device.adb).exec({
+              const apkData = await new ReadFileCommand(this.device).exec({
                 path: file.path,
                 timeout: 60000,
               });
@@ -338,19 +335,15 @@ export class PackagesAcquirer extends Acquirer {
                 break;
               }
 
-              const apkBlob = new Blob([apkData] as unknown as BlobPart[], { type: 'application/vnd.android.package-archive' });
               const apkName = file.path.split('/').pop() || 'unknown.apk';
 
-              const apkFile: AcquisitionFile = {
-                fileName: `apks/${sanitizedPkgName}/${apkName}`,
-                fileSize: apkBlob.size,
-                blob: apkBlob,
-                description: `APK split for ${sanitizedPkgName}`,
-                mimeType: 'application/vnd.android.package-archive',
-              };
-
+              let apkFile: AcquisitionFile;
               if (this.config.computeHash) {
-                apkFile.hash = await this.computeHash(apkData);
+                const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+                bytesToStream(apkData).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+                apkFile = { fileName: `apks/${sanitizedPkgName}/${apkName}`, fileSize: apkData.length, stream: readable, hashPromise, description: `APK split for ${sanitizedPkgName}`, mimeType: 'application/vnd.android.package-archive' };
+              } else {
+                apkFile = { fileName: `apks/${sanitizedPkgName}/${apkName}`, fileSize: apkData.length, stream: bytesToStream(apkData), description: `APK split for ${sanitizedPkgName}`, mimeType: 'application/vnd.android.package-archive' };
               }
 
               files.push(apkFile);
@@ -372,7 +365,7 @@ export class PackagesAcquirer extends Acquirer {
 
           this.logger.debug(`Smart selection: ${apkPath}`);
 
-          const apkData = await new ReadFileCommand(this.device.adb).exec({
+          const apkData = await new ReadFileCommand(this.device).exec({
             path: apkPath,
             timeout: 60000,
           });
@@ -387,19 +380,15 @@ export class PackagesAcquirer extends Acquirer {
             break;
           }
 
-          const apkBlob = new Blob([apkData] as unknown as BlobPart[], { type: 'application/vnd.android.package-archive' });
           const sanitizedName = this.sanitizeFileName(pkg.name);
 
-          const apkFile: AcquisitionFile = {
-            fileName: `apks/${sanitizedName}.apk`,
-            fileSize: apkBlob.size,
-            blob: apkBlob,
-            description: `APK file for ${sanitizedName}`,
-            mimeType: 'application/vnd.android.package-archive',
-          };
-
+          let apkFile: AcquisitionFile;
           if (this.config.computeHash) {
-            apkFile.hash = await this.computeHash(apkData);
+            const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+            bytesToStream(apkData).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+            apkFile = { fileName: `apks/${sanitizedName}.apk`, fileSize: apkData.length, stream: readable, hashPromise, description: `APK file for ${sanitizedName}`, mimeType: 'application/vnd.android.package-archive' };
+          } else {
+            apkFile = { fileName: `apks/${sanitizedName}.apk`, fileSize: apkData.length, stream: bytesToStream(apkData), description: `APK file for ${sanitizedName}`, mimeType: 'application/vnd.android.package-archive' };
           }
 
           files.push(apkFile);

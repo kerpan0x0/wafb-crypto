@@ -1,7 +1,8 @@
-import type { ADBDevice, DeviceProperties } from '../../adb';
+import type { Device, DeviceProperties } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../adb/commands';
+import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
   includeBattery?: boolean;
@@ -79,7 +80,7 @@ export interface SystemInfoData {
 
 export class SystemInfoAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: SystemInfoConfig = {}
   ) {
     super(device, config, 'system_info');
@@ -193,20 +194,15 @@ export class SystemInfoAcquirer extends Acquirer {
       const jsonData = JSON.stringify(systemInfoData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('system-info', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'System information',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'System information', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'System information', mimeType: 'application/json' };
       }
 
       const endTime = new Date();
@@ -223,7 +219,6 @@ export class SystemInfoAcquirer extends Acquirer {
         endTime,
         duration,
         data: {
-          deviceInfo,
           componentsCollected: {
             battery: !!systemInfoData.battery,
             network: !!systemInfoData.network,
@@ -420,7 +415,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getBatteryInfo(): Promise<BatteryInfo> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'battery' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'battery' });
       return this.buildBatteryinfo(output);
     } catch (error) {
       this.logger.warn('Failed to get battery info', error);
@@ -430,7 +425,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getNetworkInfo(): Promise<NetworkInfo> {
     try {
-      const output = await new GetNetworkInfoCommand(this.device.adb).exec();
+      const output = await new GetNetworkInfoCommand(this.device).exec();
       return this.buildNetworkInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get network info', error);
@@ -440,7 +435,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getStorageInfo(): Promise<StorageInfo> {
     try {
-      const output = await new GetStorageInfoCommand(this.device.adb).exec();
+      const output = await new GetStorageInfoCommand(this.device).exec();
       return this.buildStorageInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get storage info', error);
@@ -450,7 +445,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getMemoryInfo(): Promise<MemoryInfo> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'meminfo' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'meminfo' });
       return this.buildMemoryInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get memory info', error);
@@ -460,7 +455,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getSensors(): Promise<SensorInfo[]> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'sensorservice' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'sensorservice' });
       return this.buildSensorInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get sensors info', error);

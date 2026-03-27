@@ -1,14 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EnvAcquirer } from '../../../../src/forensics/acquisition/env';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
+  makeShellResult,
+  makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 describe('EnvAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: EnvAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -26,12 +41,12 @@ LD_LIBRARY_PATH=/system/lib`;
   beforeEach(() => {
     vi.clearAllMocks();
 
-    device = createMockADBDeviceWithCommands({
+    device = createMockDeviceForAcquirer({
       shellOutput: mockEnvOutput,
-    }) as unknown as ADBDevice;
+    });
 
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new EnvAcquirer(device);
+    acquirer = new EnvAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -45,13 +60,13 @@ LD_LIBRARY_PATH=/system/lib`;
       expect(result.success).toBe(true);
       expect(result.type).toBe('env');
       expect(result.files[0].fileName).toBe('env.txt');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should call env command', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -65,37 +80,29 @@ LD_LIBRARY_PATH=/system/lib`;
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new EnvAcquirer(device, { computeHash: true });
+      acquirer = new EnvAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].hash).toBeDefined();
+      expect(await drainAndHash(result, 0)).toBeDefined();
     });
 
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob.type).toBe('application/text');
-    });
-
-    it('should include device information in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(device.getProperties).toHaveBeenCalled();
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/text');
     });
 
     it('should handle empty environment variables', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: '',
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -112,7 +119,7 @@ LD_LIBRARY_PATH=/system/lib`;
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
       expect(result.files[0].fileName).toBe('env.txt');
     });
   });
@@ -129,7 +136,7 @@ LD_LIBRARY_PATH=/system/lib`;
     });
 
     it('should handle shell command errors', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
+      device.shell.mockRejectedValue(
         new Error('Shell command failed')
       );
 
@@ -173,25 +180,25 @@ LD_LIBRARY_PATH=/system/lib`;
   describe('environment variable parsing', () => {
     it('should handle PATH variable', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: 'PATH=/system/bin:/system/xbin',
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should handle ANDROID_DATA variable', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: 'ANDROID_DATA=/data',
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -203,11 +210,11 @@ LD_LIBRARY_PATH=/system/lib`;
 VAR2=value2
 VAR3=value3`;
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: multiLineEnv,
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -216,11 +223,11 @@ VAR3=value3`;
 
     it('should handle environment variables with special characters', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: 'PATH=/system/bin:/system/xbin:$HOME',
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -229,11 +236,11 @@ VAR3=value3`;
 
     it('should handle environment variables with spaces', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: 'DESCRIPTION=Android System Variables',
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -370,35 +377,7 @@ VAR3=value3`;
       await acquirer.acquire();
 
       expect(device.getProperties).toHaveBeenCalledTimes(1);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
-    });
-
-    it('should pass device info to result', async () => {
-      const mockProperties = {
-        model: 'Galaxy S23',
-        manufacturer: 'Samsung',
-        androidVersion: '14',
-        serialNumber: 'XYZ789',
-      };
-      device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-
-      const result = await acquirer.acquire();
-
-      expect(result.data?.deviceInfo).toEqual(mockProperties);
-    });
-
-    it('should work with different device models', async () => {
-      const mockProperties = {
-        model: 'OnePlus 12',
-        manufacturer: 'OnePlus',
-        androidVersion: '14',
-      };
-      device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data?.deviceInfo.model).toBe('OnePlus 12');
+      expect(device.shell).toHaveBeenCalled();
     });
   });
 
@@ -411,16 +390,16 @@ EXTERNAL_STORAGE=/sdcard
 BOOTCLASSPATH=/system/framework/core.jar`;
 
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: standardEnv,
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should handle shell user environment', async () => {
@@ -430,11 +409,11 @@ TMPDIR=/data/local/tmp
 SHELL=/system/bin/sh`;
 
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: shellEnv,
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -446,11 +425,11 @@ SHELL=/system/bin/sh`;
 LD_PRELOAD=/system/lib/libpreload.so`;
 
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         shellOutput: libEnv,
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
@@ -460,24 +439,24 @@ LD_PRELOAD=/system/lib/libpreload.so`;
 
   describe('configuration options', () => {
     it('should respect computeHash configuration', async () => {
-      acquirer = new EnvAcquirer(device, { computeHash: false });
+      acquirer = new EnvAcquirer(device as any, { computeHash: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect(result.files).toBeDefined();
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should work with empty configuration', async () => {
-      acquirer = new EnvAcquirer(device, {});
+      acquirer = new EnvAcquirer(device as any, {});
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
     });
 
     it('should work with default configuration', async () => {
-      acquirer = new EnvAcquirer(device);
+      acquirer = new EnvAcquirer(device as any);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);

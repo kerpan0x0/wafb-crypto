@@ -1,7 +1,8 @@
 import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { BackupCommand, WhichCommand } from '../../adb/commands';
-import { ADBDevice } from '../..';
+import { BackupCommand, WhichCommand } from '../../commands';
 import { ADBCommandError } from '../../utils/errors';
+import { Device } from '../../adb';
+import { hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface BackupConfig extends AcquisitionConfig {
   type?: string;
@@ -12,7 +13,7 @@ const BU_CANDIDATES = ['/system/bin/bu', '/system/xbin/bu', 'bu'];
 
 export class BackupAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: BackupConfig = { type: 'full' }
   ) {
     super(device, config, 'backup');
@@ -65,7 +66,7 @@ export class BackupAcquirer extends Acquirer {
       const { backupType, timeout } = this.resolveBackupParams(config.type);
       this.logger.info(`Backup type: ${backupType}, buPath: ${buPath}`);
 
-      const { stream, exited } = await new BackupCommand(this.device.adb).exec({
+      const { stream, exited } = await new BackupCommand(this.device).exec({
         type: backupType,
         buPath,
         timeout,
@@ -87,13 +88,30 @@ export class BackupAcquirer extends Acquirer {
       // The ZIP writer will record the real size via the data descriptor.
       const fileName = this.generateFileName('backup', 'ab');
 
-      const acquisitionFile: AcquisitionFile = {
-        stream,
-        fileName,
-        mimeType: 'application/vnd.android.backup',
-        fileSize: 0,  // unknown until stream is consumed
-        description: 'Android backup',
-      };
+      let acquisitionFile: AcquisitionFile;
+
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        stream.pipeTo(writable).catch(err => {
+          this.logger.error('Backup stream pipe error', err);
+        });
+        acquisitionFile = {
+          stream: readable,
+          hashPromise,
+          fileName,
+          mimeType: 'application/vnd.android.backup',
+          fileSize: 0,
+          description: 'Android backup',
+        };
+      } else {
+        acquisitionFile = {
+          stream,
+          fileName,
+          mimeType: 'application/vnd.android.backup',
+          fileSize: 0,
+          description: 'Android backup',
+        };
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -113,7 +131,6 @@ export class BackupAcquirer extends Acquirer {
         data: {
           backupType: config.type,
           buPath,
-          deviceInfo,
         },
       };
     } catch (error) {
@@ -140,7 +157,7 @@ export class BackupAcquirer extends Acquirer {
   private async findBuBinary(): Promise<string | null> {
     for (const candidate of BU_CANDIDATES) {
       try {
-        const found = await new WhichCommand(this.device.adb).exec({ command: candidate });
+        const found = await new WhichCommand(this.device).exec({ binary: candidate });
         if (found.startsWith('/')) return found;
       } catch {
         // not found — try next

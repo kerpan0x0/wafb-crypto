@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
+import { ADBConnection, Device, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
 import {
   MountAcquirer,
   EnvAcquirer,
@@ -19,7 +19,25 @@ import {
   BackupAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
-import type { AcquisitionProgress, AcquisitionType, AcquisitionResult, AcquisitionFile } from '@wafb/core';
+import type {
+  AcquisitionProgress,
+  AcquisitionType,
+  AcquisitionResult,
+  AcquisitionFile,
+  AcquisitionConfig,
+  BugreportConfig,
+  LogcatConfig,
+  PackagesConfig,
+  SystemInfoConfig,
+  SELinuxConfig,
+  SettingsConfig,
+  ProcessConfig,
+  ServicesConfig,
+  LogConfig,
+  FileAcquisitionConfig,
+  DumpsysConfig,
+  BackupConfig
+} from '@wafb/core';
 
 // ============================================================================
 // TYPE DECLARATIONS FOR FILE SYSTEM ACCESS API
@@ -47,7 +65,7 @@ declare global {
 }
 
 export function AcquisitionPage() {
-  const [device, setDevice] = useState<ADBDevice | null>(null);
+  const [device, setDevice] = useState<Device | null>(null);
   const [_connection, setConnection] = useState<ADBConnection | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,8 +132,8 @@ export function AcquisitionPage() {
 
     // showSaveFilePicker must be called before any await — Chrome invalidates
     // the user gesture context as soon as the call stack yields.
-    const timestamp = new Date().toISOString().split('T')[0];
-    const folderName = `wafb-acquisition-${timestamp}`;
+    const now = new Date();
+    const folderName = `wafb-acquisition-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`;
     let fileHandle: FileSystemFileHandle;
     try {
       fileHandle = await (window as any).showSaveFilePicker({
@@ -147,22 +165,29 @@ export function AcquisitionPage() {
         // before it is closed; for blob-based files it just buffers once.
         if (result.success && result.files) {
           for (const file of result.files) {
-            const filePath = `${folderName}/${file.fileName}`;
+            const originalName = file.fileName;
+            const hashPromise = file.hashPromise;
+            updateProgress(type, 50, `Saving ${file.fileName} to disk...`, 'running');
 
+            // Wrap stream with progress tracking before handing to ZIP writer
             if (file.stream) {
-              updateProgress(type, 50, `Saving ${file.fileName} to disk...`, 'running');
-              await zip.addFileFromStream(
-                filePath,
-                trackStreamProgress(file.stream, (bytes) => {
-                  // Pulse progress while streaming — we don't know total size upfront
-                  const mb = (bytes / (1024 * 1024)).toFixed(1);
-                  updateProgress(type, 70, `Saving ${file.fileName}: ${mb} MB written...`, 'running');
-                })
-              );
-              updateProgress(type, 100, `${file.fileName} saved.`, 'completed');
-            } else if (file.blob) {
-              await zip.addFile(filePath, new Uint8Array(await file.blob.arrayBuffer()));
+              file.stream = trackStreamProgress(file.stream, (bytes) => {
+                const mb = (bytes / (1024 * 1024)).toFixed(1);
+                updateProgress(type, 70, `Saving ${file.fileName}: ${mb} MB written...`, 'running');
+              });
             }
+
+            // addAcquisitionFile handles both stream and blob, and awaits
+            // hashPromise (if present) to store the resolved hash on file.hash
+            // before we write the manifest.
+            const filePath = `${folderName}/${file.fileName}`;
+            await zip.addAcquisitionFile({ ...file, fileName: filePath });
+
+            if (hashPromise) {
+              file.hash = await hashPromise;
+            }
+            file.fileName = originalName;
+            updateProgress(type, 100, `${file.fileName} saved.`, 'completed');
           }
         }
       } catch (err) {
@@ -207,12 +232,15 @@ export function AcquisitionPage() {
   // Execute single acquisition
   const executeAcquisition = async (
     type: AcquisitionType,
-    device: ADBDevice
+    device: Device
   ): Promise<AcquisitionResult> => {
     const acquirerConfig = {
       bugreport: {
         Class: BugreportAcquirer,
-        options: { computeHash: true, cleanupAfter: true },
+        options: {
+          computeHash: true,
+          cleanupAfter: true,
+        } satisfies BugreportConfig,
       },
       logcat: {
         Class: LogcatAcquirer,
@@ -220,17 +248,16 @@ export function AcquisitionPage() {
           buffer: 'all',
           format: 'threadtime',
           computeHash: true,
-        },
+        } satisfies LogcatConfig,
       },
       packages: {
         Class: PackagesAcquirer,
         options: {
           includeSystem: true,
           includeDetails: true,
-          includePermissions: true,
           downloadApks: true,
           computeHash: true,
-        },
+        } satisfies PackagesConfig,
       },
       system_info: {
         Class: SystemInfoAcquirer,
@@ -241,7 +268,7 @@ export function AcquisitionPage() {
           includeMemory: true,
           includeSensors: true,
           computeHash: true,
-        },
+        } satisfies SystemInfoConfig,
       },
       rootBinaries: {
         Class: RootBinariesAcquirer,
@@ -258,7 +285,7 @@ export function AcquisitionPage() {
           includeFileContexts: true,
           includeDenials: true,
           maxDenialLines: 100,
-        },
+        } satisfies SELinuxConfig,
       },
       mount: {
         Class: MountAcquirer,
@@ -267,19 +294,15 @@ export function AcquisitionPage() {
       settings: {
         Class: SettingsAcquirer,
         options: {
-          includeSecure: true,
-          includeSystem: true,
-          includeGlobal: true,
           computeHash: true,
-        },
+        } satisfies SettingsConfig,
       },
       process: {
         Class: ProcessAcquirer,
         options: {
           includeThreads: true,
           includeSELinuxContext: true,
-          includeMemoryInfo: true,
-        },
+        } satisfies ProcessConfig,
       },
       services: {
         Class: ServicesAcquirer,
@@ -287,14 +310,14 @@ export function AcquisitionPage() {
           includeSystemServices: true,
           includeUserServices: true,
           includeServiceDetails: true,
-        },
+        } satisfies ServicesConfig,
       },
       logs: {
         Class: LogAcquirer,
         options: {
           includeSystemLogs: true,
           computeHash: true,
-        },
+        } satisfies LogConfig,
       },
       files: {
         Class: FileAcquirer,
@@ -309,7 +332,7 @@ export function AcquisitionPage() {
           excludeHashPaths: ['/system', '/vendor', '/product', '/apex', '/proc'],
           hashMethod: 'auto',
           timeout: 600000,
-        },
+        } satisfies FileAcquisitionConfig,
       },
       tmp: {
         Class: TmpAcquirer,
@@ -317,14 +340,16 @@ export function AcquisitionPage() {
       },
       dumpsys: {
         Class: DumpsysAcquirer,
-        options: { autoDownload: false },
+        options: {
+          computeHash: true,
+        } satisfies DumpsysConfig,
       },
       backup: {
         Class: BackupAcquirer,
         options: {
           type: 'full',
-          useCompression: false,
-        },
+          computeHash: true,
+        } satisfies BackupConfig,
       },
     };
 
@@ -332,7 +357,7 @@ export function AcquisitionPage() {
 
     if (config) {
       // Istanziamo l'acquirer dinamicamente
-      const acquirer = new config.Class(device, config);
+      const acquirer = new config.Class(device, config.options as AcquisitionConfig);
 
       const result = await acquirer.acquire((progress: AcquisitionProgress) => {
         updateProgress(type, progress.progress, progress.message, progress.status);

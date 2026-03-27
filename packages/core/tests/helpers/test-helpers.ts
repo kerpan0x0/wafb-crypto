@@ -1,190 +1,49 @@
 import { vi } from 'vitest';
-import type { Adb } from '@yume-chan/adb';
+import type { ShellResult, SpawnResult, ShellOptions } from '../src/adb';
+import type { DeviceProperties } from '../src/adb/device';
 
 // ============================================================================
-// MOCK READABLE STREAMS
+// PRIMITIVE STREAM HELPERS
 // ============================================================================
 
-/**
- * Crea un mock ReadableStream che restituisce il contenuto specificato
- * Può accettare sia stringhe che Uint8Array
- */
-export function createMockReadableStream(content: string | Uint8Array) {
+export function createMockReadableStream(content: string | Uint8Array): ReadableStream<Uint8Array> {
   const data = typeof content === 'string' ? new TextEncoder().encode(content) : content;
-
-  return {
-    getReader: () => {
-      let readCount = 0;
-      return {
-        read: async () => {
-          if (readCount === 0) {
-            readCount++;
-            return { done: false, value: data };
-          }
-          return { done: true, value: undefined };
-        },
-        releaseLock: vi.fn(),
-      };
+  return new ReadableStream({
+    start(controller) {
+      if (data.length > 0) controller.enqueue(data);
+      controller.close();
     },
-  };
+  });
 }
 
-/**
- * Creates a readable stream from binary data
- * Alias for createMockReadableStream for backward compatibility
- */
-export function createReadableStream(data: Uint8Array) {
-  let readCount = 0;
-  return {
-    getReader: () => ({
-      read: async () => {
-        if (readCount === 0) {
-          readCount++;
-          return { done: false, value: data };
-        }
-        return { done: true, value: undefined };
-      },
-      releaseLock: vi.fn(),
-    }),
-  };
+export function createReadableStream(data: Uint8Array): ReadableStream<Uint8Array> {
+  return createMockReadableStream(data);
+}
+
+export function createHangingReadableStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream({ start() {} });
 }
 
 // ============================================================================
-// MOCK SHELL SOCKETS
+// SHELL / SPAWN RESULT FACTORIES
 // ============================================================================
 
-/**
- * Creates a mock shell socket with customizable stdout output
- * Versione estesa che supporta exitCode personalizzato
- */
-export function createMockShellSocket(output: string, exitCode: number = 0) {
-  const encoder = new TextEncoder();
-  let readCount = 0;
+export function makeShellResult(stdout: string, stderr = '', exitCode = 0): ShellResult {
+  return { stdout, stderr, exitCode };
+}
 
-  // A reusable factory for a simple "emit one chunk then done" reader
-  const makeReader = (content: string) => {
-    let reads = 0;
-    return {
-      getReader: () => ({
-        read: async () => {
-          if (reads === 0) { reads++; return { done: false, value: encoder.encode(content) }; }
-          return { done: true, value: undefined };
-        },
-        releaseLock: vi.fn(),
-      }),
-    };
-  };
-
+export function makeSpawnResult(content: string | Uint8Array = '', exitCode = 0): SpawnResult {
   return {
-    stdout: makeReader(output),
-    stderr: makeReader(''),      // empty stderr by default
-    stdin: new WritableStream(),
+    stdout: createMockReadableStream(content),
     exited: Promise.resolve(exitCode),
   };
 }
 
-/**
- * Creates a shell socket that never resolves (for timeout tests)
- */
-export function createHangingShellSocket() {
-  const hangingStream = {
-    getReader: () => ({
-      read: () => new Promise<never>(() => {}),
-      releaseLock: vi.fn(),
-    }),
-  };
-
-  return {
-    stdout: hangingStream,
-    stderr: hangingStream,
-    stdin: new WritableStream(),
-    exited: new Promise<never>(() => {}),
-  };
-}
-
 // ============================================================================
-// MOCK SYNC SERVICES
+// DEVICE PROPERTIES & INFO
 // ============================================================================
 
-/**
- * Creates a mock sync service for file operations
- * Versione semplice per command tests
- */
-export function createMockSync() {
-  return {
-    read: vi.fn(),
-    write: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
-/**
- * Crea un mock sync service per file operations con opzioni
- * Versione estesa per acquirer tests
- */
-export function createMockSyncService(
-  options: {
-    readContent?: Uint8Array;
-    writeSuccess?: boolean;
-  } = {}
-) {
-  const { readContent, writeSuccess = true } = options;
-
-  return {
-    read: vi.fn().mockReturnValue(readContent ? createMockReadableStream(readContent) : null),
-    write: vi
-      .fn()
-      .mockResolvedValue(writeSuccess ? undefined : Promise.reject(new Error('Write failed'))),
-    dispose: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-  };
-}
-
-// ============================================================================
-// MOCK ADB INSTANCES
-// ============================================================================
-
-/**
- * Creates a complete mock Adb instance
- * Supporta shellSocket opzionale per command tests
- */
-export function createMockAdb(shellSocket?: any): Adb {
-  const defaultShellSocket = createMockShellSocket('');
-
-  return {
-    subprocess: {
-      shellProtocol: {
-        spawn: vi.fn().mockResolvedValue(shellSocket || defaultShellSocket),
-      },
-      spawn: vi.fn(),
-    },
-    sync: vi.fn().mockResolvedValue(createMockSync()),
-  } as unknown as Adb;
-}
-
-// ============================================================================
-// MOCK DEVICE INFO & PROPERTIES
-// ============================================================================
-
-/**
- * Crea mock device info
- */
-export function createMockDeviceInfo(overrides = {}) {
-  return {
-    productName: 'Test Device',
-    manufacturerName: 'Test Manufacturer',
-    serialNumber: 'TEST123',
-    vendorId: 0x18d1,
-    productId: 0x4ee7,
-    ...overrides,
-  };
-}
-
-/**
- * Crea mock device properties
- */
-export function createMockDeviceProperties(overrides = {}) {
+export function createMockDeviceProperties(overrides: Partial<DeviceProperties> = {}): DeviceProperties {
   return {
     androidVersion: '13',
     buildId: 'TP1A.220905.004',
@@ -197,42 +56,353 @@ export function createMockDeviceProperties(overrides = {}) {
   };
 }
 
-// ============================================================================
-// MOCK CONNECTION
-// ============================================================================
-
-/**
- * Crea mock ADB connection
- */
-export function createMockConnection(connected = true) {
+export function createMockDeviceInfo(overrides = {}) {
   return {
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    isConnected: vi.fn().mockReturnValue(connected),
-    getConnectionState: vi.fn().mockReturnValue(connected ? 'connected' : 'disconnected'),
+    productName: 'Test Device',
+    manufacturerName: 'Test Manufacturer',
+    serialNumber: 'TEST123',
+    vendorId: 0x18d1,
+    productId: 0x4ee7,
+    ...overrides,
   };
 }
 
 // ============================================================================
-// ASYNC UTILITIES
+// MOCK ADB (shell socket level) — for Shell and Device unit tests
 // ============================================================================
 
 /**
- * Helper per attendere tick asincroni nei test
+ * Creates a mock shell socket with getReader-style streams, as returned by
+ * adb.subprocess.shellProtocol.spawn(). Used by Shell.executeInner.
  */
-export function waitForAsync() {
-  return new Promise(resolve => setTimeout(resolve, 0));
+export function createMockShellSocket(stdout = '', exitCode = 0) {
+  const enc = new TextEncoder();
+  let read = 0;
+
+  return {
+    stdout: {
+      getReader: () => ({
+        read: async () => {
+          if (read++ === 0 && stdout.length > 0)
+            return { done: false as const, value: enc.encode(stdout) };
+          return { done: true as const, value: undefined };
+        },
+        releaseLock: vi.fn(),
+      }),
+    },
+    stderr: {
+      getReader: () => ({
+        read: async () => ({ done: true as const, value: undefined }),
+        releaseLock: vi.fn(),
+      }),
+    },
+    stdin: new WritableStream(),
+    exited: Promise.resolve(exitCode),
+  };
+}
+
+/**
+ * Creates a shell socket whose streams never close — for timeout tests.
+ */
+export function createHangingShellSocket() {
+  return {
+    stdout: {
+      getReader: () => ({
+        read: (): Promise<{ done: boolean; value: undefined }> => new Promise(() => {}),
+        releaseLock: vi.fn(),
+      }),
+    },
+    stderr: {
+      getReader: () => ({
+        read: (): Promise<{ done: boolean; value: undefined }> => new Promise(() => {}),
+        releaseLock: vi.fn(),
+      }),
+    },
+    stdin: new WritableStream(),
+    exited: new Promise<number>(() => {}),
+  };
+}
+
+/**
+ * Creates a minimal Adb mock whose shellProtocol.spawn returns the given socket.
+ */
+export function createMockAdb(socket?: ReturnType<typeof createMockShellSocket>) {
+  return {
+    subprocess: {
+      shellProtocol: {
+        spawn: vi.fn().mockResolvedValue(socket ?? createMockShellSocket()),
+      },
+      spawn: vi.fn(),
+    },
+    sync: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
+  };
+}
+
+// ============================================================================
+// MOCK SYNC SERVICE
+// ============================================================================
+
+export function createMockSync(readContent?: Uint8Array) {
+  return {
+    read: vi.fn().mockReturnValue(
+      readContent ? createMockReadableStream(readContent) : null
+    ),
+    write: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+// ============================================================================
+// CORE MOCK DEVICE
+// ============================================================================
+
+export function createMockDevice() {
+  return {
+    shell: vi.fn<[string, ShellOptions?], Promise<ShellResult>>()
+      .mockResolvedValue(makeShellResult('')),
+    spawn: vi.fn<[string, number?], Promise<SpawnResult>>()
+      .mockResolvedValue(makeSpawnResult('')),
+    sync: vi.fn().mockResolvedValue(createMockSync()),
+    getProperties: vi.fn().mockResolvedValue(createMockDeviceProperties()),
+    isRooted: vi.fn().mockResolvedValue(false),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    isConnected: vi.fn().mockReturnValue(true),
+    // adb kept for ReadFileCommand / WriteFileCommand which call device.sync() directly
+    adb: {
+      sync: vi.fn().mockResolvedValue(createMockSync()),
+    },
+    info: createMockDeviceInfo(),
+  };
+}
+
+export type MockDevice = ReturnType<typeof createMockDevice>;
+
+// ============================================================================
+// FULL DEVICE MOCK FOR ACQUIRER TESTS
+// ============================================================================
+
+export interface MockDeviceOverrides {
+  /** Raw output for unrecognised commands */
+  shellOutput?: string;
+  /** Packages returned by pm list packages */
+  listPackages?: string[];
+  /** Output for `logcat` commands */
+  logcatOutput?: string;
+  /** When true, which/bugreportz report the binary as found */
+  checkCommandExists?: boolean;
+  /** Full path returned by bugreportz */
+  bugreportzPath?: string;
+  /** Raw bytes returned by ReadFileCommand (adb sync) */
+  readFile?: Uint8Array;
+  /** Paths that should throw "Permission denied" when read via sync */
+  syncPermissionDeniedPaths?: string[];
+  /** Error thrown for ALL sync reads (e.g. "File not found") */
+  syncError?: Error;
+  /** getprop key→value map */
+  getPropOutput?: Record<string, string>;
+  /** which -a paths for root binary detection */
+  rootBinaryPaths?: Record<string, string>;
+  /** Disabled packages for pm list packages -d */
+  disabledPackages?: string[];
+  /** Map of package name → installer name (for dumpsys output) */
+  installers?: Record<string, string>;
+  /** Map of package name → split APK filenames */
+  splitApks?: Record<string, string[]>;
+}
+
+export function createMockDeviceForAcquirer(overrides: MockDeviceOverrides = {}) {
+  const device = createMockDevice();
+
+  // ── shell dispatch ──────────────────────────────────────────────────────
+  device.shell.mockImplementation(async (command: string) => {
+    return makeShellResult(resolveShellOutput(command, overrides));
+  });
+
+  // ── spawn dispatch ──────────────────────────────────────────────────────
+  device.spawn.mockImplementation(async (command: string) => {
+    return makeSpawnResult(resolveSpawnOutput(command, overrides));
+  });
+
+  // ── sync dispatch ───────────────────────────────────────────────────────
+  if (overrides.syncError) {
+    device.sync.mockRejectedValue(overrides.syncError);
+  } else {
+    const readFile = overrides.readFile ?? new TextEncoder().encode('mock file content');
+    const permDeniedPaths = overrides.syncPermissionDeniedPaths ?? [];
+
+    device.sync.mockResolvedValue({
+      read: vi.fn().mockImplementation((path: string) => {
+        if (permDeniedPaths.includes(path)) {
+          throw new Error('Permission denied');
+        }
+        return createMockReadableStream(readFile);
+      }),
+      write: vi.fn().mockResolvedValue(undefined),
+      dispose: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    });
+  }
+
+  // Also mirror on device.adb.sync for commands that use it directly
+  device.adb.sync.mockImplementation(device.sync);
+
+  device.getProperties.mockResolvedValue(createMockDeviceProperties());
+
+  return device;
+}
+
+// ── Output resolvers ────────────────────────────────────────────────────────
+
+function resolveShellOutput(command: string, ov: MockDeviceOverrides): string {
+  const packages = ov.listPackages ?? ['com.android.vending', 'com.example.app', 'com.google.android.gms'];
+
+  if (command.includes('pm list packages') && command.includes('-d'))
+    return (ov.disabledPackages ?? []).map(p => `package:${p}`).join('\n');
+
+  if (command.includes('pm list packages') && command.includes('-f'))
+    return packages.map(pkg => {
+      const path = pkg.startsWith('com.android') || pkg.startsWith('com.google')
+        ? `/system/priv-app/${pkg}/${pkg}.apk`
+        : `/data/app/~~hash~~/${pkg}-hash==/base.apk`;
+      return `package:${path}=${pkg} uid:${10000 + packages.indexOf(pkg)}`;
+    }).join('\n');
+
+  if (command.includes('pm list packages'))
+    return packages.map(p => `package:${p}`).join('\n');
+
+  if (command.includes('dumpsys package ') && !command.includes('-l')) {
+    const pkg = command.match(/dumpsys package ([\w.]+)/)?.[1];
+    if (pkg) return buildDumpsysPackageOutput(pkg, ov);
+  }
+
+  if (command.startsWith('dumpsys')) return ov.shellOutput ?? '';
+  if (command.includes('logcat')) return ov.logcatOutput ?? DEFAULT_LOGCAT;
+
+  if (command === 'bugreportz' || command.startsWith('bugreportz ')) {
+    const path = ov.bugreportzPath ?? '/data/user_de/0/com.android.shell/files/bugreports/bugreport.zip';
+    return `OK:${path}`;
+  }
+
+  if (command.includes('which -a')) {
+    const bin = command.replace('which -a ', '').trim();
+    return (ov.rootBinaryPaths ?? DEFAULT_ROOT_BINARY_PATHS)[bin] ?? '';
+  }
+
+  if (command.startsWith('which ')) {
+    const bin = command.split(' ').pop() ?? '';
+    return ov.checkCommandExists ? `/system/bin/${bin}` : '';
+  }
+
+  if (command === 'getprop') {
+    const props = ov.getPropOutput ?? DEFAULT_GETPROP;
+    return Object.entries(props).map(([k, v]) => `[${k}]: [${v}]`).join('\n');
+  }
+
+  return ov.shellOutput ?? '';
+}
+
+function resolveSpawnOutput(command: string, ov: MockDeviceOverrides): string {
+  if (command.includes('backup')) return ov.shellOutput ?? '';
+  if (command === 'bugreport') return ov.shellOutput ?? 'bugreport output';
+  if (command === 'dumpsys') return ov.shellOutput ?? '';
+  return ov.shellOutput ?? '';
+}
+
+// ── Default constants ───────────────────────────────────────────────────────
+
+const DEFAULT_GETPROP: Record<string, string> = {
+  'ro.build.version.release': '13',
+  'ro.build.id': 'TP1A.220905.004',
+  'ro.product.model': 'Test Device',
+  'ro.product.manufacturer': 'Test Manufacturer',
+  'ro.product.brand': 'Test',
+  'ro.build.version.sdk': '33',
+};
+
+const DEFAULT_ROOT_BINARY_PATHS: Record<string, string> = {
+  su: '/system/bin/su\n/system/xbin/su',
+  busybox: '/system/bin/busybox',
+  magisk: '/data/adb/magisk',
+  magiskhide: '/data/adb/magisk/magiskhide',
+  magiskinit: '/data/adb/magisk/magiskinit',
+  magiskpolicy: '/data/adb/magisk/magiskpolicy',
+  magiskboot: '/data/adb/magisk/magiskboot',
+  supersu: '',
+  'Superuser.apk': '',
+  'KingoUser.apk': '',
+  'SuperSu.apk': '',
+};
+
+const DEFAULT_LOGCAT =
+  '01-01 10:00:00.000  1234  5678 I Tag: Info message\n' +
+  '01-01 10:00:01.000  1234  5678 W Tag: Warning message\n' +
+  '01-01 10:00:02.000  1234  5678 E Tag: Error message';
+
+function buildDumpsysPackageOutput(pkg: string, ov: MockDeviceOverrides): string {
+  const isSystem = pkg.startsWith('com.android') || pkg.startsWith('com.google');
+  const path = isSystem
+    ? `/system/priv-app/${pkg}/${pkg}.apk`
+    : `/data/app/~~hash~~/${pkg}-hash==/base.apk`;
+  const codePath = path.replace(/\/[^/]+\.apk$/, '');
+  const installer = ov.installers?.[pkg] ?? 'com.android.vending';
+  const splits = ov.splitApks?.[pkg] ?? [];
+  const splitsLine = splits.length > 0
+    ? `    splits=[base, ${splits.map(s => s.replace('.apk', '')).join(', ')}]`
+    : '    splits=[base]';
+  const apkLines = [`    ${codePath}/base.apk`, ...splits.map(s => `    ${codePath}/${s}`)];
+
+  return `Packages:
+  Package [${pkg}] (12345678):
+    userId=10000
+    pkg=Package{hash ${pkg}}
+    codePath=${codePath}
+    resourcePath=${codePath}
+    versionCode=100 minSdk=21 targetSdk=33
+    versionName=1.0.0
+${splitsLine}
+    installerPackageName=${installer}
+    timeStamp=2025-01-15 10:00:00
+    firstInstallTime=2025-01-10 08:30:00
+    lastUpdateTime=2025-01-15 10:00:00
+${apkLines.join('\n')}`;
+}
+
+// ============================================================================
+// SPECIALIZED FACTORIES
+// ============================================================================
+
+export function createMockDeviceForSELinux(mode: 'Enforcing' | 'Permissive' | 'Disabled' = 'Enforcing') {
+  return createMockDeviceForAcquirer({
+    shellOutput: mode,
+    getPropOutput: { ...DEFAULT_GETPROP, 'ro.build.selinux': '30' },
+  });
+}
+
+export function createMockDeviceForFileAcquirer(overrides: {
+  findOutput?: string;
+  statBatchOutput?: string;
+} = {}) {
+  const device = createMockDeviceForAcquirer();
+
+  device.shell.mockImplementation(async (command: string) => {
+    if (command.includes('find')) return makeShellResult(overrides.findOutput ?? MOCK_FIND_OUTPUT);
+    if (command.includes('stat')) return makeShellResult(overrides.statBatchOutput ?? MOCK_STAT_BATCH_OUTPUT);
+    if (command === 'getprop') return makeShellResult(
+      Object.entries(DEFAULT_GETPROP).map(([k, v]) => `[${k}]: [${v}]`).join('\n')
+    );
+    return makeShellResult('');
+  });
+
+  return device;
 }
 
 // ============================================================================
 // PROGRESS CALLBACK UTILITIES
 // ============================================================================
 
-/**
- * Helper per creare mock progress callback
- */
 export function createMockProgressCallback() {
   const callback = vi.fn();
-
   return {
     callback,
     getLastProgress: () => {
@@ -244,349 +414,16 @@ export function createMockProgressCallback() {
 }
 
 // ============================================================================
-// MOCK ADB DEVICE WITH COMMANDS (COMPLETO)
+// DOM MOCKS
 // ============================================================================
 
-/**
- * Crea un mock completo di ADBDevice con ADBCommands mockati
- * Questa è la factory principale per creare device mock completi
- */
-export function createMockADBDeviceWithCommands(
-  commandOverrides: {
-    listPackages?: string[];
-    getPackageInfo?: any;
-    getLogcat?: string;
-    checkCommandExists?: boolean;
-    generateBugreportz?: string;
-    generateBugreportLegacy?: string;
-    readFile?: Uint8Array;
-    deleteFile?: any;
-    shellOutput?: string;
-    getPropOutput?: Record<string, string>;
-    rootBinaryPaths?: Record<string, string>;
-    /** List of disabled package names for pm list packages -d */
-    disabledPackages?: string[];
-    /** Map of package name -> installer package name for dumpsys output */
-    installers?: Record<string, string>;
-    /** Map of package name -> array of split APK filenames (e.g. ['split_config.arm64_v8a.apk']) */
-    splitApks?: Record<string, string[]>;
-  } = {}
-) {
-  // Create default shell outputs
-  const defaultPackageList = commandOverrides.listPackages || [
-    'com.android.vending',
-    'com.example.app',
-    'com.google.android.gms',
-  ];
-
-  const defaultRootBinaryPaths = commandOverrides.rootBinaryPaths || {
-    su: '/system/bin/su\n/system/xbin/su',
-    busybox: '/system/bin/busybox',
-    magisk: '/data/adb/magisk',
-    magiskhide: '/data/adb/magisk/magiskhide',
-    supersu: '',
-    'Superuser.apk': '',
-    'KingoUser.apk': '',
-    'SuperSu.apk': '',
-    magiskinit: '/data/adb/magisk/magiskinit',
-    magiskpolicy: '/data/adb/magisk/magiskpolicy',
-    magiskboot: '/data/adb/magisk/magiskboot',
-  };
-
-  // Default paths for packages (system vs user)
-  const defaultPackagePaths: Record<string, { path: string; uid: number }> = {
-    'com.android.vending': { path: '/system/priv-app/Phonesky/Phonesky.apk', uid: 10070 },
-    'com.google.android.gms': { path: '/system/priv-app/GmsCore/GmsCore.apk', uid: 10080 },
-  };
-
-  const packageListOutput = defaultPackageList.map(pkg => `package:${pkg}`).join('\n');
-
-  // Build pm list packages -f -U output
-  const packageListWithFilesOutput = defaultPackageList
-    .map(pkg => {
-      const info = defaultPackagePaths[pkg] || {
-        path: `/data/app/~~hash~~/${pkg}-hash==/base.apk`,
-        uid: 10000 + Math.floor(Math.random() * 1000),
-      };
-      return `package:${info.path}=${pkg} uid:${info.uid}`;
-    })
-    .join('\n');
-
-  // Disabled packages list (empty by default)
-  const disabledPackagesList = commandOverrides.disabledPackages || [];
-  const disabledPackagesOutput = disabledPackagesList
-    .map((pkg: string) => `package:${pkg}`)
-    .join('\n');
-
-  // Mock shell command to return appropriate output based on command
-  const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
-    let output = '';
-
-    // Handle different commands - order matters: check more specific patterns first
-    if (command.includes('pm list packages') && command.includes('-d')) {
-      // pm list packages -d (disabled only)
-      output = disabledPackagesOutput;
-    } else if (command.includes('pm list packages') && command.includes('-f')) {
-      // pm list packages -f or -f -U (with file paths and optionally UIDs)
-      output = packageListWithFilesOutput;
-    } else if (command.includes('pm list packages')) {
-      // Plain pm list packages (or -3 for third-party)
-      output = packageListOutput;
-    } else if (command.includes('dumpsys package')) {
-      const pkgName = command.match(/dumpsys package ([\w.]+)/)?.[1];
-      if (pkgName) {
-        const pathInfo = defaultPackagePaths[pkgName] || {
-          path: `/data/app/~~hash~~/${pkgName}-hash==/base.apk`,
-          uid: 10000 + Math.floor(Math.random() * 1000),
-        };
-        const codePath = pathInfo.path.replace(/\/[^/]+\.apk$/, '');
-        const installer = commandOverrides.installers?.[pkgName] || 'com.android.vending';
-        const splitApks: string[] = commandOverrides.splitApks?.[pkgName] || [];
-        const splitsSection =
-          splitApks.length > 0
-            ? `    splits=[base, ${splitApks.map(s => s.replace('.apk', '')).join(', ')}]`
-            : '    splits=[base]';
-        const apkLines = [`    ${codePath}/base.apk`];
-        for (const split of splitApks) {
-          apkLines.push(`    ${codePath}/${split}`);
-        }
-
-        output = `Packages:
-  Package [${pkgName}] (12345678):
-    userId=${pathInfo.uid}
-    pkg=Package{hash12345 ${pkgName}}
-    codePath=${codePath}
-    resourcePath=${codePath}
-    versionCode=100 minSdk=21 targetSdk=33
-    versionName=1.0.0
-${splitsSection}
-    installerPackageName=${installer}
-    timeStamp=2025-01-15 10:00:00
-    firstInstallTime=2025-01-10 08:30:00
-    lastUpdateTime=2025-01-15 10:00:00
-${apkLines.join('\n')}`;
-      }
-    } else if (command.includes('logcat')) {
-      output =
-        commandOverrides.getLogcat !== undefined
-          ? commandOverrides.getLogcat
-          : '01-01 10:00:00.000  1234  5678 I Tag: Info message\n' +
-            '01-01 10:00:01.000  1234  5678 W Tag: Warning message\n' +
-            '01-01 10:00:02.000  1234  5678 E Tag: Error message';
-    } else if (command.includes('which -a')) {
-      const binaryName = command.replace('which -a ', '').trim();
-      output = defaultRootBinaryPaths[binaryName as keyof typeof defaultRootBinaryPaths] || '';
-    } else if (command.includes('which')) {
-      output = commandOverrides.checkCommandExists ? '/system/bin/' + command.split(' ').pop() : '';
-    } else if (command.includes('bugreportz')) {
-      output = commandOverrides.generateBugreportz || 'OK:/data/bugreport-2024-01-01.zip';
-    } else if (command === 'bugreport') {
-      output = commandOverrides.generateBugreportLegacy || '/sdcard/bugreport.txt';
-    } else if (command === 'getprop') {
-      const props = commandOverrides.getPropOutput || {
-        'ro.build.version.release': '13',
-        'ro.build.id': 'TP1A.220905.004',
-        'ro.product.model': 'Test Device',
-        'ro.product.manufacturer': 'Test Manufacturer',
-        'ro.product.brand': 'Test',
-        'ro.build.version.sdk': '33',
-      };
-      output = Object.entries(props)
-        .map(([key, value]) => `[${key}]: [${value}]`)
-        .join('\n');
-    } else {
-      output = commandOverrides.shellOutput || '';
-    }
-
-    return Promise.resolve({
-      stdout: createMockReadableStream(output),
-      stderr: createMockReadableStream(''),
-      stdin: new WritableStream(),
-      exited: Promise.resolve(0),
-    });
-  });
-
-  // Mock sync service for file operations
-  const mockSync = vi.fn().mockResolvedValue({
-    read: vi
-      .fn()
-      .mockReturnValue(
-        createMockReadableStream(
-          commandOverrides.readFile || new TextEncoder().encode('mock file content')
-        )
-      ),
-    write: vi.fn().mockResolvedValue(undefined),
-    dispose: vi.fn().mockResolvedValue(undefined),
-  });
-
-  const mockAdb = {
-    subprocess: {
-      shellProtocol: {
-        spawn: mockShellSpawn,
-      },
-      spawn: vi.fn(),
-    },
-    sync: mockSync,
-    close: vi.fn().mockResolvedValue(undefined),
-  };
-
-  const mockDevice = {
-    adb: mockAdb as any,
-    getProperties: vi.fn().mockResolvedValue(createMockDeviceProperties()),
-    isRooted: vi.fn().mockResolvedValue(false),
-    getBatteryInfo: vi.fn().mockResolvedValue({
-      level: 85,
-      temperature: 28,
-      voltage: 4200,
-      status: '2',
-    }),
-    getNetworkInfo: vi.fn().mockResolvedValue({
-      wifiEnabled: true,
-      mobileDataEnabled: false,
-      airplaneModeOn: false,
-    }),
-    getStorageInfo: vi.fn().mockResolvedValue({
-      totalInternal: '64GB',
-      availableInternal: '32GB',
-    }),
-    getMemoryInfo: vi.fn().mockResolvedValue({
-      totalRam: '8GB',
-      availableRam: '4GB',
-      lowMemory: false,
-      threshold: '1GB',
-    }),
-    getSensors: vi.fn().mockResolvedValue([
-      { name: 'Accelerometer', type: 'android.sensor.accelerometer' },
-      { name: 'Gyroscope', type: 'android.sensor.gyroscope' },
-    ]),
-    info: createMockDeviceInfo(),
-    isConnected: vi.fn().mockReturnValue(true),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-  };
-
-  return mockDevice;
-}
-
-// ============================================================================
-// SPECIALIZED DEVICE MOCKS
-// ============================================================================
-
-/**
- * Crea un mock device specifico per test SELinux
- */
-export function createMockADBDeviceForSELinux(
-  selinuxMode: 'Enforcing' | 'Permissive' | 'Disabled' = 'Enforcing'
-) {
-  return createMockADBDeviceWithCommands({
-    shellOutput: selinuxMode, // For getenforce
-    getPropOutput: {
-      'ro.build.version.release': '13',
-      'ro.build.id': 'TP1A.220905.004',
-      'ro.product.model': 'Test Device',
-      'ro.product.manufacturer': 'Test Manufacturer',
-      'ro.product.brand': 'Test',
-      'ro.build.version.sdk': '33',
-      'ro.build.selinux': '30',
-    },
-  });
-}
-
-/**
- * Crea un mock device specifico per test FileAcquirer
- * Configura i mock per FindCommand e StatBatchCommand
- */
-export function createMockADBDeviceForFileAcquirer(
-  overrides: {
-    findOutput?: string;
-    statBatchOutput?: string;
-    getPropOutput?: Record<string, string>;
-  } = {}
-) {
-  const findOutput = overrides.findOutput !== undefined ? overrides.findOutput : MOCK_FIND_OUTPUT;
-  const statBatchOutput =
-    overrides.statBatchOutput !== undefined ? overrides.statBatchOutput : MOCK_STAT_BATCH_OUTPUT;
-  const getPropOutput = overrides.getPropOutput || {
-    'ro.build.version.release': '13',
-    'ro.build.id': 'TP1A.220905.004',
-    'ro.product.model': 'Test Device',
-    'ro.product.manufacturer': 'Test Manufacturer',
-    'ro.product.brand': 'Test',
-    'ro.build.version.sdk': '33',
-  };
-
-  const device = createMockADBDeviceWithCommands({
-    getPropOutput,
-  });
-
-  // Override spawn to handle find and stat commands
-  vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockImplementation((command: string) => {
-    let output = '';
-
-    if (command.includes('find')) {
-      output = findOutput;
-    } else if (command.includes('stat')) {
-      output = statBatchOutput;
-    } else if (command.includes('getprop')) {
-      output = Object.entries(getPropOutput)
-        .map(([key, value]) => `[${key}]: [${value}]`)
-        .join('\n');
-    }
-
-    return Promise.resolve({
-      stdout: {
-        getReader: () => {
-          let readCount = 0;
-          const data = new TextEncoder().encode(output);
-          return {
-            read: async () => {
-              if (readCount === 0) {
-                readCount++;
-                return { done: false, value: data };
-              }
-              return { done: true, value: undefined };
-            },
-            releaseLock: vi.fn(),
-          };
-        },
-      },
-      stderr: createMockReadableStream(''),
-      stdin: new WritableStream(),
-      exited: Promise.resolve(0),
-    } as any);
-  });
-
-  return device;
-}
-
-// ============================================================================
-// DOM MOCKS PER ACQUIRERS
-// ============================================================================
-
-/**
- * Mock globali per DOM APIs usate dagli acquirer (download)
- */
 export function setupAcquirerDOMMocks() {
-  // Mock anchor element per download
-  const mockAnchor = {
-    href: '',
-    download: '',
-    click: vi.fn(),
-    remove: vi.fn(),
-  };
+  const mockAnchor = { href: '', download: '', click: vi.fn(), remove: vi.fn() };
 
   const createElementSpy = vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor as any);
-
-  const appendChildSpy = vi
-    .spyOn(document.body, 'appendChild')
-    .mockImplementation(() => mockAnchor as any);
-
-  const removeChildSpy = vi
-    .spyOn(document.body, 'removeChild')
-    .mockImplementation(() => mockAnchor as any);
-
-  // Mock URL APIs
+  const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockAnchor as any);
+  const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => mockAnchor as any);
   const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
-
   const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
   return {
@@ -604,89 +441,68 @@ export function setupAcquirerDOMMocks() {
 }
 
 // ============================================================================
-// MOCK DATA CONSTANTS (da command tests)
+// ASYNC UTILITIES
 // ============================================================================
 
-/**
- * Sample dumpsys battery output for testing
- */
+export function waitForAsync() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// ============================================================================
+// MOCK DATA CONSTANTS
+// ============================================================================
+
+export const MOCK_FIND_OUTPUT =
+  `/sdcard/Documents/test1.txt\n` +
+  `/sdcard/Pictures/photo.jpg\n` +
+  `/sdcard/Download/app.apk\n` +
+  `/sdcard/DCIM/Camera/IMG_001.jpg`;
+
+export const MOCK_STAT_BATCH_OUTPUT =
+  `1234|regular file|1704067200|1704067100|1704067200|0644|-rw-r--r--|root|sdcard_rw|0|1015|12345|u:object_r:sdcard_external:s0\n` +
+  `567890|regular file|1704067300|1704067200|1704067300|0644|-rw-r--r--|root|sdcard_rw|0|1015|12346|u:object_r:sdcard_external:s0\n` +
+  `2048000|regular file|1704067400|1704067300|1704067400|0644|-rw-r--r--|root|sdcard_rw|0|1015|12347|u:object_r:sdcard_external:s0\n` +
+  `4096|directory|1704067500|1704067400|1704067500|0755|drwxr-xr-x|root|sdcard_rw|0|1015|12348|u:object_r:sdcard_external:s0`;
+
 export const MOCK_BATTERY_OUTPUT = `Current Battery Service state:
   AC powered: false
   USB powered: true
-  Wireless powered: false
-  Max charging current: 500000
-  Max charging voltage: 5000000
-  Charge counter: 2500000
-  status: 2
-  health: 2
-  present: true
   level: 85
   scale: 100
   voltage: 4200
   temperature: 350
   technology: Li-ion`;
 
-/**
- * Sample dumpsys package output for testing
- */
-export const MOCK_PACKAGE_INFO = `Packages:
-  Package [com.example.app] (12345678):
-    userId=10123
-    pkg=Package{hash12345 com.example.app}
-    codePath=/data/app/com.example.app-hash
-    resourcePath=/data/app/com.example.app-hash
-    legacyNativeLibraryDir=/data/app/com.example.app-hash/lib
-    primaryCpuAbi=arm64-v8a
-    secondaryCpuAbi=null
-    versionCode=100 minSdk=21 targetSdk=33
-    versionName=1.0.0
-    splits=[base]
-    apkSigningVersion=3
-    applicationInfo=ApplicationInfo{hash com.example.app}
-    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
-    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE ]
-    dataDir=/data/user/0/com.example.app
-    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
-    timeStamp=2025-01-15 10:00:00
-    firstInstallTime=2025-01-10 08:30:00
-    lastUpdateTime=2025-01-15 10:00:00
-    signatures=PackageSignatures{hash12345 version:3, signatures:[hash], pastSigningCertificates=[hash]}
-    installPermissionsFixed=true
-    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
-    requested permissions:
-      android.permission.INTERNET: granted=true
-      android.permission.ACCESS_NETWORK_STATE: granted=true
-      android.permission.CAMERA: granted=true`;
+export const MOCK_LOGCAT_OUTPUT =
+  `01-15 10:30:45.123  1234  5678 I ActivityManager: START u0\n` +
+  `01-15 10:30:45.234  1234  5678 D ActivityManager: Activity resumed\n` +
+  `01-15 10:30:45.345  1234  5678 W ActivityManager: Activity paused\n` +
+  `01-15 10:30:45.456  1234  5678 E ActivityManager: Activity crashed`;
+
+export const MOCK_PACKAGE_LIST =
+  `package:com.android.systemui\n` +
+  `package:com.example.app1\n` +
+  `package:com.example.app2\n` +
+  `package:com.google.android.gms`;
+
+// ============================================================================
+// STREAM READING HELPER — for acquirer tests
+// ============================================================================
 
 /**
- * Sample pm list packages output
+ * Drains a ReadableStream<Uint8Array> and returns the content as a string.
+ * Use this in tests instead of blob.text() now that all acquirers return streams.
  */
-export const MOCK_PACKAGE_LIST = `package:com.android.systemui
-package:com.example.app1
-package:com.example.app2
-package:com.google.android.gms`;
-
-/**
- * Sample logcat output
- */
-export const MOCK_LOGCAT_OUTPUT = `01-15 10:30:45.123  1234  5678 I ActivityManager: START u0 {act=android.intent.action.MAIN}
-01-15 10:30:45.234  1234  5678 D ActivityManager: Activity resumed
-01-15 10:30:45.345  1234  5678 W ActivityManager: Activity paused
-01-15 10:30:45.456  1234  5678 E ActivityManager: Activity crashed`;
-
-/**
- * Sample find command output (file list)
- */
-export const MOCK_FIND_OUTPUT = `/sdcard/Documents/test1.txt
-/sdcard/Pictures/photo.jpg
-/sdcard/Download/app.apk
-/sdcard/DCIM/Camera/IMG_001.jpg`;
-
-/**
- * Sample stat batch command output (pipe-separated format)
- * Format: size|type|mtime|atime|ctime|octal_perms|human_perms|owner|group|uid|gid|inode|selinux_context
- */
-export const MOCK_STAT_BATCH_OUTPUT = `1234|regular file|1704067200|1704067100|1704067200|0644|-rw-r--r--|root|sdcard_rw|0|1015|12345|u:object_r:sdcard_external:s0
-567890|regular file|1704067300|1704067200|1704067300|0644|-rw-r--r--|root|sdcard_rw|0|1015|12346|u:object_r:sdcard_external:s0
-2048000|regular file|1704067400|1704067300|1704067400|0644|-rw-r--r--|root|sdcard_rw|0|1015|12347|u:object_r:sdcard_external:s0
-4096|directory|1704067500|1704067400|1704067500|0755|drwxr-xr-x|root|sdcard_rw|0|1015|12348|u:object_r:sdcard_external:s0`;
+export async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  const total = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let off = 0;
+  for (const c of chunks) { total.set(c, off); off += c.length; }
+  return new TextDecoder().decode(total);
+}

@@ -6,8 +6,9 @@ import {
   GetenforceCommand,
   PsCommand,
   LsCommand,
-} from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+} from '../../commands';
+import type { Device } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface SELinuxConfig extends AcquisitionConfig {
   includeContexts?: boolean;
@@ -58,7 +59,7 @@ export interface SELinuxData {
  */
 export class SELinuxAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: SELinuxConfig = {}
   ) {
     super(device, config, 'selinux');
@@ -145,20 +146,15 @@ export class SELinuxAcquirer extends Acquirer {
       const jsonData = JSON.stringify(selinuxData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('selinux', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'SELinux policy and configuration',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'SELinux policy and configuration', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'SELinux policy and configuration', mimeType: 'application/json' };
       }
 
       const endTime = new Date();
@@ -180,7 +176,6 @@ export class SELinuxAcquirer extends Acquirer {
           processContextsCount: selinuxData.processContexts?.length || 0,
           fileContextsCount: selinuxData.fileContexts?.length || 0,
           denialsCount: selinuxData.denials?.length || 0,
-          deviceInfo,
         },
       };
 
@@ -227,7 +222,7 @@ export class SELinuxAcquirer extends Acquirer {
    */
   private async getSELinuxMode(): Promise<SELinuxMode> {
     try {
-      const getenforceOutput = await new GetenforceCommand(this.device.adb).exec({ timeout: 5000 });
+      const getenforceOutput = await new GetenforceCommand(this.device).exec({ timeout: 5000 });
       const rawMode = getenforceOutput.trim();
       const current = (rawMode || 'Unknown') as SELinuxMode['current'];
 
@@ -235,7 +230,7 @@ export class SELinuxAcquirer extends Acquirer {
       let config = 'Unknown';
       try {
         const decoder = new TextDecoder('utf-8');
-        const output = await new ReadFileCommand(this.device.adb).exec({ path: '/proc/cmdline' });
+        const output = await new ReadFileCommand(this.device).exec({ path: '/proc/cmdline' });
         const cmdlineOutput = decoder.decode(output);
 
         // Try multiple possible parameter names
@@ -269,7 +264,7 @@ export class SELinuxAcquirer extends Acquirer {
   private async getSELinuxPolicy(): Promise<SELinuxPolicy> {
     try {
       const decoder = new TextDecoder('utf-8');
-      const output = await new ReadFileCommand(this.device.adb).exec({
+      const output = await new ReadFileCommand(this.device).exec({
         path: '/sys/fs/selinux/policyvers',
       });
       const outputStr = decoder.decode(output);
@@ -297,7 +292,7 @@ export class SELinuxAcquirer extends Acquirer {
 
   private async getProcessContexts(): Promise<ProcessContext[]> {
     try {
-      const output = await new PsCommand(this.device.adb).exec({ selinux: true, timeout: 10000 });
+      const output = await new PsCommand(this.device).exec({ selinux: true, timeout: 10000 });
 
       const contexts: ProcessContext[] = [];
       const lines = output.split('\n').slice(1); // Skip header
@@ -346,7 +341,7 @@ export class SELinuxAcquirer extends Acquirer {
 
     for (const path of importantPaths) {
       try {
-        const output = await new LsCommand(this.device.adb).exec({
+        const output = await new LsCommand(this.device).exec({
           selinux: true,
           path: path,
           timeout: 5000,
@@ -386,7 +381,7 @@ export class SELinuxAcquirer extends Acquirer {
     try {
       const maxLines = this.config.maxDenialLines || 500;
       const pattern = /avc.*denied/i;
-      const logcatOutput = await new GetLogcatCommand(this.device.adb).exec({
+      const logcatOutput = await new GetLogcatCommand(this.device).exec({
         dump: true,
         buffer: 'all',
         timeout: 15000,

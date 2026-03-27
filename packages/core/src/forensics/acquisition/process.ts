@@ -1,7 +1,8 @@
-import type { ADBDevice } from '../../adb';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
 import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { PsCommand } from '../../adb/commands';
+import { PsCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface ProcessConfig extends AcquisitionConfig {
   includeThreads?: boolean;
@@ -53,7 +54,7 @@ export interface ProcessData {
  */
 export class ProcessAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
+    device: Device,
     protected config: ProcessConfig = {}
   ) {
     super(device, config, 'process');
@@ -105,20 +106,15 @@ export class ProcessAcquirer extends Acquirer {
       const jsonData = JSON.stringify(processData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('processes', 'json');
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: 'Running processes',
-        mimeType: blob.type,
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        const blobBytes = new Uint8Array(await blob.arrayBuffer());
-        file.hash = await this.computeHash(blobBytes);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'Running processes', mimeType: 'application/json' };
+      } else {
+        file = { fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'Running processes', mimeType: 'application/json' };
       }
 
       const endTime = new Date();
@@ -138,7 +134,6 @@ export class ProcessAcquirer extends Acquirer {
           totalProcesses: processes.length,
           systemProcesses: systemCount,
           userProcesses: userCount,
-          deviceInfo,
         },
       };
 
@@ -185,7 +180,7 @@ export class ProcessAcquirer extends Acquirer {
     };
 
     // Execute command - get RAW output
-    const rawOutput = await new PsCommand(this.device.adb).exec(options);
+    const rawOutput = await new PsCommand(this.device).exec(options);
 
     // Parse output HERE (TODO: move to ProcessAdapter)
     return this.parseProcessOutput(rawOutput);

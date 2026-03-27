@@ -1,30 +1,49 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LogcatAcquirer } from '../../../../src/forensics/acquisition/logcat';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
+  makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const MOCK_LOGCAT = [
+  '01-11 10:00:00.123  1234  5678 I ActivityManager: Start proc app',
+  '01-11 10:00:01.456  1234  5678 W PackageManager: Warning message',
+  '01-11 10:00:02.789  1234  5678 E AndroidRuntime: Fatal exception',
+  '01-11 10:00:03.012  1234  5678 D SomeTag: Debug message',
+  '01-11 10:00:04.345  1234  5678 V Verbose: Verbose message',
+].join('\n');
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('LogcatAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: LogcatAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
-  const mockLogcatOutput = `01-11 10:00:00.123  1234  5678 I ActivityManager: Start proc app
-01-11 10:00:01.456  1234  5678 W PackageManager: Warning message
-01-11 10:00:02.789  1234  5678 E AndroidRuntime: Fatal exception
-01-11 10:00:03.012  1234  5678 D SomeTag: Debug message
-01-11 10:00:04.345  1234  5678 V Verbose: Verbose message`;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    device = createMockADBDeviceWithCommands({
-      getLogcat: mockLogcatOutput,
-    }) as unknown as ADBDevice;
+    // logcatOutput is used by resolveShellOutput for any command.includes('logcat')
+    device = createMockDeviceForAcquirer({ logcatOutput: MOCK_LOGCAT });
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new LogcatAcquirer(device);
+    acquirer = new LogcatAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -38,14 +57,7 @@ describe('LogcatAcquirer', () => {
       expect(result.success).toBe(true);
       expect(result.type).toBe('logcat');
       expect(result.files[0].fileName).toBe('logcat.txt');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
-    });
-
-    it('should use dump mode by default', async () => {
-      await acquirer.acquire();
-
-      // Just check that it succeeds - implementation details should not be tested
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -53,35 +65,20 @@ describe('LogcatAcquirer', () => {
       await acquirer.acquire(callback);
 
       expect(callback).toHaveBeenCalled();
-      const lastProgress = getLastProgress();
-      expect(lastProgress.progress).toBe(100);
-      expect(lastProgress.status).toBe('completed');
+      expect(getLastProgress().progress).toBe(100);
+      expect(getLastProgress().status).toBe('completed');
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new LogcatAcquirer(device, { computeHash: true });
-      const result = await acquirer.acquire();
+      const result = await new LogcatAcquirer(device as any, { computeHash: true }).acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
+      expect(await drainAndHash(result, 0)).toBeDefined();
     });
 
-    it('should handle empty logcat', async () => {
-      // Cleanup previous mocks
-      domMocks.cleanup();
-
-      // Create new device with empty logcat
-      device = createMockADBDeviceWithCommands({
-        getLogcat: '',
-      }) as unknown as ADBDevice;
-
-      // Recreate DOM mocks
-      domMocks = setupAcquirerDOMMocks();
-
-      // Create new acquirer with new device
-      acquirer = new LogcatAcquirer(device);
-
-      const result = await acquirer.acquire();
+    it('should handle empty logcat output', async () => {
+      device = createMockDeviceForAcquirer({ logcatOutput: '' });
+      const result = await new LogcatAcquirer(device as any).acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).totalLines).toBe(0);
@@ -90,86 +87,56 @@ describe('LogcatAcquirer', () => {
 
   describe('configuration', () => {
     it('should respect buffer configuration', async () => {
-      acquirer = new LogcatAcquirer(device, { buffer: 'system' });
-      const result = await acquirer.acquire();
-
+      const result = await new LogcatAcquirer(device as any, { buffer: 'system' }).acquire();
       expect(result.success).toBe(true);
     });
 
     it('should respect format configuration', async () => {
-      acquirer = new LogcatAcquirer(device, { format: 'brief' });
-      const result = await acquirer.acquire();
-
+      const result = await new LogcatAcquirer(device as any, { format: 'brief' }).acquire();
       expect(result.success).toBe(true);
     });
 
     it('should respect maxLines configuration', async () => {
-      acquirer = new LogcatAcquirer(device, { maxLines: 100 });
-      const result = await acquirer.acquire();
-
+      const result = await new LogcatAcquirer(device as any, { maxLines: 100 }).acquire();
       expect(result.success).toBe(true);
     });
 
     it('should respect filter configuration', async () => {
-      acquirer = new LogcatAcquirer(device, { filter: 'ActivityManager:I' });
-      const result = await acquirer.acquire();
-
+      const result = await new LogcatAcquirer(device as any, { filter: 'ActivityManager:I' }).acquire();
       expect(result.success).toBe(true);
     });
 
     it('should disable dump mode when configured', async () => {
-      acquirer = new LogcatAcquirer(device, { dumpMode: false });
-      const result = await acquirer.acquire();
-
+      const result = await new LogcatAcquirer(device as any, { dumpMode: false }).acquire();
       expect(result.success).toBe(true);
     });
 
     it('should combine multiple options', async () => {
-      acquirer = new LogcatAcquirer(device, {
+      const result = await new LogcatAcquirer(device as any, {
         buffer: 'main',
         maxLines: 500,
         filter: '*:W',
-      });
-      const result = await acquirer.acquire();
-
+      }).acquire();
       expect(result.success).toBe(true);
     });
   });
 
   describe('log analysis', () => {
     it('should count log lines correctly', async () => {
-      const result = await acquirer.acquire();
-
-      expect((result.data as any).totalLines).toBe(5);
+      expect((await acquirer.acquire()).data.totalLines).toBe(5);
     });
 
     it('should count errors correctly', async () => {
-      const result = await acquirer.acquire();
-
-      expect((result.data as any).errorCount).toBe(1);
+      expect((await acquirer.acquire()).data.errorCount).toBe(1);
     });
 
     it('should count warnings correctly', async () => {
-      const result = await acquirer.acquire();
-
-      expect((result.data as any).warningCount).toBe(1);
-    });
-
-    it('should identify different log levels', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect((result.data as any).errorCount).toBeGreaterThan(0);
-      expect((result.data as any).warningCount).toBeGreaterThan(0);
+      expect((await acquirer.acquire()).data.warningCount).toBe(1);
     });
 
     it('should handle logs without priority markers', async () => {
-      device = createMockADBDeviceWithCommands({
-        getLogcat: 'Plain log line\nAnother plain line',
-      }) as unknown as ADBDevice;
-      acquirer = new LogcatAcquirer(device);
-
-      const result = await acquirer.acquire();
+      device = createMockDeviceForAcquirer({ logcatOutput: 'Plain log line\nAnother plain line' });
+      const result = await new LogcatAcquirer(device as any).acquire();
 
       expect(result.success).toBe(true);
       expect((result.data as any).totalLines).toBe(2);
@@ -178,10 +145,7 @@ describe('LogcatAcquirer', () => {
 
   describe('error handling', () => {
     it('should handle logcat command failure', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('logcat command failed')
-      );
-
+      device.shell.mockRejectedValue(new Error('logcat command failed'));
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
@@ -189,10 +153,7 @@ describe('LogcatAcquirer', () => {
     });
 
     it('should handle device disconnection', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Device disconnected')
-      );
-
+      device.getProperties.mockRejectedValue(new Error('Device disconnected'));
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
@@ -200,10 +161,7 @@ describe('LogcatAcquirer', () => {
     });
 
     it('should handle timeout', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Command timed out')
-      );
-
+      device.shell.mockRejectedValue(new Error('Command timed out'));
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
@@ -214,62 +172,45 @@ describe('LogcatAcquirer', () => {
   describe('result metadata', () => {
     it('should include timestamps', async () => {
       const result = await acquirer.acquire();
-
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
     });
 
     it('should include duration', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.duration).toBeGreaterThanOrEqual(0);
       expect(typeof result.duration).toBe('number');
+      expect(result.duration).toBeGreaterThanOrEqual(0);
     });
 
     it('should include file size', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.files[0].fileSize).toBeDefined();
       expect(typeof result.files[0].fileSize).toBe('number');
       expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should include buffer in data', async () => {
-      acquirer = new LogcatAcquirer(device, { buffer: 'system' });
-      const result = await acquirer.acquire();
-
+      const result = await new LogcatAcquirer(device as any, { buffer: 'system' }).acquire();
       expect((result.data as any).buffer).toBe('system');
     });
 
     it('should default to all buffer', async () => {
-      const result = await acquirer.acquire();
-
-      expect((result.data as any).buffer).toBe('all');
+      expect((await acquirer.acquire()).data.buffer).toBe('all');
     });
   });
 
   describe('output format', () => {
     it('should include metadata header in output', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      const text = await result.files[0].blob!.text();
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(text).toContain('# Logcat Acquisition Metadata');
     });
 
-    it('should include JSON metadata', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      const text = await result.files[0].blob!.text();
+    it('should include JSON metadata section', async () => {
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(text).toContain('METADATA (JSON)');
     });
 
-    it('should include original logcat output', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      const text = await result.files[0].blob!.text();
+    it('should include original logcat output section', async () => {
+      const text = await readStream((await acquirer.acquire()).files[0].stream!);
       expect(text).toContain('LOGCAT OUTPUT');
     });
   });

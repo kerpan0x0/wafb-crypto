@@ -1,26 +1,38 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BugreportAcquirer } from '../../../../src/forensics/acquisition/bugreport';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
+  makeShellResult,
+  makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any): Promise<string | undefined> {
+  if (!result.files[0].hashPromise) return undefined;
+  // Drain stream so TransformStream flush() is called and hashPromise resolves
+  const reader = result.files[0].stream!.getReader();
+  while (!(await reader.read()).done) {}
+  return result.files[0].hashPromise;
+}
+
 
 describe('BugreportAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: BugreportAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     // checkCommandExists: true → `which bugreportz` returns a path → zip path
-    device = createMockADBDeviceWithCommands({
+    device = createMockDeviceForAcquirer({
       checkCommandExists: true,
       readFile: new TextEncoder().encode('mock bugreport zip content'),
-    }) as unknown as ADBDevice;
+    });
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new BugreportAcquirer(device);
+    acquirer = new BugreportAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -34,7 +46,7 @@ describe('BugreportAcquirer', () => {
       expect(result.success).toBe(true);
       expect(result.type).toBe('bugreport');
       expect(result.files[0].fileName).toBe('bugreport.zip');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should report progress during acquisition', async () => {
@@ -48,18 +60,18 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should compute hashes when configured', async () => {
-      acquirer = new BugreportAcquirer(device, { computeHash: true });
+      acquirer = new BugreportAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
+      const hash = await drainAndHash(result);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
     });
 
     it('should handle bugreport generation errors', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Bugreport generation failed')
-      );
+      device.shell.mockRejectedValue(new Error('Bugreport generation failed'));
+      device.spawn.mockRejectedValue(new Error('Bugreport generation failed'));
 
       const result = await acquirer.acquire();
 
@@ -69,33 +81,24 @@ describe('BugreportAcquirer', () => {
 
     it('should cleanup temporary files when configured (zip path)', async () => {
       // zip path: file is written to device storage, cleanup is performed
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: true });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: true });
       await acquirer.acquire();
 
       expect(acquirer.wasCleanupPerformed()).toBe(true);
     });
 
     it('should skip hash computation when disabled', async () => {
-      acquirer = new BugreportAcquirer(device, { computeHash: false });
+      acquirer = new BugreportAcquirer(device as any, { computeHash: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeUndefined();
-    });
-
-    it('should include device info in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
-      expect((result.data as any).deviceInfo).toBeDefined();
-      expect((result.data as any).deviceInfo.model).toBe('Test Device');
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should fallback to legacy bugreport if bugreportz fails', async () => {
       // preferZip: false forces legacy path — legacy now streams stdout directly
       // (no temporary file on device, no blob — returns a ReadableStream instead)
-      acquirer = new BugreportAcquirer(device, { preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { preferZip: false });
 
       const result = await acquirer.acquire();
 
@@ -109,9 +112,8 @@ describe('BugreportAcquirer', () => {
 
   describe('error handling', () => {
     it('should handle device disconnection', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Device disconnected')
-      );
+      device.shell.mockRejectedValue(new Error('Device disconnected'));
+      device.spawn.mockRejectedValue(new Error('Device disconnected'));
 
       const result = await acquirer.acquire();
 
@@ -120,9 +122,8 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should handle timeout', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Command timed out')
-      );
+      device.shell.mockRejectedValue(new Error('Command timed out'));
+      device.spawn.mockRejectedValue(new Error('Command timed out'));
 
       const result = await acquirer.acquire();
 
@@ -132,7 +133,7 @@ describe('BugreportAcquirer', () => {
 
     it('should handle file read errors', async () => {
       // sync is used in the zip path to download the bugreport file from device
-      vi.mocked(device.adb.sync).mockRejectedValue(new Error('Failed to read file'));
+      device.sync.mockRejectedValue(new Error('Failed to read file'));
 
       const result = await acquirer.acquire();
 
@@ -143,9 +144,9 @@ describe('BugreportAcquirer', () => {
     it('should attempt cleanup even when acquisition fails', async () => {
       // Zip path: sync fails during download → acquisition fails
       // bugreportPath is set before the failure so cleanup is attempted
-      vi.mocked(device.adb.sync).mockRejectedValue(new Error('Read failed'));
+      device.sync.mockRejectedValue(new Error('Read failed'));
 
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: true });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
@@ -156,19 +157,19 @@ describe('BugreportAcquirer', () => {
       domMocks.cleanup();
 
       // Create device that uses legacy bugreport (so cleanup will actually be attempted)
-      const mockDevice = createMockADBDeviceWithCommands({
+      const mockDevice = createMockDeviceForAcquirer({
         checkCommandExists: false,
         shellOutput: '',
         readFile: new TextEncoder().encode('mock bugreport content'),
-      }) as unknown as ADBDevice;
+      });
 
       // Get the original implementation before we mock it
       const originalImpl = vi.fn(
-        mockDevice.adb.subprocess.shellProtocol.spawn.getMockImplementation()
+        mockDevice.shell.getMockImplementation()
       );
 
       // Mock spawn to fail ONLY on the rm command (cleanup)
-      mockDevice.adb.subprocess.shellProtocol.spawn = vi
+      mockDevice.shell = vi
         .fn()
         .mockImplementation((command: string) => {
           // Fail on rm command (which is the cleanup)
@@ -218,21 +219,22 @@ describe('BugreportAcquirer', () => {
 
   describe('configuration', () => {
     it('should respect computeHash config', async () => {
-      acquirer = new BugreportAcquirer(device, { computeHash: true });
+      acquirer = new BugreportAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
-      expect(result.files[0].hash).toBeDefined();
+      const hash = await drainAndHash(result);
+      expect(hash).toBeDefined();
     });
 
     it('should respect timeout config', async () => {
-      acquirer = new BugreportAcquirer(device, { timeout: 5000 });
+      acquirer = new BugreportAcquirer(device as any, { timeout: 5000 });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
     });
 
     it('should respect cleanupAfter config', async () => {
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: false });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: false });
       await acquirer.acquire();
 
       expect(acquirer.wasCleanupPerformed()).toBe(false);
@@ -320,7 +322,7 @@ describe('BugreportAcquirer', () => {
 
     it('should use legacy format when preferZip is false', async () => {
       // Legacy path streams stdout directly — no blob
-      acquirer = new BugreportAcquirer(device, { preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { preferZip: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -330,25 +332,26 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should compute hash when computeHash option is true', async () => {
-      acquirer = new BugreportAcquirer(device, { computeHash: true });
+      acquirer = new BugreportAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeDefined();
-      expect(typeof result.files[0].hash).toBe('string');
-      expect(result.files[0].hash!.length).toBeGreaterThan(0);
+      const hash = await drainAndHash(result);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
+      expect(hash!.length).toBeGreaterThan(0);
     });
 
     it('should skip hash computation when computeHash is false', async () => {
-      acquirer = new BugreportAcquirer(device, { computeHash: false });
+      acquirer = new BugreportAcquirer(device as any, { computeHash: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].hash).toBeUndefined();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should respect custom timeout configuration', async () => {
-      acquirer = new BugreportAcquirer(device, { timeout: 5000 });
+      acquirer = new BugreportAcquirer(device as any, { timeout: 5000 });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -356,14 +359,14 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should perform cleanup when cleanupAfter is true', async () => {
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: true });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: true });
       await acquirer.acquire();
 
       expect(acquirer.wasCleanupPerformed()).toBe(true);
     });
 
     it('should skip cleanup when cleanupAfter is false', async () => {
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: false });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: false });
       await acquirer.acquire();
 
       expect(acquirer.wasCleanupPerformed()).toBe(false);
@@ -376,7 +379,7 @@ describe('BugreportAcquirer', () => {
 
   describe('Fallback to Legacy Format', () => {
     it('should use legacy when preferZip is explicitly false', async () => {
-      acquirer = new BugreportAcquirer(device, { preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { preferZip: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -441,9 +444,8 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should report failed status on error', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Test error')
-      );
+      device.shell.mockRejectedValue(new Error('Test error'));
+      device.spawn.mockRejectedValue(new Error('Test error'));
 
       const { callback, getLastProgress } = createMockProgressCallback();
 
@@ -495,7 +497,7 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should use correct extension for text format', async () => {
-      acquirer = new BugreportAcquirer(device, { preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { preferZip: false });
       const result = await acquirer.acquire();
 
       expect(result.files[0].fileName).toBe('bugreport.txt');
@@ -534,15 +536,6 @@ describe('BugreportAcquirer', () => {
       expect(typeof result.files[0].fileSize).toBe('number');
     });
 
-    it('should include device info in result data', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.data).toBeDefined();
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
-      expect(result.data?.deviceInfo.manufacturer).toBe('Test Manufacturer');
-    });
-
     it('should include format type in result data', async () => {
       const result = await acquirer.acquire();
 
@@ -565,15 +558,15 @@ describe('BugreportAcquirer', () => {
   describe('Error Recovery and Resilience', () => {
     it('should use default model when device properties are incomplete', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         getPropOutput: {
           'ro.build.version.sdk': '33',
           // Missing model - getProperties returns default from mockDevice
         },
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
 
-      acquirer = new BugreportAcquirer(device);
+      acquirer = new BugreportAcquirer(device as any);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -586,7 +579,7 @@ describe('BugreportAcquirer', () => {
       const originalComputeHash = (acquirer as any).computeHash;
       (acquirer as any).computeHash = vi.fn().mockRejectedValue(new Error('Hash failed'));
 
-      acquirer = new BugreportAcquirer(device, { computeHash: true });
+      acquirer = new BugreportAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       // Should still succeed
@@ -597,9 +590,8 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should include error details in failed result', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Specific error message')
-      );
+      device.shell.mockRejectedValue(new Error('Specific error message'));
+      device.spawn.mockRejectedValue(new Error('Specific error message'));
 
       const result = await acquirer.acquire();
 
@@ -608,9 +600,8 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should still calculate duration on error', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
-        new Error('Test error')
-      );
+      device.shell.mockRejectedValue(new Error('Test error'));
+      device.spawn.mockRejectedValue(new Error('Test error'));
 
       const result = await acquirer.acquire();
 
@@ -627,7 +618,7 @@ describe('BugreportAcquirer', () => {
     it('should skip cleanup for legacy bugreport (no file on device)', async () => {
       // Legacy path streams stdout directly — no file is created on device,
       // so cleanup is never performed regardless of cleanupAfter config.
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: true, preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: true, preferZip: false });
       await acquirer.acquire();
 
       expect(acquirer.wasCleanupPerformed()).toBe(false);
@@ -636,10 +627,10 @@ describe('BugreportAcquirer', () => {
     it('should handle cleanup failures gracefully (zip path)', async () => {
       // bugreportz files live in /data/user_de — auto-marked as cleaned by the
       // system. The acquirer never calls rm for these paths.
-      const mockDevice = createMockADBDeviceWithCommands({
+      const mockDevice = createMockDeviceForAcquirer({
         checkCommandExists: true,
         readFile: new TextEncoder().encode('mock bugreport zip content'),
-      }) as unknown as ADBDevice;
+      });
 
       domMocks.cleanup();
       domMocks = setupAcquirerDOMMocks();
@@ -652,7 +643,7 @@ describe('BugreportAcquirer', () => {
     });
 
     it('should mark cleanup as performed for bugreportz system files', async () => {
-      acquirer = new BugreportAcquirer(device, { cleanupAfter: true });
+      acquirer = new BugreportAcquirer(device as any, { cleanupAfter: true });
       await acquirer.acquire();
 
       // bugreportz files in /data/user_de are marked as auto-cleaned
@@ -718,26 +709,25 @@ describe('BugreportAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should return blob with correct MIME type for zip', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.files[0].blob).toBeInstanceOf(Blob);
-      expect(result.files[0].blob!.type).toBe('application/zip');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/zip');
     });
 
     it('should return stream for legacy text format', async () => {
       // Legacy path streams stdout directly — no blob, returns a ReadableStream
-      acquirer = new BugreportAcquirer(device, { preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { preferZip: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect(result.files[0].stream).toBeDefined();
       expect(result.files[0].mimeType).toBe('text/plain');
-      expect(result.files[0].blob).toBeUndefined();
     });
   });
 
@@ -748,9 +738,9 @@ describe('BugreportAcquirer', () => {
   describe('Real-World Device Scenarios', () => {
     it('should handle old device with legacy bugreport preference', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({ checkCommandExists: true }) as unknown as ADBDevice;
+      device = createMockDeviceForAcquirer({ checkCommandExists: true });
 
-      vi.mocked(device.getProperties).mockResolvedValue({
+      device.getProperties.mockResolvedValue({
         androidVersion: '4.4',
         buildId: 'KRT16M',
         model: 'Nexus 5',
@@ -763,7 +753,7 @@ describe('BugreportAcquirer', () => {
       domMocks = setupAcquirerDOMMocks();
 
       // Explicitly prefer legacy — legacy now streams stdout directly
-      acquirer = new BugreportAcquirer(device, { preferZip: false });
+      acquirer = new BugreportAcquirer(device as any, { preferZip: false });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -773,12 +763,12 @@ describe('BugreportAcquirer', () => {
 
     it('should handle modern device with bugreportz', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         checkCommandExists: true,
         readFile: new TextEncoder().encode('mock bugreport zip content'),
-      }) as unknown as ADBDevice;
+      });
 
-      vi.mocked(device.getProperties).mockResolvedValue({
+      device.getProperties.mockResolvedValue({
         androidVersion: '13',
         buildId: 'TP1A.220905.004',
         model: 'Pixel 7',
@@ -790,7 +780,7 @@ describe('BugreportAcquirer', () => {
 
       domMocks = setupAcquirerDOMMocks();
 
-      acquirer = new BugreportAcquirer(device);
+      acquirer = new BugreportAcquirer(device as any);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -799,12 +789,12 @@ describe('BugreportAcquirer', () => {
 
     it('should preserve parentheses and special chars in model name', async () => {
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         checkCommandExists: true,
         readFile: new TextEncoder().encode('mock bugreport zip content'),
-      }) as unknown as ADBDevice;
+      });
 
-      vi.mocked(device.getProperties).mockResolvedValue({
+      device.getProperties.mockResolvedValue({
         androidVersion: '13',
         buildId: 'SP1A.210812.016',
         model: 'Galaxy S23 Ultra 5G (SM-S918B)',
@@ -816,7 +806,7 @@ describe('BugreportAcquirer', () => {
 
       domMocks = setupAcquirerDOMMocks();
 
-      acquirer = new BugreportAcquirer(device);
+      acquirer = new BugreportAcquirer(device as any);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
@@ -842,13 +832,13 @@ describe('BugreportAcquirer', () => {
     it('should handle large bugreport files', async () => {
       const largeContent = new Uint8Array(10 * 1024 * 1024); // 10MB
       domMocks.cleanup();
-      device = createMockADBDeviceWithCommands({
+      device = createMockDeviceForAcquirer({
         checkCommandExists: true,
         readFile: largeContent,
-      }) as unknown as ADBDevice;
+      });
       domMocks = setupAcquirerDOMMocks();
 
-      acquirer = new BugreportAcquirer(device);
+      acquirer = new BugreportAcquirer(device as any);
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);

@@ -1,14 +1,15 @@
 import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
-import { ADBDevice, DeviceProperties } from '../..';
-import { EnvCommand, LsCommand, ReadFileCommand } from '../../adb/commands';
+import { Device, DeviceProperties } from '../..';
+import { EnvCommand, LsCommand, ReadFileCommand } from '../../commands';
 import { Acquirer } from './acquirer';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface TmpAcquirerConfig extends AcquisitionConfig {}
 
 const defaultTmpDir = `/data/local/tmp`;
 
 export class TmpAcquirer extends Acquirer {
-  constructor(device: ADBDevice, config: TmpAcquirerConfig = {}) {
+  constructor(device: Device, config: TmpAcquirerConfig = {}) {
     super(device, config, 'tmp');
   }
 
@@ -77,8 +78,8 @@ export class TmpAcquirer extends Acquirer {
 
   private async getTmpDir(): Promise<string> {
     try {
-      const env = await new EnvCommand(this.device.adb).exec();
-      const tmpDirLine = env.split('\n').find(line => line.startsWith('TMPDIR='));
+      const env = await new EnvCommand(this.device).exec();
+      const tmpDirLine = env.split('\n').find((line: string) => line.startsWith('TMPDIR='));
       if (tmpDirLine) {
         const tmpDir = tmpDirLine.split('=')[1].trim();
         this.logger.info(`Using TMPDIR from device environment: ${tmpDir}`);
@@ -96,7 +97,7 @@ export class TmpAcquirer extends Acquirer {
   private async listTmpFiles(): Promise<string[]> {
     const result: string[] = [];
 
-    const lsOutput = await new LsCommand(this.device.adb).exec({
+    const lsOutput = await new LsCommand(this.device).exec({
       path: defaultTmpDir,
       recursive: true,
     });
@@ -143,7 +144,7 @@ export class TmpAcquirer extends Acquirer {
     for (const file of files) {
       this.logger.info(`Processing tmp file: ${file}`);
 
-      const fileData = await new ReadFileCommand(this.device.adb).exec({
+      const fileData = await new ReadFileCommand(this.device).exec({
         path: file,
       });
       this.logger.debug(`Read tmp file: ${fileData.length} bytes`);
@@ -167,24 +168,19 @@ export class TmpAcquirer extends Acquirer {
       
       const fileName = `tmp/${normalizedPath}`;
 
-      const blob = new Blob([fileData.data] as unknown as BlobPart[], { 
-        type: 'application/octet-stream' 
-      });
+      const fileBytes = fileData.data;
 
-      const file: AcquisitionFile = {
-        fileName: fileName,
-        fileSize: blob.size,
-        blob: blob,
-        description: `Temporary file from ${fileData.path}`,
-        mimeType: this.getMimeType(fileData.path),
-      };
-
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        file.hash = await this.computeHash(fileData.data);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(fileBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName, fileSize: fileBytes.length, stream: readable, hashPromise, description: `Temporary file from ${fileData.path}`, mimeType: this.getMimeType(fileData.path) };
+      } else {
+        file = { fileName, fileSize: fileBytes.length, stream: bytesToStream(fileBytes), description: `Temporary file from ${fileData.path}`, mimeType: this.getMimeType(fileData.path) };
       }
 
       files.push(file);
-      this.logger.debug(`Added tmp file: ${fileName} (${this.formatBytes(blob.size)})`);
+      this.logger.debug(`Added tmp file: ${fileName} (${this.formatBytes(fileBytes.length)})`);
     }
 
     const metadata = {
@@ -198,19 +194,15 @@ export class TmpAcquirer extends Acquirer {
     };
 
     const metadataJson = JSON.stringify(metadata, null, 2);
-    const metadataBlob = new Blob([metadataJson], { type: 'application/json' });
+    const metadataBlobBytes = new TextEncoder().encode(metadataJson);
 
-    const metadataFile: AcquisitionFile = {
-      fileName: 'tmp/acquisition-metadata.json',
-      fileSize: metadataBlob.size,
-      blob: metadataBlob,
-      description: 'Tmp acquisition metadata',
-      mimeType: 'application/json',
-    };
-
+    let metadataFile: AcquisitionFile;
     if (this.config.computeHash) {
-      const data = new TextEncoder().encode(metadataJson);
-      metadataFile.hash = await this.computeHash(data);
+      const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+      bytesToStream(metadataBlobBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+      metadataFile = { fileName: 'tmp/acquisition-metadata.json', fileSize: metadataBlobBytes.length, stream: readable, hashPromise, description: 'Tmp acquisition metadata', mimeType: 'application/json' };
+    } else {
+      metadataFile = { fileName: 'tmp/acquisition-metadata.json', fileSize: metadataBlobBytes.length, stream: bytesToStream(metadataBlobBytes), description: 'Tmp acquisition metadata', mimeType: 'application/json' };
     }
 
     files.push(metadataFile);
