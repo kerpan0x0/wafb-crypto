@@ -89,17 +89,6 @@ const MOCK_ACQUISITION_TYPES = {
     requiresRoot: true,
     estimatedDuration: 20,
     defaultEnabled: false
-  },
-  network: {
-    id: 'network',
-    name: 'Network Information',
-    description: 'WiFi configurations, network connections, and ARP cache',
-    category: 'network',
-    icon: '📡',
-    minSdkVersion: 14,
-    requiresRoot: false,
-    estimatedDuration: 5,
-    defaultEnabled: true
   }
 };
 

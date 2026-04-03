@@ -15,7 +15,6 @@ export type AcquisitionType =
   | 'system_info'
   | 'selinux'
   | 'mount'
-  | 'network'
   | 'settings'
   | 'process'
   | 'tmp'
@@ -169,17 +168,6 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 30,
-    defaultEnabled: true,
-  },
-  network: {
-    id: 'network',
-    name: 'Network Information',
-    description: 'WiFi configurations, network connections, and ARP cache',
-    category: 'network',
-    icon: '📡',
-    minSdkVersion: 14,
-    requiresRoot: false,
-    estimatedDuration: 5,
     defaultEnabled: true,
   },
   rootBinaries: {

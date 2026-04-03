@@ -1,0 +1,68 @@
+{
+  "app": {
+    "fullName": "WebADB Forensics Bridge",
+    "license": "GPL-3.0"
+  },
+  "footer": {
+    "sourceCode": "Codice Sorgente",
+    "license": "Licenza {{license}}"
+  },
+  "tabs": {
+    "wizard": "Procedura Guidata",
+    "standard": "Standard"
+  },
+  "connect": {
+    "title": "Collega Dispositivo Android",
+    "subtitle": "Collega il tuo dispositivo Android tramite USB e abilita il debug USB.",
+    "subtitleWizard": "La procedura guidata eseguirà automaticamente un'acquisizione completa — nessuna configurazione richiesta.",
+    "buttonConnect": "Collega Dispositivo",
+    "buttonConnecting": "Connessione…",
+    "requirements": "Requisiti:",
+    "req1": "Browser Chrome o Edge (WebUSB richiesto)",
+    "req2": "Dispositivo Android con debug USB abilitato",
+    "req3": "Cavo USB collegato al computer",
+    "req4": "Il server ADB locale deve essere spento (esegui: adb kill-server)",
+    "usbGuideTitle": "Come abilitare il debug USB:",
+    "usbStep1": "Apri le <bold>Impostazioni</bold> sul tuo dispositivo Android",
+    "usbStep2": "Vai su <bold>Info sul telefono</bold> e tocca <bold>Numero build</bold> 7 volte",
+    "usbStep3": "Torna su <bold>Impostazioni → Opzioni sviluppatore</bold>",
+    "usbStep4": "Abilita il <bold>debug USB</bold>",
+    "usbGuideLink": "Guida ufficiale Android →"
+  },
+  "device": {
+    "title": "Dispositivo Connesso",
+    "disconnect": "Disconnetti"
+  },
+  "acquisition": {
+    "title": "Seleziona Acquisizioni",
+    "selectAll": "Seleziona Tutto",
+    "deselectAll": "Deseleziona Tutto",
+    "requiresRoot": "Richiede Root",
+    "startButton": "Avvia Acquisizione ({{count}} selezionate)",
+    "progressTitle": "Avanzamento Acquisizione",
+    "totalProgress": "Progresso Totale",
+    "statusDone": "✓ Completato",
+    "statusFailed": "✗ Fallito",
+    "statusSkipped": "Saltato",
+    "statusPending": "In attesa",
+    "keepConnected": "Acquisizione in corso — mantieni il dispositivo collegato…",
+    "completedWithErrors": "Acquisizione Completata con Errori",
+    "completed": "Acquisizione Completata!",
+    "cancelled": "Acquisizione Annullata",
+    "zipDownloaded": "L'archivio ZIP è stato scaricato sul tuo dispositivo.",
+    "colAcquisition": "Acquisizione",
+    "colStatus": "Stato",
+    "colSize": "Dimensione",
+    "colDuration": "Durata",
+    "statusSuccess": "✓ Riuscito",
+    "startNew": "Nuova Acquisizione",
+    "stopButton": "Interrompi Acquisizione",
+    "tabDisabledDuringAcquisition": "Impossibile cambiare scheda durante un'acquisizione attiva",
+    "langDisabledDuringAcquisition": "Impossibile cambiare lingua durante un'acquisizione attiva"
+  },
+  "steps": {
+    "connect": "Collega Dispositivo",
+    "acquiring": "Acquisizione Dati",
+    "done": "Completato"
+  }
+}

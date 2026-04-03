@@ -5,7 +5,7 @@ import type {
   AcquisitionResult,
   AcquisitionSession,
   AcquisitionMetadata,
-  ACQUISITION_TYPES
+  ACQUISITION_TYPES,
 } from '@wafb/core';
 import type { DeviceProperties } from '@wafb/core';
 
@@ -41,8 +41,14 @@ interface AcquisitionStore {
   selectAll: () => void;
   deselectAll: () => void;
   startSession: () => void;
-  updateProgress: (type: AcquisitionType, progress: number, message: string, status: AcquisitionStatus) => void;
+  updateProgress: (
+    type: AcquisitionType,
+    progress: number,
+    message: string,
+    status: AcquisitionStatus
+  ) => void;
   completeAcquisition: (type: AcquisitionType, result: AcquisitionResult) => void;
+  cancelSession: () => void;
   endSession: () => void;
   reset: () => void;
 
@@ -66,7 +72,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     const acquisitions = new Map<AcquisitionType, AcquisitionState>();
 
     const metadataList = Object.values(types) as AcquisitionMetadata[];
-    metadataList.forEach((metadata) => {
+    metadataList.forEach(metadata => {
       // Disabilita acquisizioni che richiedono root se device non è rooted
       const canEnable = !metadata.requiresRoot || isRooted;
 
@@ -79,7 +85,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
         status: 'pending',
         progress: 0,
         message: '',
-        metadata
+        metadata,
       });
     });
 
@@ -128,7 +134,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
       .map(acq => ({
         type: acq.type,
         status: 'pending' as AcquisitionStatus,
-        progress: 0
+        progress: 0,
       }));
 
     const session: AcquisitionSession = {
@@ -137,13 +143,18 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
       deviceInfo,
       acquisitions: selectedAcquisitions,
       totalProgress: 0,
-      status: 'running'
+      status: 'running',
     };
 
     set({ session });
   },
 
-  updateProgress: (type: AcquisitionType, progress: number, message: string, status: AcquisitionStatus) => {
+  updateProgress: (
+    type: AcquisitionType,
+    progress: number,
+    message: string,
+    status: AcquisitionStatus
+  ) => {
     const { acquisitions, session } = get();
     const acquisition = acquisitions.get(type);
 
@@ -155,7 +166,9 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     }
 
     if (session) {
-      const acqInSession = session.acquisitions.find((a: { type: AcquisitionType }) => a.type === type);
+      const acqInSession = session.acquisitions.find(
+        (a: { type: AcquisitionType }) => a.type === type
+      );
       if (acqInSession) {
         acqInSession.status = status;
         acqInSession.progress = progress;
@@ -191,6 +204,21 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     }
   },
 
+  cancelSession: () => {
+    const { session, acquisitions } = get();
+    if (session && session.status === 'running') {
+      // Mark any still-pending acquisitions as skipped
+      acquisitions.forEach(acq => {
+        if (acq.status === 'pending' || acq.status === 'running') {
+          acq.status = 'skipped';
+        }
+      });
+      session.status = 'cancelled';
+      session.endTime = new Date();
+      set({ session: { ...session }, acquisitions: new Map(acquisitions) });
+    }
+  },
+
   endSession: () => {
     const { session } = get();
     if (session) {
@@ -212,7 +240,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
     set({
       session: null,
       acquisitions: new Map(),
-      deviceInfo: null
+      deviceInfo: null,
     });
   },
 
@@ -243,7 +271,7 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
   isSessionActive: () => {
     const { session } = get();
     return session !== null && session.status === 'running';
-  }
+  },
 }));
 
 // Helper per inizializzare ACQUISITION_TYPES nel globalThis
