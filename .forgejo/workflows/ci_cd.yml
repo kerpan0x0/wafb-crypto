@@ -54,9 +54,9 @@ jobs:
           path: packages/web/dist/
           retention-days: 1
 
-  deploy-dev:
+  deploy:
     needs: quality
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     container:
       image: node:20-bookworm
