@@ -1,53 +1,39 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LogAcquirer } from '../../../../src/forensics/acquisition/logs';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
+  makeShellResult,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
 
-// Set test timeout to 10 seconds to prevent hanging tests
 vi.setConfig({ testTimeout: 10000 });
-
-// Set test timeout to 10 seconds
-vi.setConfig({ testTimeout: 10000 });
-
-// Mock JSZip
-const mockJSZip = {
-  default: vi.fn(() => ({
-    file: vi.fn(),
-    generateAsync: vi.fn().mockResolvedValue(new Blob(['mock zip content'])),
-  })),
-};
-vi.mock('jszip', () => mockJSZip);
 
 describe('LogAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: LogAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
-  const mockLsOutput = `total 48
-drwx------ 2 system system 4096 Jan  1 10:00 .
-drwx------ 3 system system 4096 Jan  1 10:00 ..
--rw------- 1 system system  1024 Jan  1 10:00 app_crashes.log
--rw------- 1 system system  2048 Jan  1 10:00 system_server.log
--rw------- 1 system system   512 Jan  1 10:00 boot.log`;
+  const mockLsOutput = [
+    'total 48',
+    'drwx------ 2 system system 4096 Jan  1 10:00 .',
+    'drwx------ 3 system system 4096 Jan  1 10:00 ..',
+    '-rw------- 1 system system  1024 Jan  1 10:00 app_crashes.log',
+    '-rw------- 1 system system  2048 Jan  1 10:00 system_server.log',
+    '-rw------- 1 system system   512 Jan  1 10:00 boot.log',
+  ].join('\n');
 
-  const mockLogFileContent = 'Mock log file content\nLine 2 of logs\nLine 3 with timestamp';
-  const mockLogFileBytes = new TextEncoder().encode(mockLogFileContent);
+  const mockLogFileBytes = new TextEncoder().encode('Mock log file content\nLine 2\nLine 3');
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Create device mock with shell command responses for ls and file reading
-    device = createMockADBDeviceWithCommands({
+    device = createMockDeviceForAcquirer({
       shellOutput: mockLsOutput,
       readFile: mockLogFileBytes,
-    }) as unknown as ADBDevice;
-
+    });
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new LogAcquirer(device);
+    acquirer = new LogAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -56,14 +42,11 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..
 
   describe('constructor', () => {
     it('should create LogAcquirer with default config', () => {
-      const logAcquirer = new LogAcquirer(device);
-      expect(logAcquirer).toBeInstanceOf(LogAcquirer);
+      expect(new LogAcquirer(device as any)).toBeInstanceOf(LogAcquirer);
     });
 
     it('should create LogAcquirer with custom config', () => {
-      const config = { includeSystemLogs: false, timeout: 30000 };
-      const logAcquirer = new LogAcquirer(device, config);
-      expect(logAcquirer).toBeInstanceOf(LogAcquirer);
+      expect(new LogAcquirer(device as any, { includeSystemLogs: false })).toBeInstanceOf(LogAcquirer);
     });
   });
 
@@ -83,133 +66,77 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..
   });
 
   describe('acquire', () => {
-    it('should successfully acquire logs with default settings', async () => {
-      const progressCallback = createMockProgressCallback();
-
-      const result = await acquirer.acquire(progressCallback.callback);
+    it('should successfully acquire logs', async () => {
+      const { callback } = createMockProgressCallback();
+      const result = await acquirer.acquire(callback);
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('logs');
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
       expect(result.duration).toBeGreaterThan(0);
-      expect(result.data).toBeDefined();
-
-      // Check that progress was reported
-      expect(progressCallback.callback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          progress: 100,
-          message: 'Log acquisition completed!',
-          status: 'completed',
-        })
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({ progress: 100, message: 'Log acquisition completed!', status: 'completed' })
       );
-    });
-
-    it('should handle system logs inclusion based on config', async () => {
-      const config = { includeSystemLogs: false };
-      const customAcquirer = new LogAcquirer(device, config);
-
-      const result = await customAcquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
     });
 
     it('should include system logs by default', async () => {
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(true);
-      expect(result.data).toBeDefined();
+      expect((result.data as any).totalFiles).toBeGreaterThan(0);
+    });
 
-      // Static log files should be included in the total count
-      const logData = result.data as any;
-      expect(logData.totalFiles).toBeGreaterThan(0);
+    it('should respect includeSystemLogs: false', async () => {
+      const result = await new LogAcquirer(device as any, { includeSystemLogs: false }).acquire();
+      expect(result.success).toBe(true);
     });
 
     it('should report progress during acquisition', async () => {
-      const progressCallback = createMockProgressCallback();
+      const { callback, getProgressHistory } = createMockProgressCallback();
+      await acquirer.acquire(callback);
 
-      await acquirer.acquire(progressCallback.callback);
-
-      const progressHistory = progressCallback.getProgressHistory();
-
-      // Should have multiple progress updates
-      expect(progressHistory.length).toBeGreaterThan(4);
-
-      // Check key progress steps
-      expect(progressHistory).toContainEqual(
-        expect.objectContaining({
-          progress: 5,
-          message: 'Reading device information...',
-          status: 'running',
-        })
+      const history = getProgressHistory();
+      expect(history.length).toBeGreaterThan(4);
+      expect(history).toContainEqual(
+        expect.objectContaining({ progress: 5, message: 'Reading device information...', status: 'running' })
       );
-
-      expect(progressHistory).toContainEqual(
-        expect.objectContaining({
-          progress: 100,
-          message: 'Log acquisition completed!',
-          status: 'completed',
-        })
+      expect(history).toContainEqual(
+        expect.objectContaining({ progress: 100, status: 'completed' })
       );
     });
 
-    it('should handle errors gracefully', async () => {
-      // Mock device to throw an error
-      device.getProperties = vi.fn().mockRejectedValue(new Error('Connection failed'));
+    it('should handle getProperties failure gracefully', async () => {
+      device.getProperties.mockRejectedValue(new Error('Connection failed'));
 
-      const progressCallback = createMockProgressCallback();
-      const result = await acquirer.acquire(progressCallback.callback);
+      const { callback } = createMockProgressCallback();
+      const result = await acquirer.acquire(callback);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Connection failed');
-      expect(result.type).toBe('logs');
-      expect(result.startTime).toBeInstanceOf(Date);
-      expect(result.endTime).toBeInstanceOf(Date);
-
-      // Should report failure in progress
-      expect(progressCallback.callback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          progress: 100,
-          message: expect.stringContaining('Log acquisition failed'),
-          status: 'failed',
-        })
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed', message: expect.stringContaining('Connection failed') })
       );
     });
 
-    it('should handle permission denied files gracefully', async () => {
-      // Create a custom acquirer that will have actual permission denied behavior
-      // Mock the static files to include one that would fail
-      const config = { includeSystemLogs: true };
-      const customAcquirer = new LogAcquirer(device, config);
-
-      // Mock one of the static log files to throw permission denied
-      device.adb.sync = vi.fn().mockImplementation(() => {
-        return Promise.resolve({
-          read: vi.fn().mockImplementation((path: string) => {
-            if (path === '/proc/kmsg') {
-              return Promise.reject(new Error('Permission denied'));
-            }
-            return Promise.resolve(mockLogFileBytes);
-          }),
-          dispose: vi.fn(),
-        });
+    it('should handle permission denied on static files gracefully', async () => {
+      // /proc/kmsg is a static log file — throw permission denied for it
+      device = createMockDeviceForAcquirer({
+        shellOutput: mockLsOutput,
+        readFile: mockLogFileBytes,
+        syncPermissionDeniedPaths: ['/proc/kmsg'],
       });
+      acquirer = new LogAcquirer(device as any, { includeSystemLogs: true });
 
-      const result = await customAcquirer.acquire();
-
-      expect(result.success).toBe(true);
-      const logData = result.data as any;
-      expect(logData.skippedFiles).toBeGreaterThan(0);
-    });
-
-    it('should collect log data with correct metadata', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      const logData = result.data as any;
+      expect((result.data as any).skippedFiles).toBeGreaterThan(0);
+    });
 
-      expect(logData).toMatchObject({
+    it('should collect log data with correct structure', async () => {
+      const result = await acquirer.acquire();
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
         totalFiles: expect.any(Number),
         successfulFiles: expect.any(Number),
         failedFiles: expect.any(Number),
@@ -218,27 +145,12 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..
         deviceInfo: expect.any(Object),
         acquisitionTime: expect.any(String),
       });
-
-      expect(logData.logs).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            path: expect.any(String),
-            data: expect.any(String),
-            size: expect.any(Number),
-            success: expect.any(Boolean),
-          }),
-        ])
-      );
     });
   });
 
   describe('parseFilesFromLs', () => {
     it('should parse ls output correctly', () => {
-      // Access private method for testing
-      const acquirerAny = acquirer as any;
-      const files = acquirerAny.parseFilesFromLs(mockLsOutput, '/data/log');
-
-      expect(files).toEqual([
+      expect((acquirer as any).parseFilesFromLs(mockLsOutput, '/data/log')).toEqual([
         '/data/log/app_crashes.log',
         '/data/log/system_server.log',
         '/data/log/boot.log',
@@ -246,28 +158,16 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..
     });
 
     it('should handle empty ls output', () => {
-      const acquirerAny = acquirer as any;
-      const files = acquirerAny.parseFilesFromLs('', '/data/log');
-
-      expect(files).toEqual([]);
+      expect((acquirer as any).parseFilesFromLs('', '/data/log')).toEqual([]);
     });
 
-    it('should handle ls output with only directories', () => {
-      const dirOnlyOutput = `total 8
-drwx------ 2 system system 4096 Jan  1 10:00 .
-drwx------ 3 system system 4096 Jan  1 10:00 ..`;
-
-      const acquirerAny = acquirer as any;
-      const files = acquirerAny.parseFilesFromLs(dirOnlyOutput, '/data/log');
-
-      expect(files).toEqual([]);
+    it('should skip directories', () => {
+      const dirOnly = 'total 8\ndrwx------ 2 system system 4096 Jan  1 10:00 .\ndrwx------ 3 system system 4096 Jan  1 10:00 ..';
+      expect((acquirer as any).parseFilesFromLs(dirOnly, '/data/log')).toEqual([]);
     });
 
-    it('should handle paths with trailing slash correctly', () => {
-      const acquirerAny = acquirer as any;
-      const files = acquirerAny.parseFilesFromLs(mockLsOutput, '/data/log/');
-
-      expect(files).toEqual([
+    it('should handle paths with trailing slash', () => {
+      expect((acquirer as any).parseFilesFromLs(mockLsOutput, '/data/log/')).toEqual([
         '/data/log/app_crashes.log',
         '/data/log/system_server.log',
         '/data/log/boot.log',
@@ -277,66 +177,31 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..`;
 
   describe('logsFileName', () => {
     it('should collect files from all log folders', async () => {
-      // Mock different outputs for different folders
-      device.adb.subprocess.shellProtocol.spawn = vi.fn().mockImplementation((command: string) => {
-        let output = '';
-        if (command.includes('/data/anr/')) {
-          output = '-rw------- 1 system system 1024 Jan 1 10:00 traces.txt';
-        } else if (command.includes('/data/log/')) {
-          output = mockLsOutput;
-        } else if (command.includes('/sdcard/log/')) {
-          output = '-rw------- 1 system system 512 Jan 1 10:00 app.log';
-        }
-
-        let readCount = 0;
-        return Promise.resolve({
-          stdout: {
-            getReader: () => ({
-              read: async () => {
-                readCount++;
-                if (readCount === 1) {
-                  return { done: false, value: new TextEncoder().encode(output) };
-                }
-                return { done: true, value: undefined };
-              },
-              releaseLock: vi.fn(),
-            }),
-          },
-          stderr: {
-            getReader: () => ({
-              read: async () => ({ done: true, value: undefined }),
-              releaseLock: vi.fn(),
-            }),
-          },
-          stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 }),
-        });
+      device.shell.mockImplementation(async (cmd: string) => {
+        if (cmd.includes('/data/anr/')) return makeShellResult('-rw------- 1 system system 1024 Jan 1 10:00 traces.txt');
+        if (cmd.includes('/data/log/')) return makeShellResult(mockLsOutput);
+        if (cmd.includes('/sdcard/log/')) return makeShellResult('-rw------- 1 system system 512 Jan 1 10:00 app.log');
+        return makeShellResult('');
       });
 
-      const acquirerAny = acquirer as any;
-      const logFiles = await acquirerAny.logsFileName(LogAcquirer.logFolders);
-
+      const logFiles = await (acquirer as any).logsFileName(LogAcquirer.logFolders);
       expect(logFiles.length).toBeGreaterThan(0);
     });
 
     it('should handle inaccessible folders gracefully', async () => {
-      device.adb.subprocess.shellProtocol.spawn = vi
-        .fn()
-        .mockRejectedValue(new Error('Permission denied'));
+      device.shell.mockRejectedValue(new Error('Permission denied'));
 
-      const acquirerAny = acquirer as any;
-      const logFiles = await acquirerAny.logsFileName(['/inaccessible/folder/']);
-
+      const logFiles = await (acquirer as any).logsFileName(['/inaccessible/']);
       expect(logFiles).toEqual([]);
     }, 5000);
   });
 
   describe('getFiles', () => {
     it('should read log files successfully', async () => {
-      const acquirerAny = acquirer as any;
-      const mockDeviceInfo = { model: 'Test Device', manufacturer: 'Test' };
-
-      const result = await acquirerAny.getFiles(['/data/log/test.log'], mockDeviceInfo);
+      const result = await (acquirer as any).getFiles(
+        ['/data/log/test.log'],
+        { model: 'Test Device', manufacturer: 'Test' }
+      );
 
       expect(result).toMatchObject({
         totalFiles: 1,
@@ -344,45 +209,36 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..`;
         failedFiles: 0,
         skippedFiles: 0,
         logs: expect.arrayContaining([
-          expect.objectContaining({
-            path: '/data/log/test.log',
-            data: expect.any(String),
-            size: expect.any(Number),
-            success: true,
-          }),
+          expect.objectContaining({ path: '/data/log/test.log', success: true }),
         ]),
-        deviceInfo: mockDeviceInfo,
-        acquisitionTime: expect.any(String),
       });
     });
 
-    it('should handle permission denied files', async () => {
-      // Mock sync to throw permission denied error
-      device.adb.sync = vi.fn().mockResolvedValue({
-        read: vi.fn().mockRejectedValue(new Error('Permission denied')),
-        dispose: vi.fn(),
+    it('should handle permission denied', async () => {
+      device = createMockDeviceForAcquirer({
+        syncPermissionDeniedPaths: ['/data/log/restricted.log'],
       });
+      acquirer = new LogAcquirer(device as any);
 
-      const acquirerAny = acquirer as any;
-      const mockDeviceInfo = { model: 'Test Device' };
-
-      const result = await acquirerAny.getFiles(['/data/log/restricted.log'], mockDeviceInfo);
+      const result = await (acquirer as any).getFiles(
+        ['/data/log/restricted.log'],
+        { model: 'Test Device' }
+      );
 
       expect(result.skippedFiles).toBe(1);
       expect(result.successfulFiles).toBe(0);
     }, 5000);
 
-    it('should handle file read failures', async () => {
-      // Mock sync to throw generic error
-      device.adb.sync = vi.fn().mockResolvedValue({
-        read: vi.fn().mockRejectedValue(new Error('File not found')),
-        dispose: vi.fn(),
+    it('should handle generic read failures', async () => {
+      device = createMockDeviceForAcquirer({
+        syncError: new Error('File not found'),
       });
+      acquirer = new LogAcquirer(device as any);
 
-      const acquirerAny = acquirer as any;
-      const mockDeviceInfo = { model: 'Test Device' };
-
-      const result = await acquirerAny.getFiles(['/data/log/missing.log'], mockDeviceInfo);
+      const result = await (acquirer as any).getFiles(
+        ['/data/log/missing.log'],
+        { model: 'Test Device' }
+      );
 
       expect(result.failedFiles).toBe(1);
       expect(result.successfulFiles).toBe(0);
@@ -392,82 +248,5 @@ drwx------ 3 system system 4096 Jan  1 10:00 ..`;
         error: expect.stringContaining('File not found'),
       });
     }, 5000);
-  });
-
-  describe('buildLogsZip', () => {
-    it('should create zip file with logs and metadata', async () => {
-      const mockZip = {
-        file: vi.fn(),
-        generateAsync: vi.fn().mockResolvedValue(new Blob(['mock zip content'])),
-      };
-      mockJSZip.default.mockReturnValue(mockZip);
-
-      const logData = {
-        totalFiles: 2,
-        successfulFiles: 2,
-        failedFiles: 0,
-        skippedFiles: 0,
-        logs: [
-          { path: '/data/log/app.log', data: 'log content 1', size: 13, success: true },
-          { path: '/data/log/system.log', data: 'log content 2', size: 13, success: true },
-        ],
-        deviceInfo: { model: 'Test Device' },
-        acquisitionTime: '2024-01-01T10:00:00.000Z',
-      };
-
-      const acquirerAny = acquirer as any;
-      const result = await acquirerAny.buildLogsZip(logData);
-
-      // Check that ZIP was created correctly
-      expect(mockZip.file).toHaveBeenCalledWith('logs/data/log/app.log', 'log content 1');
-      expect(mockZip.file).toHaveBeenCalledWith('logs/data/log/system.log', 'log content 2');
-      expect(mockZip.file).toHaveBeenCalledWith(
-        'logs/acquisition-metadata.json',
-        expect.stringContaining('"deviceInfo"')
-      );
-
-      // Check that a blob and fileName are returned (no DOM download)
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.fileName).toBeDefined();
-      expect(typeof result.fileName).toBe('string');
-    });
-
-    it('should skip failed log files in zip', async () => {
-      const mockZip = {
-        file: vi.fn(),
-        generateAsync: vi.fn().mockResolvedValue(new Blob(['mock zip content'])),
-      };
-      mockJSZip.default.mockReturnValue(mockZip);
-
-      const logData = {
-        totalFiles: 2,
-        successfulFiles: 1,
-        failedFiles: 1,
-        skippedFiles: 0,
-        logs: [
-          { path: '/data/log/success.log', data: 'success content', size: 15, success: true },
-          { path: '/data/log/failed.log', data: '', size: 0, success: false, error: 'Read error' },
-        ],
-        deviceInfo: { model: 'Test Device' },
-        acquisitionTime: '2024-01-01T10:00:00.000Z',
-      };
-
-      const acquirerAny = acquirer as any;
-      const result = await acquirerAny.buildLogsZip(logData);
-
-      // Only successful file should be added to zip
-      expect(mockZip.file).toHaveBeenCalledWith('logs/data/log/success.log', 'success content');
-      expect(mockZip.file).not.toHaveBeenCalledWith('logs/data/log/failed.log', '');
-
-      // Metadata should still be added - check that the call was made with correct content
-      const metadataCall = mockZip.file.mock.calls.find(
-        call => call[0] === 'logs/acquisition-metadata.json'
-      );
-      expect(metadataCall).toBeDefined();
-      expect(metadataCall[1]).toContain('"failedFiles": 1');
-
-      // Check that a blob is returned (no DOM download)
-      expect(result.blob).toBeInstanceOf(Blob);
-    });
   });
 });

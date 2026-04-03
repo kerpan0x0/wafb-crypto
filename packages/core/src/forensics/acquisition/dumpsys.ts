@@ -1,16 +1,17 @@
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
-import type { ADBDevice } from '../../adb/device';
-import { DumpsysCommand } from '../../adb/commands';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { hashingPassthrough, bytesToStream } from '../../utils/stream-helpers';
+import type { Device } from '../../adb/device';
+import { DumpsysStreamCommand } from '../../commands';
 
-export interface DumpsysConfig extends AcquisitionConfig {}
+export interface DumpsysConfig extends AcquisitionConfig { }
 
 export class DumpsysAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
-    private dumpsysConfig: DumpsysConfig = {}
+    device: Device,
+    protected config: DumpsysConfig = {}
   ) {
-    super(device, dumpsysConfig, 'dumpsys');
+    super(device, config, 'dumpsys');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -39,53 +40,63 @@ export class DumpsysAcquirer extends Acquirer {
         'running'
       );
 
-      const timeout = this.config.timeout ?? 600000;
-      const dumpsysOutput = await new DumpsysCommand(this.device.adb).exec({ timeout });
-
-      this.logger.info('Dumpsys collection completed', {
-        outputSize: dumpsysOutput.length,
-      });
-
-      this.notifyProgress(onProgress, 90, 'Processing dumpsys output...', 'running');
-
-      // Step 3: Convert to blob
-      const textBytes = new TextEncoder().encode(dumpsysOutput);
-      const blob = new Blob([textBytes], { type: 'text/plain' });
       const fileName = this.generateFileName('dumpsys', 'txt');
+      let file: AcquisitionFile;
+
+      if (this.config.computeHash) {
+        // Hash mode: stream through hashingPassthrough so CRC is computed
+        // incrementally — O(1) memory, no buffering of the full output.
+        this.notifyProgress(onProgress, 90, 'Streaming dumpsys output with hash...', 'running');
+
+        const { stream: rawStream } = await new DumpsysStreamCommand(this.device).exec();
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+
+        rawStream.pipeTo(writable).catch(err => {
+          this.logger.error('Dumpsys stream pipe error', err);
+        });
+
+        file = {
+          fileName,
+          fileSize: 0,
+          stream: readable,
+          hashPromise,
+          description: 'Dumpsys output',
+          mimeType: 'text/plain',
+        };
+
+        this.logger.info('Dumpsys stream (with hash) ready, handing off to ZIP writer', { fileName });
+      } else {
+        // Streaming mode (default): pipe stdout directly into the ZIP writer
+        // without buffering in memory.
+        this.notifyProgress(onProgress, 90, 'Streaming dumpsys output into archive...', 'running');
+
+        const { stream: dumpsysStream } = await new DumpsysStreamCommand(this.device).exec();
+
+        file = {
+          fileName,
+          fileSize: 0,
+          stream: dumpsysStream,
+          description: 'Dumpsys output',
+          mimeType: 'text/plain',
+        };
+
+        this.logger.info('Dumpsys stream ready, handing off to ZIP writer', { fileName });
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
       this.notifyProgress(onProgress, 100, 'Dumpsys acquisition completed!', 'completed');
 
-      // Step 4: Build result
-      const result: AcquisitionResult = {
+      return {
         success: true,
-        type: 'dumpsys' as any,
-        fileName,
-        fileSize: textBytes.length,
+        type: 'dumpsys',
+        files: [file],
         startTime,
         endTime,
         duration,
-        data: {
-          deviceInfo,
-          outputSize: dumpsysOutput.length,
-          lines: dumpsysOutput.split('\n').length,
-        },
-        blob,
+        data: {},
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(textBytes);
-      }
-
-      this.logger.info('Dumpsys acquisition completed', {
-        fileName,
-        fileSize: textBytes.length,
-        duration,
-      });
-
-      return result;
     } catch (error) {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -96,7 +107,7 @@ export class DumpsysAcquirer extends Acquirer {
 
       return {
         success: false,
-        type: 'dumpsys' as any,
+        type: 'dumpsys',
         startTime,
         endTime,
         duration,

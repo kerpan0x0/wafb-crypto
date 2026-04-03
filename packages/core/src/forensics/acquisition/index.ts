@@ -5,6 +5,7 @@ import type { DeviceProperties } from '../../adb';
 // ============================================================================
 
 export type AcquisitionType =
+  | 'backup'
   | 'bugreport'
   | 'packages'
   | 'logcat'
@@ -14,7 +15,6 @@ export type AcquisitionType =
   | 'system_info'
   | 'selinux'
   | 'mount'
-  | 'network'
   | 'settings'
   | 'process'
   | 'tmp'
@@ -42,18 +42,25 @@ export interface AcquisitionProgress {
   deviceInfo?: DeviceProperties;
 }
 
+export interface AcquisitionFile {
+  fileName: string;
+  fileSize: number;
+  stream: ReadableStream<Uint8Array>;
+  hash?: string;
+  hashPromise?: Promise<string>;
+  description?: string;
+  mimeType?: string;
+}
+
 export interface AcquisitionResult {
   success: boolean;
   type: AcquisitionType;
-  fileName?: string;
-  fileSize?: number;
-  hash?: string;
   startTime: Date;
   endTime: Date;
   duration: number;
   data?: unknown;
-  blob?: Blob; // Blob data for bundling into ZIP
   error?: string;
+  files?: AcquisitionFile[];
 }
 
 export interface AcquisitionMetadata {
@@ -84,6 +91,17 @@ export interface AcquisitionSession {
 }
 
 export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
+  backup: {
+    id: 'backup',
+    name: 'Full Backup',
+    description: 'Complete backup of the device including apps and data',
+    category: 'system',
+    icon: '💾',
+    minSdkVersion: 14,
+    requiresRoot: false,
+    estimatedDuration: 300,
+    defaultEnabled: true,
+  },
   bugreport: {
     id: 'bugreport',
     name: 'Bugreport',
@@ -150,17 +168,6 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
     minSdkVersion: 14,
     requiresRoot: false,
     estimatedDuration: 30,
-    defaultEnabled: true,
-  },
-  network: {
-    id: 'network',
-    name: 'Network Information',
-    description: 'WiFi configurations, network connections, and ARP cache',
-    category: 'network',
-    icon: '📡',
-    minSdkVersion: 14,
-    requiresRoot: false,
-    estimatedDuration: 5,
     defaultEnabled: true,
   },
   rootBinaries: {
@@ -269,6 +276,7 @@ export const ACQUISITION_TYPES: Record<AcquisitionType, AcquisitionMetadata> = {
 
 // Export Acquirers
 export { Acquirer } from './acquirer';
+export { BackupAcquirer } from './backup';
 export { BugreportAcquirer } from './bugreport';
 export { PackagesAcquirer } from './packages';
 export { LogcatAcquirer } from './logcat';
@@ -282,5 +290,5 @@ export { ProcessAcquirer } from './process';
 export { ServicesAcquirer } from './services';
 export { FileAcquirer } from './files';
 export { LogAcquirer } from './logs';
-export { TmpAcquirer } from './tmpAcquirer';
+export { TmpAcquirer } from './tmp';
 export { DumpsysAcquirer } from './dumpsys';

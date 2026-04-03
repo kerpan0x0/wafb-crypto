@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { ADBConnection, ADBDevice, ACQUISITION_TYPES, Logger } from '@wafb/core';
+import { useState, useEffect, useRef } from 'react';
+import { ADBConnection, Device, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
+import { useTranslation } from 'react-i18next';
 import {
   MountAcquirer,
   EnvAcquirer,
@@ -16,16 +17,61 @@ import {
   LogAcquirer,
   TmpAcquirer,
   DumpsysAcquirer,
+  BackupAcquirer,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
-import type { AcquisitionProgress, AcquisitionType, AcquisitionResult } from '@wafb/core';
-import JSZip from 'jszip';
+import type {
+  AcquisitionProgress,
+  AcquisitionType,
+  AcquisitionResult,
+  AcquisitionFile,
+  AcquisitionConfig,
+  BugreportConfig,
+  LogcatConfig,
+  PackagesConfig,
+  SystemInfoConfig,
+  SELinuxConfig,
+  SettingsConfig,
+  ProcessConfig,
+  ServicesConfig,
+  LogConfig,
+  FileAcquisitionConfig,
+  DumpsysConfig,
+  BackupConfig,
+} from '@wafb/core';
+
+// ============================================================================
+// TYPE DECLARATIONS FOR FILE SYSTEM ACCESS API
+// ============================================================================
+
+declare global {
+  interface Window {
+    showSaveFilePicker?(options?: {
+      suggestedName?: string;
+      types?: Array<{
+        description: string;
+        accept: Record<string, string[]>;
+      }>;
+    }): Promise<FileSystemFileHandle>;
+  }
+
+  interface FileSystemFileHandle {
+    createWritable(): Promise<FileSystemWritableFileStream>;
+  }
+
+  interface FileSystemWritableFileStream extends WritableStream {
+    write(data: BufferSource): Promise<void>;
+    close(): Promise<void>;
+  }
+}
 
 export function AcquisitionPage() {
-  const [device, setDevice] = useState<ADBDevice | null>(null);
+  const [device, setDevice] = useState<Device | null>(null);
+  const { t } = useTranslation();
   const [_connection, setConnection] = useState<ADBConnection | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const {
     acquisitions,
@@ -39,6 +85,7 @@ export function AcquisitionPage() {
     updateProgress,
     completeAcquisition,
     endSession,
+    cancelSession,
     getSelectedAcquisitions,
     getTotalProgress,
     canStartSession,
@@ -83,39 +130,137 @@ export function AcquisitionPage() {
     }
   };
 
+  // Stop an in-progress acquisition session
+  const handleStopAcquisition = () => {
+    abortControllerRef.current?.abort();
+    cancelSession();
+  };
+
   // Start acquisition session
   const handleStartAcquisition = async () => {
     if (!device) return;
+
+    // showSaveFilePicker must be called before any await — Chrome invalidates
+    // the user gesture context as soon as the call stack yields.
+    const now = new Date();
+    const folderName = `wafb-acquisition-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`;
+    let fileHandle: FileSystemFileHandle;
+    try {
+      fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: `${folderName}.zip`,
+        types: [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }],
+      });
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') return;
+      throw error;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     startSession();
     const selected = getSelectedAcquisitions();
     const results: AcquisitionResult[] = [];
 
-    // Execute all acquisitions and collect results
+    // Open the ZIP writer BEFORE running acquisitions so that streams from
+    // long-running acquirers (e.g. backup) are piped to disk immediately
+    // while still live — not deferred until after all acquisitions finish.
+    const writable = await fileHandle.createWritable();
+    const zip = new StreamingZipWriter(writable);
+
     for (const type of selected) {
+      if (controller.signal.aborted) break;
+
       try {
         const result = await executeAcquisition(type, device);
         results.push(result);
+
+        if (controller.signal.aborted) break;
+
+        // Write this acquisition's files into the ZIP immediately.
+        // For stream-based files (backup) this consumes the live ADB stream
+        // before it is closed; for blob-based files it just buffers once.
+        if (result.success && result.files) {
+          for (const file of result.files) {
+            const hashPromise = file.hashPromise;
+            const originalName = file.fileName;
+            const filePath = `${folderName}/${file.fileName}`;
+            updateProgress(type, 50, `Saving ${file.fileName} to disk...`, 'running');
+
+            // Wrap stream with progress tracking before handing to ZIP writer.
+            // addAcquisitionFile handles stream consumption and awaits hashPromise
+            // (if present) to store the resolved hash on file.hash before we write
+            // the manifest.
+            await zip.addAcquisitionFile({
+              ...file,
+              fileName: filePath,
+              stream: trackStreamProgress(file.stream, bytes => {
+                // Pulse progress while streaming — we don't know total size upfront
+                const mb = (bytes / (1024 * 1024)).toFixed(1);
+                updateProgress(type, 70, `Saving ${file.fileName}: ${mb} MB written...`, 'running');
+              }),
+            });
+
+            if (hashPromise) {
+              file.hash = await hashPromise;
+            }
+
+            file.fileName = originalName;
+            updateProgress(type, 100, `${file.fileName} saved.`, 'completed');
+          }
+        }
       } catch (err) {
         console.error(`Failed to execute ${type}:`, err);
       }
     }
 
-    // Create and download ZIP bundle with all acquisitions
-    await createAndDownloadZip(results);
+    // Write manifest last (needs all results)
+    const manifest = createManifest(results);
+    await zip.addFile(
+      `${folderName}/manifest.json`,
+      new TextEncoder().encode(JSON.stringify(manifest, null, 2))
+    );
 
+    // finalize() writes central directory and closes the writable stream
+    await zip.finalize();
+    console.log(`✅ ZIP saved to disk: ${folderName}.zip`);
+
+    abortControllerRef.current = null;
     endSession();
   };
+
+  /**
+   * Wraps a ReadableStream with a byte-counting passthrough so the caller
+   * can track how much data has been written without buffering anything.
+   */
+  function trackStreamProgress(
+    source: ReadableStream<Uint8Array>,
+    onBytes: (totalBytes: number) => void
+  ): ReadableStream<Uint8Array> {
+    let total = 0;
+    return source.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          total += chunk.byteLength;
+          onBytes(total);
+          controller.enqueue(chunk);
+        },
+      })
+    );
+  }
 
   // Execute single acquisition
   const executeAcquisition = async (
     type: AcquisitionType,
-    device: ADBDevice
+    device: Device
   ): Promise<AcquisitionResult> => {
     const acquirerConfig = {
       bugreport: {
         Class: BugreportAcquirer,
-        options: { computeHash: true, cleanupAfter: true },
+        options: {
+          computeHash: true,
+          cleanupAfter: true,
+        } satisfies BugreportConfig,
       },
       logcat: {
         Class: LogcatAcquirer,
@@ -123,27 +268,27 @@ export function AcquisitionPage() {
           buffer: 'all',
           format: 'threadtime',
           computeHash: true,
-        },
+        } satisfies LogcatConfig,
       },
       packages: {
         Class: PackagesAcquirer,
         options: {
           includeSystem: true,
           includeDetails: true,
-          includePermissions: true,
+          downloadApks: true,
           computeHash: true,
-        },
+        } satisfies PackagesConfig,
       },
       system_info: {
         Class: SystemInfoAcquirer,
         options: {
           includeBattery: true,
-          includeNetwork: true,
+          includeNetwork: false,
           includeStorage: true,
           includeMemory: true,
           includeSensors: true,
           computeHash: true,
-        },
+        } satisfies SystemInfoConfig,
       },
       rootBinaries: {
         Class: RootBinariesAcquirer,
@@ -160,7 +305,7 @@ export function AcquisitionPage() {
           includeFileContexts: true,
           includeDenials: true,
           maxDenialLines: 100,
-        },
+        } satisfies SELinuxConfig,
       },
       mount: {
         Class: MountAcquirer,
@@ -169,19 +314,15 @@ export function AcquisitionPage() {
       settings: {
         Class: SettingsAcquirer,
         options: {
-          includeSecure: true,
-          includeSystem: true,
-          includeGlobal: true,
           computeHash: true,
-        },
+        } satisfies SettingsConfig,
       },
       process: {
         Class: ProcessAcquirer,
         options: {
           includeThreads: true,
           includeSELinuxContext: true,
-          includeMemoryInfo: true,
-        },
+        } satisfies ProcessConfig,
       },
       services: {
         Class: ServicesAcquirer,
@@ -189,14 +330,14 @@ export function AcquisitionPage() {
           includeSystemServices: true,
           includeUserServices: true,
           includeServiceDetails: true,
-        },
+        } satisfies ServicesConfig,
       },
       logs: {
         Class: LogAcquirer,
         options: {
           includeSystemLogs: true,
           computeHash: true,
-        },
+        } satisfies LogConfig,
       },
       files: {
         Class: FileAcquirer,
@@ -211,7 +352,7 @@ export function AcquisitionPage() {
           excludeHashPaths: ['/system', '/vendor', '/product', '/apex', '/proc'],
           hashMethod: 'auto',
           timeout: 600000,
-        },
+        } satisfies FileAcquisitionConfig,
       },
       tmp: {
         Class: TmpAcquirer,
@@ -219,7 +360,16 @@ export function AcquisitionPage() {
       },
       dumpsys: {
         Class: DumpsysAcquirer,
-        options: { autoDownload: false },
+        options: {
+          computeHash: true,
+        } satisfies DumpsysConfig,
+      },
+      backup: {
+        Class: BackupAcquirer,
+        options: {
+          type: 'full',
+          computeHash: true,
+        } satisfies BackupConfig,
       },
     };
 
@@ -227,7 +377,7 @@ export function AcquisitionPage() {
 
     if (config) {
       // Istanziamo l'acquirer dinamicamente
-      const acquirer = new config.Class(device, config);
+      const acquirer = new config.Class(device, config.options as AcquisitionConfig);
 
       const result = await acquirer.acquire((progress: AcquisitionProgress) => {
         updateProgress(type, progress.progress, progress.message, progress.status);
@@ -251,51 +401,48 @@ export function AcquisitionPage() {
     }
   };
 
-  // Create and download ZIP bundle
-  const createAndDownloadZip = async (results: AcquisitionResult[]) => {
-    const zip = new JSZip();
-    const sessionFolder = zip.folder(`wafb-acquisition-${new Date().toISOString().split('T')[0]}`);
+  // ============================================================================
+  // ZIP CREATION: STREAMING DIRECTLY TO DISK
+  // ============================================================================
 
-    if (!sessionFolder) {
-      console.error('Failed to create ZIP folder');
-      return;
-    }
-
-    // Add each acquisition result to the ZIP
-    for (const result of results) {
-      if (result.success && result.blob && result.fileName) {
-        sessionFolder.file(result.fileName, result.blob);
-      }
-    }
-
-    // Create manifest file with metadata
-    const manifest = {
+  /**
+   * Create manifest with metadata (no blobs)
+   */
+  function createManifest(results: AcquisitionResult[]) {
+    return {
       acquisitionDate: new Date().toISOString(),
       deviceInfo: deviceInfo,
       acquisitions: results.map(r => ({
         type: r.type,
         success: r.success,
-        fileName: r.fileName,
-        fileSize: r.fileSize,
-        hash: r.hash,
+        files: r.files?.map((f: AcquisitionFile) => ({
+          fileName: f.fileName,
+          fileSize: f.fileSize,
+          description: f.description,
+          mimeType: f.mimeType,
+          hash: f.hash,
+        })),
         duration: r.duration,
         error: r.error,
+        data: r.data,
       })),
+      summary: {
+        totalAcquisitions: results.length,
+        successfulAcquisitions: results.filter(r => r.success).length,
+        failedAcquisitions: results.filter(r => !r.success).length,
+        totalFiles: results.reduce((sum, r) => sum + (r.files?.length || 0), 0),
+        totalSize: results.reduce(
+          (sum, r) =>
+            sum + (r.files?.reduce((s: number, f: AcquisitionFile) => s + f.fileSize, 0) || 0),
+          0
+        ),
+      },
     };
+  }
 
-    sessionFolder.file('manifest.json', JSON.stringify(manifest, null, 2));
-
-    // Generate and download ZIP
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const zipUrl = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = zipUrl;
-    a.download = `wafb-acquisition-${deviceInfo?.model || 'device'}-${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(zipUrl);
-  };
+  // ============================================================================
+  // UI COMPONENT
+  // ============================================================================
 
   return (
     <div className="bg-gray-50 p-8 h-full">
@@ -305,10 +452,8 @@ export function AcquisitionPage() {
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <div className="mb-6">
               <div className="text-6xl mb-4">📱</div>
-              <h2 className="text-2xl font-semibold mb-2">Connect Android Device</h2>
-              <p className="text-gray-600 mb-6">
-                Connect your Android device via USB and enable USB debugging
-              </p>
+              <h2 className="text-2xl font-semibold mb-2">{t('connect.title')}</h2>
+              <p className="text-gray-600 mb-6">{t('connect.subtitle')}</p>
             </div>
 
             {error && (
@@ -322,17 +467,43 @@ export function AcquisitionPage() {
               disabled={isConnecting}
               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold px-8 py-3 rounded-lg transition-colors"
             >
-              {isConnecting ? 'Connecting...' : 'Connect Device'}
+              {isConnecting ? t('connect.buttonConnecting') : t('connect.buttonConnect')}
             </button>
 
             <div className="mt-8 text-left bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-3">Requirements:</h3>
+              <h3 className="font-semibold mb-3">{t('connect.requirements')}</h3>
               <ul className="space-y-2 text-sm text-gray-700">
-                <li>✓ Chrome or Edge browser (WebUSB required)</li>
-                <li>✓ Android device with USB debugging enabled</li>
-                <li>✓ USB cable connected to your computer</li>
-                <li>✓ Desktop ADB server must be stopped (run: adb kill-server)</li>
+                <li>✓ {t('connect.req1')}</li>
+                <li>✓ {t('connect.req2')}</li>
+                <li>✓ {t('connect.req3')}</li>
+                <li>✓ {t('connect.req4')}</li>
               </ul>
+            </div>
+
+            <div className="mt-4 text-left bg-gray-50 rounded-lg p-6">
+              <h3 className="font-semibold mb-3">{t('connect.usbGuideTitle')}</h3>
+              <ol className="space-y-1 text-sm text-gray-700 list-decimal list-inside">
+                <li>
+                  Open <strong>Settings</strong> on your Android device
+                </li>
+                <li>
+                  Go to <strong>About phone</strong> and tap <strong>Build number</strong> 7 times
+                </li>
+                <li>
+                  Go back to <strong>Settings → Developer options</strong>
+                </li>
+                <li>
+                  Enable <strong>USB debugging</strong>
+                </li>
+              </ol>
+              <a
+                href="https://developer.android.com/studio/debug/dev-options"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-3 text-xs text-blue-600 underline hover:text-blue-800"
+              >
+                {t('connect.usbGuideLink')}
+              </a>
             </div>
           </div>
         ) : (
@@ -341,7 +512,7 @@ export function AcquisitionPage() {
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold mb-1">Connected Device</h2>
+                  <h2 className="text-xl font-semibold mb-1">{t('device.title')}</h2>
                   <div className="text-gray-600">
                     <p>
                       {deviceInfo?.manufacturer} {deviceInfo?.model}
@@ -356,7 +527,7 @@ export function AcquisitionPage() {
                   disabled={isSessionActive()}
                   className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                 >
-                  Disconnect
+                  {t('device.disconnect')}
                 </button>
               </div>
             </div>
@@ -364,21 +535,21 @@ export function AcquisitionPage() {
             {/* Acquisition Selection */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold">Select Acquisitions</h2>
+                <h2 className="text-xl font-semibold">{t('acquisition.title')}</h2>
                 <div className="space-x-2">
                   <button
                     onClick={selectAll}
                     disabled={isSessionActive()}
                     className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
                   >
-                    Select All
+                    {t('acquisition.selectAll')}
                   </button>
                   <button
                     onClick={deselectAll}
                     disabled={isSessionActive()}
                     className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 rounded disabled:opacity-50"
                   >
-                    Deselect All
+                    {t('acquisition.deselectAll')}
                   </button>
                 </div>
               </div>
@@ -405,7 +576,7 @@ export function AcquisitionPage() {
                       <input
                         type="checkbox"
                         checked={acq.enabled}
-                        onChange={() => {}}
+                        onChange={() => { }}
                         className="w-5 h-5"
                         disabled={isSessionActive()}
                       />
@@ -415,7 +586,7 @@ export function AcquisitionPage() {
 
                     {acq.metadata.requiresRoot && (
                       <span className="inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                        Requires Root
+                        {t('acquisition.requiresRoot')}
                       </span>
                     )}
 
@@ -428,15 +599,14 @@ export function AcquisitionPage() {
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className={`h-2 rounded-full transition-all ${
-                              acq.status === 'completed'
+                            className={`h-2 rounded-full transition-all ${acq.status === 'completed'
                                 ? 'bg-green-500'
                                 : acq.status === 'failed'
                                   ? 'bg-red-500'
                                   : acq.status === 'running'
                                     ? 'bg-blue-500'
                                     : 'bg-gray-400'
-                            }`}
+                              }`}
                             style={{ width: `${acq.progress}%` }}
                           />
                         </div>
@@ -454,18 +624,28 @@ export function AcquisitionPage() {
                 disabled={!canStartSession()}
                 className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-4 rounded-lg transition-colors text-lg"
               >
-                Start Acquisition ({getSelectedAcquisitions().length} selected)
+                {t('acquisition.startButton', { count: getSelectedAcquisitions().length })}
               </button>
             )}
 
             {/* Session Progress */}
             {session && (
               <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-semibold mb-4">Acquisition Progress</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold">{t('acquisition.progressTitle')}</h2>
+                  {session.status === 'running' && (
+                    <button
+                      onClick={handleStopAcquisition}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                    >
+                      ⏹ {t('acquisition.stopButton')}
+                    </button>
+                  )}
+                </div>
 
                 <div className="mb-4">
                   <div className="flex justify-between text-sm mb-2">
-                    <span>Total Progress</span>
+                    <span>{t('acquisition.totalProgress')}</span>
                     <span className="font-semibold">{getTotalProgress()}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
@@ -482,23 +662,22 @@ export function AcquisitionPage() {
                       <div key={acq.type} className="flex items-center justify-between text-sm">
                         <span>{ACQUISITION_TYPES[acq.type].name}</span>
                         <span
-                          className={`font-semibold ${
-                            acq.status === 'completed'
+                          className={`font-semibold ${acq.status === 'completed'
                               ? 'text-green-600'
                               : acq.status === 'failed'
                                 ? 'text-red-600'
                                 : acq.status === 'running'
                                   ? 'text-blue-600'
                                   : 'text-gray-500'
-                          }`}
+                            }`}
                         >
                           {acq.status === 'completed'
-                            ? '✓ Done'
+                            ? t('acquisition.statusDone')
                             : acq.status === 'failed'
-                              ? '✗ Failed'
+                              ? t('acquisition.statusFailed')
                               : acq.status === 'running'
                                 ? `${acq.progress}%`
-                                : 'Pending'}
+                                : t('acquisition.statusPending')}
                         </span>
                       </div>
                     )
@@ -509,16 +688,16 @@ export function AcquisitionPage() {
                   <div className="mt-6 text-center">
                     <p className="text-lg font-semibold mb-2">
                       {session.status === 'completed'
-                        ? '✓ Acquisition Completed!'
+                        ? t('acquisition.completed')
                         : session.status === 'failed'
-                          ? '✗ Acquisition Failed'
-                          : 'Acquisition Cancelled'}
+                          ? t('acquisition.completedWithErrors')
+                          : t('acquisition.cancelled')}
                     </p>
                     <button
                       onClick={() => window.location.reload()}
                       className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
-                      Start New Acquisition
+                      {t('acquisition.startNew')}
                     </button>
                   </div>
                 )}

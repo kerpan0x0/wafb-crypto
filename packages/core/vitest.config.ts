@@ -8,6 +8,7 @@ export default defineConfig({
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**\/*.test.ts'],
     exclude: ['node_modules', 'dist'],
+    tsconfigPath: './tsconfig.test.json',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],

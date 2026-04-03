@@ -1,6 +1,6 @@
 {
   "name": "@wafb/core",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Core library for wafb - The WebADB Forensics Bridge",
   "keywords": [
     "adb",
@@ -49,10 +49,9 @@
   },
   "dependencies": {
     "@yume-chan/adb": "^2.5.1",
-    "@yume-chan/adb-daemon-webusb": "^2.1.0",
     "@yume-chan/adb-credential-web": "^2.1.0",
-    "@yume-chan/stream-extra": "^2.1.0",
-    "jszip": "^3.10.1"
+    "@yume-chan/adb-daemon-webusb": "^2.1.0",
+    "@yume-chan/stream-extra": "^2.1.0"
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",
@@ -64,6 +63,7 @@
     "@vitest/ui": "^1.0.0",
     "eslint": "^8.55.0",
     "happy-dom": "^12.10.3",
+    "jszip": "^3.10.1",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.7",

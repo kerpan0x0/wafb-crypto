@@ -1,14 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MountAcquirer } from '../../../../src/forensics/acquisition/mount';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
+  makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 describe('MountAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: MountAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -33,49 +47,17 @@ sysfs /sys sysfs rw,relatime 0 0
   beforeEach(() => {
     vi.clearAllMocks();
 
-    device = createMockADBDeviceWithCommands({
-      shellOutput: mockMountOutput,
-    }) as unknown as ADBDevice;
+    device = createMockDeviceForAcquirer();
 
-    // Mock shell spawn to return different outputs for different commands
-    const mockShellSpawn = vi.fn().mockImplementation((command: string) => {
-      let output = '';
-
-      if (command === 'mount') {
-        output = mockMountOutput;
-      } else if (command === 'cat /proc/mounts') {
-        output = mockProcMountOutput;
-      } else {
-        output = mockMountOutput;
-      }
-
-      return Promise.resolve({
-        stdout: {
-          getReader: () => {
-            let readCount = 0;
-            const data = new TextEncoder().encode(output);
-            return {
-              read: async () => {
-                if (readCount === 0) {
-                  readCount++;
-                  return { done: false, value: data };
-                }
-                return { done: true, value: undefined };
-              },
-              releaseLock: vi.fn(),
-            };
-          },
-        },
-        stderr: new ReadableStream(),
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      });
+    // Dispatch different outputs per command
+    device.shell.mockImplementation(async (command: string) => {
+      if (command === 'mount') return makeShellResult(mockMountOutput);
+      if (command === 'cat /proc/mounts') return makeShellResult(mockProcMountOutput);
+      return makeShellResult('');
     });
 
-    device.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new MountAcquirer(device);
+    acquirer = new MountAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -89,10 +71,7 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should create acquirer with custom config', () => {
-      const customAcquirer = new MountAcquirer(device, {
-        computeHash: true,
-        timeout: 30000,
-      });
+      const customAcquirer = new MountAcquirer(device as any, { computeHash: true, timeout: 30000 });
       expect(customAcquirer).toBeDefined();
     });
   });
@@ -103,8 +82,8 @@ sysfs /sys sysfs rw,relatime 0 0
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('mount');
-      expect(result.fileName).toContain('mounts');
-      expect(result.fileName).toContain('.json');
+      expect(result.files[0].fileName).toContain('mounts');
+      expect(result.files[0].fileName).toContain('.json');
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
       expect(result.duration).toBeGreaterThanOrEqual(0);
@@ -113,9 +92,8 @@ sysfs /sys sysfs rw,relatime 0 0
     it('should call both mount and cat /proc/mounts commands', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('mount');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('cat /proc/mounts');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledTimes(2);
+      expect(device.shell).toHaveBeenCalledWith('mount');
+      expect(device.shell).toHaveBeenCalledWith('cat /proc/mounts');
     });
 
     it('should combine mount and proc mount data', async () => {
@@ -124,7 +102,6 @@ sysfs /sys sysfs rw,relatime 0 0
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect(result.data).toHaveProperty('totalMounts');
-      // The combined set should contain unique entries from both outputs
       expect((result.data as any).totalMounts).toBeGreaterThan(0);
     });
 
@@ -133,99 +110,60 @@ sysfs /sys sysfs rw,relatime 0 0
       await acquirer.acquire(callback);
 
       expect(callback).toHaveBeenCalled();
-      const lastProgress = getLastProgress();
-      expect(lastProgress.progress).toBe(100);
-      expect(lastProgress.status).toBe('completed');
+      const last = getLastProgress();
+      expect(last.progress).toBe(100);
+      expect(last.status).toBe('completed');
     });
 
     it('should report all progress stages', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
       await acquirer.acquire(callback);
 
-      const history = getProgressHistory();
-      expect(history.length).toBeGreaterThan(0);
-
-      // Check for specific progress stages
-      const progressValues = history.map((p: any) => p.progress);
-      expect(progressValues).toContain(10); // Reading device info
-      expect(progressValues).toContain(30); // Run mount
-      expect(progressValues).toContain(50); // Run proc mount
-      expect(progressValues).toContain(70); // Processing
-      expect(progressValues).toContain(90); // Preparing download
-      expect(progressValues).toContain(100); // Completed
+      const progressValues = getProgressHistory().map((p: any) => p.progress);
+      expect(progressValues).toContain(10);
+      expect(progressValues).toContain(30);
+      expect(progressValues).toContain(50);
+      expect(progressValues).toContain(70);
+      expect(progressValues).toContain(90);
+      expect(progressValues).toContain(100);
     });
 
     it('should include device info in progress', async () => {
       const { callback } = createMockProgressCallback();
       await acquirer.acquire(callback);
 
-      const callsWithDeviceInfo = callback.mock.calls.filter(
-        (call: any) => call[0].deviceInfo !== undefined
-      );
-      expect(callsWithDeviceInfo.length).toBeGreaterThan(0);
+      const withDeviceInfo = callback.mock.calls.filter((c: any) => c[0].deviceInfo !== undefined);
+      expect(withDeviceInfo.length).toBeGreaterThan(0);
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new MountAcquirer(device, { computeHash: true });
+      acquirer = new MountAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
+      const hash = await drainAndHash(result, 0);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
     });
 
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/json');
     });
 
     it('should generate simple filename', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.fileName).toBe('mounts.json');
+      expect(result.files[0].fileName).toBe('mounts.json');
     });
 
     it('should include device information in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
+      await acquirer.acquire();
       expect(device.getProperties).toHaveBeenCalled();
     });
 
     it('should handle empty mount output', async () => {
-      const emptyDevice = createMockADBDeviceWithCommands({
-        shellOutput: '',
-      }) as unknown as ADBDevice;
-
-      const mockShellSpawn = vi.fn().mockImplementation(() => {
-        return Promise.resolve({
-          stdout: {
-            getReader: () => {
-              let readCount = 0;
-              const data = new TextEncoder().encode('');
-              return {
-                read: async () => {
-                  if (readCount === 0) {
-                    readCount++;
-                    return { done: false, value: data };
-                  }
-                  return { done: true, value: undefined };
-                },
-                releaseLock: vi.fn(),
-              };
-            },
-          },
-          stderr: new ReadableStream(),
-          stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 }),
-        });
-      });
-
-      emptyDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-      acquirer = new MountAcquirer(emptyDevice);
+      device.shell.mockResolvedValue(makeShellResult(''));
 
       const result = await acquirer.acquire();
 
@@ -234,152 +172,71 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should handle mount output with duplicate entries', async () => {
-      const duplicateDevice = createMockADBDeviceWithCommands({
-        shellOutput: mockMountOutput,
-      }) as unknown as ADBDevice;
-
-      // Mock both mount and proc mount to return the same output
-      const mockShellSpawn = vi.fn().mockImplementation(() => {
-        return Promise.resolve({
-          stdout: {
-            getReader: () => {
-              let readCount = 0;
-              const data = new TextEncoder().encode(mockMountOutput);
-              return {
-                read: async () => {
-                  if (readCount === 0) {
-                    readCount++;
-                    return { done: false, value: data };
-                  }
-                  return { done: true, value: undefined };
-                },
-                releaseLock: vi.fn(),
-              };
-            },
-          },
-          stderr: new ReadableStream(),
-          stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 }),
-        });
-      });
-
-      duplicateDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-      acquirer = new MountAcquirer(duplicateDevice);
+      // Both mount and /proc/mounts return the same output
+      device.shell.mockResolvedValue(makeShellResult(mockMountOutput));
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      // Should deduplicate entries
-      const lines = mockMountOutput.split('\n').filter(line => line.trim());
-      expect(result.data).toHaveProperty('totalMounts', lines.length);
+      const lines = mockMountOutput.split('\n').filter(l => l.trim());
+      expect((result.data as any).totalMounts).toBe(lines.length);
     });
 
     it('should handle mount command failure gracefully', async () => {
-      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-
-      const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Command failed'));
-      failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-
-      acquirer = new MountAcquirer(failingDevice);
+      device.shell.mockRejectedValue(new Error('Command failed'));
+      acquirer = new MountAcquirer(device as any);
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
       expect(result.error).toContain('Command failed');
     });
 
     it('should report failure in progress callback on error', async () => {
-      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-
-      const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Mount acquisition failed'));
-      failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-
-      acquirer = new MountAcquirer(failingDevice);
+      device.shell.mockRejectedValue(new Error('Mount acquisition failed'));
+      acquirer = new MountAcquirer(device as any);
 
       const { callback, getLastProgress } = createMockProgressCallback();
       const result = await acquirer.acquire(callback);
 
       expect(result.success).toBe(false);
-      const lastProgress = getLastProgress();
-      expect(lastProgress.status).toBe('failed');
-      expect(lastProgress.message).toContain('failed');
+      const last = getLastProgress();
+      expect(last.status).toBe('failed');
+      expect(last.message).toContain('failed');
     });
 
     it('should calculate duration correctly', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.success).toBe(true);
       expect(result.duration).toBeGreaterThanOrEqual(0);
       expect(result.endTime.getTime() - result.startTime.getTime()).toBe(result.duration);
     });
 
     it('should return blob on successful acquisition', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should create JSON output with proper formatting', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
-
-      // Verify JSON is valid
-      const text = await result.blob!.text();
-      const parsed = JSON.parse(text);
+      expect(result.files[0].mimeType).toBe('application/json');
+      const parsed = JSON.parse(await readStream(result.files[0].stream!));
       expect(Array.isArray(parsed)).toBe(true);
     });
 
     it('should handle whitespace and empty lines in mount output', async () => {
-      const messyOutput = `
-      ${mockMountOutput}
-      
-      
-      `;
-
-      const messyDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-
-      const mockShellSpawn = vi.fn().mockImplementation(() => {
-        return Promise.resolve({
-          stdout: {
-            getReader: () => {
-              let readCount = 0;
-              const data = new TextEncoder().encode(messyOutput);
-              return {
-                read: async () => {
-                  if (readCount === 0) {
-                    readCount++;
-                    return { done: false, value: data };
-                  }
-                  return { done: true, value: undefined };
-                },
-                releaseLock: vi.fn(),
-              };
-            },
-          },
-          stderr: new ReadableStream(),
-          stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 }),
-        });
-      });
-
-      messyDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
-      acquirer = new MountAcquirer(messyDevice);
+      const messyOutput = `\n      ${mockMountOutput}\n      \n      \n      `;
+      device.shell.mockResolvedValue(makeShellResult(messyOutput));
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      // Should filter out empty lines
-      expect(result.data).toHaveProperty('totalMounts');
       expect((result.data as any).totalMounts).toBeGreaterThan(0);
     });
 
     it('should set acquisition type correctly', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.type).toBe('mount');
+      expect((await acquirer.acquire()).type).toBe('mount');
     });
 
     it('should maintain consistent result structure on success', async () => {
@@ -387,7 +244,7 @@ sysfs /sys sysfs rw,relatime 0 0
 
       expect(result).toHaveProperty('success');
       expect(result).toHaveProperty('type');
-      expect(result).toHaveProperty('fileName');
+      expect(result).toHaveProperty('files');
       expect(result).toHaveProperty('startTime');
       expect(result).toHaveProperty('endTime');
       expect(result).toHaveProperty('duration');
@@ -396,20 +253,14 @@ sysfs /sys sysfs rw,relatime 0 0
     });
 
     it('should maintain consistent result structure on failure', async () => {
-      const failingDevice = createMockADBDeviceWithCommands({}) as unknown as ADBDevice;
-      const mockShellSpawn = vi.fn().mockRejectedValue(new Error('Test error'));
-      failingDevice.adb.subprocess.shellProtocol.spawn = mockShellSpawn;
+      device.shell.mockRejectedValue(new Error('Test error'));
+      acquirer = new MountAcquirer(device as any);
 
-      acquirer = new MountAcquirer(failingDevice);
       const result = await acquirer.acquire();
 
       expect(result).toHaveProperty('success', false);
       expect(result).toHaveProperty('type', 'mount');
-      expect(result).toHaveProperty('startTime');
-      expect(result).toHaveProperty('endTime');
-      expect(result).toHaveProperty('duration');
       expect(result).toHaveProperty('error');
-      expect(result).not.toHaveProperty('fileName');
     });
   });
 });

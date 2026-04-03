@@ -1,0 +1,68 @@
+{
+  "app": {
+    "fullName": "WebADB Forensics Bridge",
+    "license": "GPL-3.0"
+  },
+  "footer": {
+    "sourceCode": "Source Code",
+    "license": "{{license}} License"
+  },
+  "tabs": {
+    "wizard": "Guided Wizard",
+    "standard": "Standard"
+  },
+  "connect": {
+    "title": "Connect Android Device",
+    "subtitle": "Connect your Android device via USB and enable USB debugging.",
+    "subtitleWizard": "The wizard will automatically run a full default acquisition — no configuration required.",
+    "buttonConnect": "Connect Device",
+    "buttonConnecting": "Connecting…",
+    "requirements": "Requirements:",
+    "req1": "Chrome or Edge browser (WebUSB required)",
+    "req2": "Android device with USB debugging enabled",
+    "req3": "USB cable connected to your computer",
+    "req4": "Desktop ADB server must be stopped (run: adb kill-server)",
+    "usbGuideTitle": "How to enable USB debugging:",
+    "usbStep1": "Open <bold>Settings</bold> on your Android device",
+    "usbStep2": "Go to <bold>About phone</bold> and tap <bold>Build number</bold> 7 times",
+    "usbStep3": "Go back to <bold>Settings → Developer options</bold>",
+    "usbStep4": "Enable <bold>USB debugging</bold>",
+    "usbGuideLink": "Official Android guide →"
+  },
+  "device": {
+    "title": "Connected Device",
+    "disconnect": "Disconnect"
+  },
+  "acquisition": {
+    "title": "Select Acquisitions",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "requiresRoot": "Requires Root",
+    "startButton": "Start Acquisition ({{count}} selected)",
+    "progressTitle": "Acquisition Progress",
+    "totalProgress": "Total Progress",
+    "statusDone": "✓ Done",
+    "statusFailed": "✗ Failed",
+    "statusSkipped": "Skipped",
+    "statusPending": "Pending",
+    "keepConnected": "Acquisition in progress — please keep the device connected…",
+    "completedWithErrors": "Acquisition Completed with Errors",
+    "completed": "Acquisition Complete!",
+    "cancelled": "Acquisition Cancelled",
+    "zipDownloaded": "The ZIP archive has been downloaded to your device.",
+    "colAcquisition": "Acquisition",
+    "colStatus": "Status",
+    "colSize": "Size",
+    "colDuration": "Duration",
+    "statusSuccess": "✓ Success",
+    "startNew": "Start New Acquisition",
+    "stopButton": "Stop Acquisition",
+    "tabDisabledDuringAcquisition": "Cannot switch tabs during an active acquisition",
+    "langDisabledDuringAcquisition": "Cannot change language during an active acquisition"
+  },
+  "steps": {
+    "connect": "Connect Device",
+    "acquiring": "Acquiring Data",
+    "done": "Complete"
+  }
+}

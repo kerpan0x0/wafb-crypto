@@ -3,7 +3,7 @@
 // ============================================================================
 
 export { ADBConnection } from './adb/connection';
-export { ADBDevice } from './adb';
+export { Device } from './adb';
 
 // Export all ADB types from single source
 export type {
@@ -26,9 +26,13 @@ export type {
   AcquisitionResult,
   AcquisitionMetadata,
   AcquisitionSession,
+  AcquisitionFile,
 } from './forensics/acquisition';
 
 export { ACQUISITION_TYPES, Acquirer } from './forensics/acquisition';
+
+export { BackupAcquirer } from './forensics/acquisition/backup';
+export type { BackupConfig } from './forensics/acquisition/backup';
 
 export { SettingsAcquirer } from './forensics/acquisition/settings';
 export type { SettingsConfig } from './forensics/acquisition/settings';
@@ -74,8 +78,8 @@ export type { ServicesConfig } from './forensics/acquisition/services';
 export { FileAcquirer } from './forensics/acquisition/files';
 export type { FileAcquisitionConfig } from './forensics/acquisition/files';
 
-export { TmpAcquirer } from './forensics/acquisition/tmpAcquirer';
-export type { TmpAcquirerConfig } from './forensics/acquisition/tmpAcquirer';
+export { TmpAcquirer } from './forensics/acquisition/tmp';
+export type { TmpAcquirerConfig } from './forensics/acquisition/tmp';
 
 export { DumpsysAcquirer } from './forensics/acquisition/dumpsys';
 export type { DumpsysConfig } from './forensics/acquisition/dumpsys';
@@ -100,6 +104,8 @@ export {
   concatUint8Arrays,
   retry,
 } from './utils/stream-helpers';
+
+export { StreamingZipWriter } from './utils/streaming-zip'
 
 // ============================================================================
 // Re-exports from @yume-chan/adb for convenience

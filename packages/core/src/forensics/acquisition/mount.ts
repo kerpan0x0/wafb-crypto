@@ -1,10 +1,11 @@
-import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
-import { ADBDevice } from '../../adb';
-import { MountCommand, ProcMountCommand } from '../../adb/commands';
+import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { Device } from '../../adb';
+import { MountCommand, ProcMountCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export class MountAcquirer extends Acquirer {
-  constructor(device: ADBDevice, acquisitionConfig: AcquisitionConfig = {}) {
-    super(device, acquisitionConfig, 'mount');
+  constructor(device: Device, config: AcquisitionConfig = {}) {
+    super(device, config, 'mount');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -26,14 +27,14 @@ export class MountAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 30, 'Run Mount command.', 'running');
 
-      const mountOutput = await new MountCommand(this.device.adb).exec();
+      const mountOutput = await new MountCommand(this.device).exec();
       const mountData = mountOutput
         .split('\n')
         .map(line => line.trim())
         .filter(line => line !== '');
 
       this.notifyProgress(onProgress, 50, 'Run ProcMount command.', 'running');
-      const procMountOutput = await new ProcMountCommand(this.device.adb).exec();
+      const procMountOutput = await new ProcMountCommand(this.device).exec();
       const procMountData = procMountOutput
         .split('\n')
         .map(line => line.trim())
@@ -47,9 +48,18 @@ export class MountAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 90, 'Preparing download.', 'running');
 
-      const blob = new Blob([mountJson], { type: 'application/json' });
+      const blobBytes = new TextEncoder().encode(mountJson);
 
       const fileName = this.generateFileName('mounts', 'json');
+
+      let file: AcquisitionFile;
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(blobBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: blobBytes.length, stream: readable, hashPromise, description: 'Mount points information', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: blobBytes.length, stream: bytesToStream(blobBytes), description: 'Mount points information', mimeType: 'application/json' };
+      }
 
       this.notifyProgress(
         onProgress,
@@ -62,20 +72,14 @@ export class MountAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: this.acquisitionType,
-        fileName,
+        files: [file],
         startTime,
         endTime,
         duration: endTime.getTime() - startTime.getTime(),
         data: {
           totalMounts: combinedMounts.length,
         },
-        blob,
       };
-
-      // Compute hash if requested
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(new TextEncoder().encode(mountJson));
-      }
 
       return result;
     } catch (error) {

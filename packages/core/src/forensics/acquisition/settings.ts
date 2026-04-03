@@ -1,12 +1,13 @@
-import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
-import { ADBDevice } from '../..';
-import { CmdCommand } from '../../adb/commands';
+import { Acquirer, AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { Device } from '../../adb';
+import { CmdCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
-export interface SettingsConfig extends AcquisitionConfig {}
+export interface SettingsConfig extends AcquisitionConfig { }
 
 export class SettingsAcquirer extends Acquirer {
-  constructor(device: ADBDevice, settingsConfig: SettingsConfig = {}) {
-    super(device, settingsConfig, 'settings');
+  constructor(device: Device, config: SettingsConfig = {}) {
+    super(device, config, 'settings');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -36,9 +37,14 @@ export class SettingsAcquirer extends Acquirer {
       for (const ns of namespaces) {
         this.logger.info(`Acquiring settings for namespace: ${ns}`);
 
-        const output = await new CmdCommand(this.device.adb).exec({ namespace: `${ns}` });
+        let output = '';
+        try {
+          output = await new CmdCommand(this.device).exec({ namespace: `${ns}` });
+          this.logger.debug(`Settings data for namespace ${ns}: ${output}`);
+        } catch (error) {
+          this.logger.warn(`Failed to acquire settings for namespace: ${ns}`, error);
+        }
 
-        this.logger.debug(`Settings data for namespace ${ns}: ${output}`);
         settingsData.push({ namespace: ns, data: output });
 
         this.notifyProgress(
@@ -61,15 +67,15 @@ export class SettingsAcquirer extends Acquirer {
       const jsonData = JSON.stringify(combinedData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('settings', 'json');
 
-      // Step 4: Compute hash if required
-      let hash: string | undefined;
+      let file: AcquisitionFile;
       if (this.config.computeHash) {
-        this.notifyProgress(onProgress, 90, 'Computing hash...', 'running');
-        hash = await this.computeHash(jsonBytes);
-        this.logger.info(`Computed SHA-256 hash for settings: ${hash}`);
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'System settings database', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'System settings database', mimeType: 'application/json' };
       }
 
       // Step 5: Complete acquisition
@@ -83,14 +89,11 @@ export class SettingsAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'settings',
-        fileName,
-        fileSize: jsonBytes.length,
-        hash,
+        files: [file],
         startTime,
         endTime,
         duration,
         data: settingsData,
-        blob,
       };
 
       return result;

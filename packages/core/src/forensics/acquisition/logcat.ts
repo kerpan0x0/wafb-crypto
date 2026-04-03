@@ -1,7 +1,8 @@
-import { GetLogcatCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+import { GetLogcatCommand } from '../../commands';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface LogcatConfig extends AcquisitionConfig {
   buffer?: 'main' | 'system' | 'radio' | 'events' | 'crash' | 'all';
@@ -34,10 +35,10 @@ export interface LogcatData {
 
 export class LogcatAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
-    private logcatConfig: LogcatConfig = {}
+    device: Device,
+    protected config: LogcatConfig = {}
   ) {
-    super(device, logcatConfig, 'logcat');
+    super(device, config, 'logcat');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -67,11 +68,11 @@ export class LogcatAcquirer extends Acquirer {
         'running'
       );
 
-      const logOutput = await new GetLogcatCommand(this.device.adb).exec({
-        buffer: this.logcatConfig.buffer,
-        maxLines: this.logcatConfig.maxLines,
-        filter: this.logcatConfig.filter,
-        dump: this.logcatConfig.dumpMode !== false, // default true
+      const logOutput = await new GetLogcatCommand(this.device).exec({
+        buffer: this.config.buffer,
+        maxLines: this.config.maxLines,
+        filter: this.config.filter,
+        dump: this.config.dumpMode !== false, // default true
       });
 
       this.notifyProgress(onProgress, 70, 'Processing log data...', 'running');
@@ -88,8 +89,8 @@ export class LogcatAcquirer extends Acquirer {
 
       const logcatData: LogcatData = {
         stats,
-        buffer: this.logcatConfig.buffer || 'all',
-        format: this.logcatConfig.format || 'threadtime',
+        buffer: this.config.buffer || 'all',
+        format: this.config.format || 'threadtime',
         deviceInfo,
         acquisitionTime: new Date().toISOString(),
       };
@@ -98,8 +99,16 @@ export class LogcatAcquirer extends Acquirer {
       const combinedOutput = this.formatOutput(logcatData, logOutput);
       const logBytes = new TextEncoder().encode(combinedOutput);
 
-      const blob = new Blob([logBytes], { type: 'text/plain' });
       const fileName = this.generateFileName('logcat', 'txt');
+
+      let file: AcquisitionFile;
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(logBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: logBytes.length, stream: readable, hashPromise, description: 'System logs (logcat)', mimeType: 'text/plain' };
+      } else {
+        file = { fileName: fileName, fileSize: logBytes.length, stream: bytesToStream(logBytes), description: 'System logs (logcat)', mimeType: 'text/plain' };
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -110,8 +119,7 @@ export class LogcatAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'logcat',
-        fileName,
-        fileSize: logBytes.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -119,16 +127,9 @@ export class LogcatAcquirer extends Acquirer {
           totalLines: stats.totalLines,
           errorCount: stats.errorCount,
           warningCount: stats.warningCount,
-          buffer: this.logcatConfig.buffer || 'all',
-          deviceInfo,
+          buffer: this.config.buffer || 'all',
         },
-        blob,
       };
-
-      // Compute hash if requested
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(logBytes);
-      }
 
       this.logger.info('Logcat acquisition completed', {
         fileName,

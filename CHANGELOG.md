@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-04-03
+
+### 🚀 Added
+
+#### Guided Acquisition Flow (Wizzard)
+- **Step‑by‑step wizard** – new `WizzardAcquisitionPage` that guides users through acquisition type selection, configuration, and execution (#49)
+- **Internationalization (i18n)** – full English and Italian translations using `i18next`; language switcher in the header (#49)
+- **Persistent navigation** – redesigned header and footer to support the wizard and standard acquisition page (#49)
+
+#### Streaming & Hashing Infrastructure
+- **Zero‑copy streaming ZIP writer** – `StreamingZipWriter` writes directly to the File System Access API, consuming streams without buffering in memory (#48)
+- **Incremental hashing** – `hashingPassthrough` transform stream computes SHA‑256 (or SHA‑1/SHA‑512) on the fly, O(1) memory usage (#48)
+- **Unified `AcquisitionFile`** – `stream` is now mandatory; `blob` field removed entirely. `hashPromise` optional for deferred hash resolution (#48)
+
+### 🔧 Changed
+
+#### Acquirers
+- **All acquirers migrated to streaming** – no more `Blob` outputs; JSON, text and binary data are wrapped with `bytesToStream` or passed as raw ADB streams (#48)
+- **`computeHash` now uses `hashingPassthrough`** – hash is computed incrementally during ZIP writing, eliminating double memory usage (#48)
+- **Removed redundant `deviceInfo` from `result.data`** – device information is already stored at the session level in the frontend (#48)
+
+#### ZIP Creation
+- **Direct‑to‑disk streaming** – when the File System Access API is available, the ZIP archive is written chunk by chunk without creating a full `Blob` in memory (#48)
+- **Improved timestamp in ZIP filename** – now includes hours, minutes and seconds (e.g. `wafb-acquisition-2026-04-03T14-30-45.zip`) to avoid collisions (#48)
+
+#### Testing & Dependencies
+- **`jszip` moved to `devDependencies`** – only used in tests to verify ZIP validity; removed from production bundle and from `web` package (#48)
+- **New test helpers** – `readStream`, `drainAndHash`, `parseBlob` (stream‑aware) simplify testing of streaming acquirers (#48)
+- **Full test suite updated** – all acquirer tests now use `stream` instead of `blob` and await `hashPromise` where needed (#48)
+
+### 🐛 Fixed
+
+- **Hash missing from manifest** – `AcquisitionPage` now explicitly awaits `hashPromise` and assigns `file.hash` before writing the manifest (#48)
+- **Memory blow on large backups** – backup stream is piped directly to ZIP writer; hashing is incremental, no intermediate buffer (#48)
+- **Idle timeout handling** – `ShellCommand.spawn()` already wraps streams with idle timeout (5s default) to prevent hanging on devices that never send EOF (already present in 0.2.0, but now fully integrated with streaming)
+
+### 📚 Documentation
+
+- Updated README with new wizard flow and i18n features
+- Added inline JSDoc comments for `hashingPassthrough`, `bytesToStream`, and `StreamingZipWriter`
+
+---
+
 ## [0.2.0] - 2026-02-12
 
 ### 🚀 Added

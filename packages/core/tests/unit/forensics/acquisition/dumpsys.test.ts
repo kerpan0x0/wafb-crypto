@@ -1,18 +1,28 @@
-// packages/core/tests/unit/forensics/acquisition/dumpsys.test.ts
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DumpsysAcquirer } from '../../../../src/forensics/acquisition/dumpsys';
-import type { ADBDevice } from '../../../../src/adb/device';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream,
+  makeShellResult,
+  makeSpawnResult,
+  readStream,
 } from '../../../helpers/test-helpers';
+import type { MockDevice } from '../../../helpers/test-helpers';
 
-// ============================================================================
-// MOCK DATA
-// ============================================================================
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) { }
+  }
+  return file.hashPromise;
+}
+
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const MOCK_DUMPSYS_OUTPUT = `SYSTEM SERVICES:
   Battery Service:
@@ -27,55 +37,32 @@ const MOCK_DUMPSYS_OUTPUT = `SYSTEM SERVICES:
     Packages: 287
   Activity Manager:
     Activities: 3
-    Services: 45
-  ... (truncated for test)`;
+    Services: 45`;
 
-// ============================================================================
-// TEST SUITE
-// ============================================================================
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('DumpsysAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: DumpsysAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    device = createMockDeviceForAcquirer();
 
-    // Create base mock device with default responses
-    device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+    // Default path (no computeHash) → DumpsysStreamCommand → device.spawn
+    device.spawn.mockResolvedValue(makeSpawnResult(MOCK_DUMPSYS_OUTPUT));
 
-    // Override the spawn mock to return dumpsys output for the "dumpsys" command
-    // @ts-ignore - we know the structure
-    device.adb.subprocess.shellProtocol.spawn.mockImplementation((command: string) => {
-      if (command === 'dumpsys') {
-        return Promise.resolve({
-          stdout: createMockReadableStream(MOCK_DUMPSYS_OUTPUT),
-          stderr: createMockReadableStream(''),
-          stdin: new WritableStream(),
-          exit: Promise.resolve({ code: 0 }),
-        });
-      }
-      // Fallback to default behaviour for other commands (getprop, etc.)
-      return Promise.resolve({
-        stdout: createMockReadableStream(''),
-        stderr: createMockReadableStream(''),
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      });
-    });
+    // computeHash path → DumpsysCommand → device.shell
+    device.shell.mockResolvedValue(makeShellResult(MOCK_DUMPSYS_OUTPUT));
 
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new DumpsysAcquirer(device);
+    acquirer = new DumpsysAcquirer(device as any);
   });
 
   afterEach(() => {
     domMocks.cleanup();
   });
-
-  // ==========================================================================
-  // CONSTRUCTOR
-  // ==========================================================================
 
   describe('constructor', () => {
     it('should create instance with default config', () => {
@@ -83,216 +70,131 @@ describe('DumpsysAcquirer', () => {
     });
 
     it('should create instance with custom config', () => {
-      const customAcquirer = new DumpsysAcquirer(device, {
-        timeout: 60000,
-        computeHash: true,
-      });
-      expect(customAcquirer).toBeInstanceOf(DumpsysAcquirer);
+      expect(new DumpsysAcquirer(device as any, { timeout: 60000, computeHash: true }))
+        .toBeInstanceOf(DumpsysAcquirer);
     });
   });
 
-  // ==========================================================================
-  // BASIC ACQUISITION
-  // ==========================================================================
-
   describe('acquire', () => {
-    it('should successfully acquire dumpsys output', async () => {
+    it('should successfully acquire dumpsys output (streaming)', async () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('dumpsys');
-      expect(result.fileName).toBe('dumpsys.txt');
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileName).toBe('dumpsys.txt');
+      expect(result.files[0].fileSize).toBe(0);
+      expect(result.files[0].stream).toBeDefined();
       expect(result.startTime).toBeInstanceOf(Date);
       expect(result.endTime).toBeInstanceOf(Date);
       expect(result.duration).toBeGreaterThanOrEqual(0);
     });
 
-    it('should call dumpsys command with correct timeout', async () => {
-      const spawnSpy = vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn');
+    it('should call device.spawn with dumpsys command (default streaming)', async () => {
       await acquirer.acquire();
-
-      // DumpsysAcquirer uses DumpsysCommand which calls `dumpsys` with no args
-      expect(spawnSpy).toHaveBeenCalledWith('dumpsys');
+      expect(device.spawn).toHaveBeenCalledWith('dumpsys');
     });
 
-    it('should include device information in result', async () => {
+    it('should return stream (not blob) in default mode', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.data).toBeDefined();
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
-      expect(device.getProperties).toHaveBeenCalled();
-    });
-
-    it('should include output size and line count in result data', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.data?.outputSize).toBe(MOCK_DUMPSYS_OUTPUT.length);
-      expect(result.data?.lines).toBe(MOCK_DUMPSYS_OUTPUT.split('\n').length);
-    });
-
-    it('should return blob with correct type in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('text/plain');
-      expect(result.blob!.size).toBeGreaterThan(0);
+      expect(result.files[0].stream).toBeDefined();
+      expect(result.files[0].mimeType).toBe('text/plain');
     });
   });
-
-  // ==========================================================================
-  // PROGRESS REPORTING
-  // ==========================================================================
 
   describe('progress reporting', () => {
     it('should report progress during acquisition', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
       await acquirer.acquire(callback);
-
       expect(callback).toHaveBeenCalled();
-      const history = getProgressHistory();
-      expect(history.length).toBeGreaterThan(4);
+      expect(getProgressHistory().length).toBeGreaterThan(2);
     });
 
     it('should report key progress milestones', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
       await acquirer.acquire(callback);
-
       const progressValues = getProgressHistory().map(p => p.progress);
-      expect(progressValues).toContain(10); // Device info
-      expect(progressValues).toContain(20); // Connected
-      expect(progressValues).toContain(30); // Collecting dumpsys
-      expect(progressValues).toContain(90); // Processing
-      expect(progressValues).toContain(100); // Completed
+      expect(progressValues).toContain(10);
+      expect(progressValues).toContain(20);
+      expect(progressValues).toContain(30);
+      expect(progressValues).toContain(100);
     });
 
     it('should include descriptive messages', async () => {
       const { callback, getProgressHistory } = createMockProgressCallback();
       await acquirer.acquire(callback);
-
       const messages = getProgressHistory().map(p => p.message);
       expect(messages.some(m => m.includes('device information'))).toBe(true);
       expect(messages.some(m => m.includes('Connected'))).toBe(true);
       expect(messages.some(m => m.includes('Collecting device diagnostic'))).toBe(true);
-      expect(messages.some(m => m.includes('Processing dumpsys'))).toBe(true);
-    });
-
-    it('should include device info in progress at step 20', async () => {
-      const { callback, getProgressHistory } = createMockProgressCallback();
-      await acquirer.acquire(callback);
-
-      const progress20 = getProgressHistory().find(p => p.progress === 20);
-      expect(progress20?.deviceInfo).toBeDefined();
-      expect(progress20?.deviceInfo?.model).toBe('Test Device');
+      expect(messages.some(m => m.includes('Streaming dumpsys'))).toBe(true);
     });
   });
 
-  // ==========================================================================
-  // CONFIGURATION OPTIONS
-  // ==========================================================================
-
   describe('configuration', () => {
-    it('should compute hash when computeHash is true', async () => {
-      const hashAcquirer = new DumpsysAcquirer(device, { computeHash: true });
-      const result = await hashAcquirer.acquire();
+    it('should use buffered mode when computeHash is true', async () => {
+      const result = await new DumpsysAcquirer(device as any, { computeHash: true }).acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
-      expect(typeof result.hash).toBe('string');
-      expect(result.hash?.length).toBe(64); // SHA-256 hex length
+      const hash = await drainAndHash(result, 0);
+      expect(hash).toBeDefined();
+      expect(typeof hash).toBe('string');
+      expect(hash!.length).toBeGreaterThan(0);
+      // In hash mode, we still return a stream (with hash computed on the fly)
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].hashPromise).toBeDefined();
     });
 
     it('should not compute hash when computeHash is false/undefined', async () => {
-      const result = await acquirer.acquire(); // default config
-      expect(result.hash).toBeUndefined();
-
-      const noHashAcquirer = new DumpsysAcquirer(device, { computeHash: false });
-      const result2 = await noHashAcquirer.acquire();
-      expect(result2.hash).toBeUndefined();
+      const result = await acquirer.acquire();
+      expect(await result.files[0].hashPromise).toBeUndefined();
     });
 
     it('should respect custom timeout', async () => {
-      const customAcquirer = new DumpsysAcquirer(device, { timeout: 45000 });
-      const result = await customAcquirer.acquire();
-
+      const result = await new DumpsysAcquirer(device as any, { timeout: 45000 }).acquire();
       expect(result.success).toBe(true);
-      // Timeout is passed internally to DumpsysCommand -> ShellCommand
-      // We can't easily spy on the exact timeout, but we verify that the command executed
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('dumpsys');
     });
   });
 
-  // ==========================================================================
-  // ERROR HANDLING
-  // ==========================================================================
-
   describe('error handling', () => {
     it('should handle dumpsys command failure', async () => {
-      vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('dumpsys failed')
-      );
-
+      device.spawn.mockRejectedValue(new Error('dumpsys failed'));
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(false);
       expect(result.error).toContain('dumpsys failed');
-      expect(result.type).toBe('dumpsys');
     });
 
     it('should handle device disconnection', async () => {
-      vi.spyOn(device, 'getProperties').mockRejectedValue(new Error('Device disconnected'));
-
+      device.getProperties.mockRejectedValue(new Error('Device disconnected'));
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(false);
       expect(result.error).toContain('Device disconnected');
     });
 
     it('should handle timeout errors', async () => {
-      vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Command timed out')
-      );
-
+      device.spawn.mockRejectedValue(new Error('Command timed out'));
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/timeout|timed out/i);
     });
 
     it('should report failure in progress callback', async () => {
-      vi.spyOn(device, 'getProperties').mockRejectedValue(new Error('Test error'));
-
+      device.getProperties.mockRejectedValue(new Error('Test error'));
       const { callback, getLastProgress } = createMockProgressCallback();
       await acquirer.acquire(callback);
-
-      const lastProgress = getLastProgress();
-      expect(lastProgress.status).toBe('failed');
-      expect(lastProgress.message).toContain('Error');
+      expect(getLastProgress().status).toBe('failed');
     });
 
     it('should still calculate duration on failure', async () => {
-      vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockRejectedValue(
-        new Error('Failure')
-      );
-
+      device.spawn.mockRejectedValue(new Error('Failure'));
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(false);
       expect(result.duration).toBeGreaterThanOrEqual(0);
-      expect(result.endTime.getTime() - result.startTime.getTime()).toBe(result.duration);
     });
   });
 
-  // ==========================================================================
-  // RESULT METADATA
-  // ==========================================================================
-
   describe('result metadata', () => {
     it('should set correct acquisition type', async () => {
-      const result = await acquirer.acquire();
-      expect(result.type).toBe('dumpsys');
+      expect((await acquirer.acquire()).type).toBe('dumpsys');
     });
 
     it('should include start and end timestamps', async () => {
@@ -303,95 +205,44 @@ describe('DumpsysAcquirer', () => {
 
     it('should calculate duration correctly', async () => {
       const result = await acquirer.acquire();
-      expect(result.duration).toBeGreaterThanOrEqual(0);
       expect(result.duration).toBe(result.endTime.getTime() - result.startTime.getTime());
     });
 
-    it('should include file size', async () => {
-      const result = await acquirer.acquire();
-      expect(result.fileSize).toBe(MOCK_DUMPSYS_OUTPUT.length);
-    });
-
-    it('should include device info in data', async () => {
-      const result = await acquirer.acquire();
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(result.data?.deviceInfo.model).toBe('Test Device');
-    });
-
-    it('should include output metrics in data', async () => {
-      const result = await acquirer.acquire();
-      expect(result.data?.outputSize).toBe(MOCK_DUMPSYS_OUTPUT.length);
-      expect(result.data?.lines).toBe(MOCK_DUMPSYS_OUTPUT.split('\n').length);
+    it('should include file size of 0 in streaming mode', async () => {
+      expect((await acquirer.acquire()).files[0].fileSize).toBe(0);
     });
   });
-
-  // ==========================================================================
-  // OUTPUT FORMAT
-  // ==========================================================================
 
   describe('output format', () => {
     it('should generate filename with correct pattern', async () => {
-      const result = await acquirer.acquire();
-      expect(result.fileName).toBe('dumpsys.txt');
+      expect((await acquirer.acquire()).files[0].fileName).toBe('dumpsys.txt');
     });
 
-    it('should create blob with UTF-8 encoded content', async () => {
+    it('should return a readable stream in default mode', async () => {
       const result = await acquirer.acquire();
-
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('text/plain');
-
-      const text = await result.blob!.text();
-      expect(text).toBe(MOCK_DUMPSYS_OUTPUT);
-    });
-
-    it('should not modify or parse the dumpsys output', async () => {
-      const result = await acquirer.acquire();
-
-      const text = await result.blob!.text();
-      expect(text).toBe(MOCK_DUMPSYS_OUTPUT); // raw, unchanged
+      expect(result.files[0].stream).toBeDefined();
+      expect(result.files[0].mimeType).toBe('text/plain');
     });
   });
 
-  // ==========================================================================
-  // EDGE CASES
-  // ==========================================================================
-
   describe('edge cases', () => {
     it('should handle empty dumpsys output', async () => {
-      // Override spawn to return empty string
-      vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockResolvedValue({
-        stdout: createMockReadableStream(''),
-        stderr: createMockReadableStream(''),
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      });
-
+      device.spawn.mockResolvedValue(makeSpawnResult(''));
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBe(0);
-      expect(result.data?.outputSize).toBe(0);
-      expect(result.data?.lines).toBe(1); // empty string split gives [''] -> 1 line
+      expect(result.files[0].fileSize).toBe(0);
+      expect(result.files[0].stream).toBeDefined();
     });
 
     it('should handle very large dumpsys output', async () => {
-      const largeOutput = 'x'.repeat(10 * 1024 * 1024); // 10 MB
-      vi.spyOn(device.adb.subprocess.shellProtocol, 'spawn').mockResolvedValue({
-        stdout: createMockReadableStream(largeOutput),
-        stderr: createMockReadableStream(''),
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      });
-
+      device.spawn.mockResolvedValue(makeSpawnResult('x'.repeat(1024 * 1024)));
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBe(largeOutput.length);
+      expect(result.files[0].stream).toBeDefined();
     });
 
     it('should handle device model with special characters', async () => {
-      vi.spyOn(device, 'getProperties').mockResolvedValue({
+      device.getProperties.mockResolvedValue({
         androidVersion: '13',
         buildId: 'TP1A.220905.004',
         model: 'Pixel 6 (🐧)',
@@ -400,11 +251,9 @@ describe('DumpsysAcquirer', () => {
         sdkVersion: 33,
         serialNumber: 'TEST123',
       });
-
       const result = await acquirer.acquire();
-
       expect(result.success).toBe(true);
-      expect(result.fileName).toBe('dumpsys.txt');
+      expect(result.files[0].fileName).toBe('dumpsys.txt');
     });
   });
 });

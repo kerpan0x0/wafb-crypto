@@ -1,7 +1,8 @@
-import type { ADBDevice, DeviceProperties } from '../../adb';
+import type { Device, DeviceProperties } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
-import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../adb/commands';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { DumpsysCommand, GetNetworkInfoCommand, GetStorageInfoCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface SystemInfoConfig extends AcquisitionConfig {
   includeBattery?: boolean;
@@ -79,10 +80,10 @@ export interface SystemInfoData {
 
 export class SystemInfoAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
-    private systemConfig: SystemInfoConfig = {}
+    device: Device,
+    protected config: SystemInfoConfig = {}
   ) {
-    super(device, systemConfig, 'system_info');
+    super(device, config, 'system_info');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -112,7 +113,7 @@ export class SystemInfoAcquirer extends Acquirer {
       const step = 60 / this.getEnabledComponentsCount();
 
       // Step 3: Get battery info (40-50%)
-      if (this.systemConfig.includeBattery !== false) {
+      if (this.config.includeBattery !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -129,7 +130,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 5: Get network info (50-60%)
-      if (this.systemConfig.includeNetwork !== false) {
+      if (this.config.includeNetwork !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -145,7 +146,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 6: Get storage info (60-70%)
-      if (this.systemConfig.includeStorage !== false) {
+      if (this.config.includeStorage !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -161,7 +162,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 7: Get memory info (70-80%)
-      if (this.systemConfig.includeMemory !== false) {
+      if (this.config.includeMemory !== false) {
         this.notifyProgress(onProgress, progressOffset, 'Reading memory information...', 'running');
         try {
           systemInfoData.memory = await this.getMemoryInfo();
@@ -172,7 +173,7 @@ export class SystemInfoAcquirer extends Acquirer {
       }
 
       // Step 8: Get sensors (80-90%)
-      if (this.systemConfig.includeSensors !== false) {
+      if (this.config.includeSensors !== false) {
         this.notifyProgress(
           onProgress,
           progressOffset,
@@ -193,8 +194,16 @@ export class SystemInfoAcquirer extends Acquirer {
       const jsonData = JSON.stringify(systemInfoData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('system-info', 'json');
+
+      let file: AcquisitionFile;
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'System information', mimeType: 'application/json' };
+      } else {
+        file = { fileName: fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'System information', mimeType: 'application/json' };
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -205,13 +214,11 @@ export class SystemInfoAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'system_info',
-        fileName,
-        fileSize: jsonBytes.length,
+        files: [file],
         startTime,
         endTime,
         duration,
         data: {
-          deviceInfo,
           componentsCollected: {
             battery: !!systemInfoData.battery,
             network: !!systemInfoData.network,
@@ -220,12 +227,7 @@ export class SystemInfoAcquirer extends Acquirer {
             sensors: !!systemInfoData.sensors,
           },
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(jsonBytes);
-      }
 
       this.logger.info('System info acquisition completed', {
         fileName,
@@ -403,17 +405,17 @@ export class SystemInfoAcquirer extends Acquirer {
 
   private getEnabledComponentsCount(): number {
     let count = 0;
-    if (this.systemConfig.includeBattery !== false) count++;
-    if (this.systemConfig.includeNetwork !== false) count++;
-    if (this.systemConfig.includeStorage !== false) count++;
-    if (this.systemConfig.includeMemory !== false) count++;
-    if (this.systemConfig.includeSensors !== false) count++;
+    if (this.config.includeBattery !== false) count++;
+    if (this.config.includeNetwork !== false) count++;
+    if (this.config.includeStorage !== false) count++;
+    if (this.config.includeMemory !== false) count++;
+    if (this.config.includeSensors !== false) count++;
     return count || 1;
   }
 
   async getBatteryInfo(): Promise<BatteryInfo> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'battery' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'battery' });
       return this.buildBatteryinfo(output);
     } catch (error) {
       this.logger.warn('Failed to get battery info', error);
@@ -423,7 +425,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getNetworkInfo(): Promise<NetworkInfo> {
     try {
-      const output = await new GetNetworkInfoCommand(this.device.adb).exec();
+      const output = await new GetNetworkInfoCommand(this.device).exec();
       return this.buildNetworkInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get network info', error);
@@ -433,7 +435,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getStorageInfo(): Promise<StorageInfo> {
     try {
-      const output = await new GetStorageInfoCommand(this.device.adb).exec();
+      const output = await new GetStorageInfoCommand(this.device).exec();
       return this.buildStorageInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get storage info', error);
@@ -443,7 +445,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getMemoryInfo(): Promise<MemoryInfo> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'meminfo' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'meminfo' });
       return this.buildMemoryInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get memory info', error);
@@ -453,7 +455,7 @@ export class SystemInfoAcquirer extends Acquirer {
 
   async getSensors(): Promise<SensorInfo[]> {
     try {
-      const output = await new DumpsysCommand(this.device.adb).exec({ service: 'sensorservice' });
+      const output = await new DumpsysCommand(this.device).exec({ service: 'sensorservice' });
       return this.buildSensorInfo(output);
     } catch (error) {
       this.logger.warn('Failed to get sensors info', error);

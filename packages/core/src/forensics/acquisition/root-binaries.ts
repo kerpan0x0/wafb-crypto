@@ -1,13 +1,14 @@
-import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 import { Acquirer } from './acquirer';
-import { RootBinariesCommand } from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
+import { WhichCommand } from '../../commands';
+import type { Device } from '../../adb';
 
-export interface RootBinariesConfig extends AcquisitionConfig {}
+export interface RootBinariesConfig extends AcquisitionConfig { }
 
 export class RootBinariesAcquirer extends Acquirer {
   constructor(
-    protected device: ADBDevice,
+    protected device: Device,
     protected config: RootBinariesConfig = {}
   ) {
     super(device, config, 'rootBinaries');
@@ -60,10 +61,17 @@ export class RootBinariesAcquirer extends Acquirer {
 
       this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
-      // Step 4: Create blob and trigger download
-      const blob = new Blob([rootBinaries], { type: 'application/json' });
-
+      const rootBinariesBytes = new TextEncoder().encode(rootBinaries);
       const fileName = `root_binaries.json`;
+
+      let file: AcquisitionFile;
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(rootBinariesBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName, fileSize: rootBinariesBytes.length, stream: readable, hashPromise, description: 'Root binaries information', mimeType: 'application/json' };
+      } else {
+        file = { fileName, fileSize: rootBinariesBytes.length, stream: bytesToStream(rootBinariesBytes), description: 'Root binaries information', mimeType: 'application/json' };
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -74,22 +82,14 @@ export class RootBinariesAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'rootBinaries',
-        fileName,
-        fileSize: rootBinaries.length,
+        files: [file],
         startTime,
         endTime,
         duration,
         data: {
           format: 'text',
-          deviceInfo: deviceInfo,
         },
-        blob,
       };
-
-      // Compute hash if requested
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(new TextEncoder().encode(rootBinaries));
-      }
 
       this.logger.info('Root binaries acquisition completed', {
         fileName,
@@ -125,13 +125,13 @@ export class RootBinariesAcquirer extends Acquirer {
 
     for (const binary of binaries) {
       try {
-        const result = await new RootBinariesCommand(this.device.adb).exec({ command: binary });
+        const result = await new WhichCommand(this.device).exec({ all: true, binary: binary });
 
         // Parse multi-line output from `which -a` (e.g., "/path1\n/path2")
         const paths = result
           .split('\n')
           .map(p => p.trim())
-          .filter(p => p !== '' && !p.toLowerCase().includes('not found'));
+          .filter(p => p.startsWith('/'));
 
         rootBinariesPaths.push(...paths);
 

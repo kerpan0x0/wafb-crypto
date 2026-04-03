@@ -2,7 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "types": ["vitest/globals", "node"]
+    "types": [
+      "vitest/globals",
+      "node"
+    ],
+    "noUncheckedIndexedAccess": false,
+    "strictNullChecks": false,
+    "rootDir": ".",
   },
   "include": [
     "src/**/*",

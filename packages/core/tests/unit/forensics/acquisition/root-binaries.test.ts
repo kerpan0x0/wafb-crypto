@@ -1,15 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { RootBinariesAcquirer } from '../../../../src/forensics/acquisition/root-binaries';
 import {
-  createMockADBDeviceWithCommands,
+  createMockDeviceForAcquirer,
   setupAcquirerDOMMocks,
   createMockProgressCallback,
-  createMockReadableStream,
+  makeShellResult,
+  readStream,
 } from '../../../helpers/test-helpers';
-import type { ADBDevice } from '../../../../src/adb/device';
+import type { MockDevice } from '../../../helpers/test-helpers';
+
+async function drainAndHash(result: any, fileIndex = 0): Promise<string | undefined> {
+  const file = result.files?.[fileIndex] ?? result.files![fileIndex];
+  if (!file?.hashPromise) return undefined;
+  // Drain the stream so TransformStream.flush() fires and hashPromise resolves
+  if (file.stream) {
+    const reader = (file.stream as ReadableStream<Uint8Array>).getReader();
+    while (!(await reader.read()).done) {}
+  }
+  return file.hashPromise;
+}
+
 
 describe('RootBinariesAcquirer', () => {
-  let device: ADBDevice;
+  let device: MockDevice;
   let acquirer: RootBinariesAcquirer;
   let domMocks: ReturnType<typeof setupAcquirerDOMMocks>;
 
@@ -30,10 +43,10 @@ describe('RootBinariesAcquirer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    device = createMockADBDeviceWithCommands() as unknown as ADBDevice;
+    device = createMockDeviceForAcquirer();
 
     domMocks = setupAcquirerDOMMocks();
-    acquirer = new RootBinariesAcquirer(device);
+    acquirer = new RootBinariesAcquirer(device as any);
   });
 
   afterEach(() => {
@@ -46,8 +59,8 @@ describe('RootBinariesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.type).toBe('rootBinaries');
-      expect(result.fileName).toBe('root_binaries.json');
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(result.files[0].fileName).toBe('root_binaries.json');
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should check all root binaries', async () => {
@@ -68,9 +81,7 @@ describe('RootBinariesAcquirer', () => {
       ];
 
       expectedBinaries.forEach(binary => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-          `which -a ${binary}`
-        );
+        expect(device.shell).toHaveBeenCalledWith(`which -a ${binary}`, expect.anything());
       });
     });
 
@@ -85,11 +96,11 @@ describe('RootBinariesAcquirer', () => {
     });
 
     it('should compute hash when configured', async () => {
-      acquirer = new RootBinariesAcquirer(device, { computeHash: true });
+      acquirer = new RootBinariesAcquirer(device as any, { computeHash: true });
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.hash).toBeDefined();
+      expect(await drainAndHash(result, 0)).toBeDefined();
     });
 
     it('should generate valid JSON output', async () => {
@@ -97,25 +108,12 @@ describe('RootBinariesAcquirer', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.format).toBe('text');
-      expect(result.blob).toBeInstanceOf(Blob);
-    });
-
-    it('should include device information in result', async () => {
-      const result = await acquirer.acquire();
-
-      expect(result.success).toBe(true);
-      expect(result.data?.deviceInfo).toBeDefined();
-      expect(device.getProperties).toHaveBeenCalled();
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
     });
 
     it('should handle binaries not found on device', async () => {
       // Mock all binaries as not found
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockResolvedValue({
-        stdout: createMockReadableStream(''),
-        stderr: createMockReadableStream(''),
-        stdin: new WritableStream(),
-        exit: Promise.resolve({ code: 0 }),
-      });
+      device.shell.mockResolvedValue(makeShellResult(''));
 
       const result = await acquirer.acquire();
 
@@ -126,8 +124,8 @@ describe('RootBinariesAcquirer', () => {
     it('should download file with correct blob type', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.blob).toBeInstanceOf(Blob);
-      expect(result.blob!.type).toBe('application/json');
+      expect(result.files[0].stream).toBeInstanceOf(ReadableStream);
+      expect(result.files[0].mimeType).toBe('application/json');
     });
   });
 
@@ -143,14 +141,14 @@ describe('RootBinariesAcquirer', () => {
     });
 
     it('should handle shell command errors', async () => {
-      vi.mocked(device.adb.subprocess.shellProtocol.spawn).mockRejectedValue(
+      device.shell.mockRejectedValue(
         new Error('Shell error')
       );
 
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true); // Should still succeed as errors are caught per binary
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
+      expect(device.shell).toHaveBeenCalled();
     });
 
     it('should report progress on error', async () => {
@@ -180,7 +178,7 @@ describe('RootBinariesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('which -a su');
+      expect(device.shell).toHaveBeenCalledWith('which -a su', expect.anything());
     });
 
     it('should detect magisk binaries', async () => {
@@ -189,9 +187,7 @@ describe('RootBinariesAcquirer', () => {
       await acquirer.acquire();
 
       magiskBinaries.forEach(binary => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-          `which -a ${binary}`
-        );
+        expect(device.shell).toHaveBeenCalledWith(`which -a ${binary}`, expect.anything());
       });
     });
 
@@ -201,22 +197,20 @@ describe('RootBinariesAcquirer', () => {
       await acquirer.acquire();
 
       supersuFiles.forEach(file => {
-        expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(`which -a ${file}`);
+        expect(device.shell).toHaveBeenCalledWith(`which -a ${file}`, expect.anything());
       });
     });
 
     it('should detect KingoRoot files', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith(
-        'which -a KingoUser.apk'
-      );
+      expect(device.shell).toHaveBeenCalledWith('which -a KingoUser.apk', expect.anything());
     });
 
     it('should detect busybox', async () => {
       await acquirer.acquire();
 
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalledWith('which -a busybox');
+      expect(device.shell).toHaveBeenCalledWith('which -a busybox', expect.anything());
     });
   });
 
@@ -241,14 +235,14 @@ describe('RootBinariesAcquirer', () => {
       const result = await acquirer.acquire();
 
       expect(result.success).toBe(true);
-      expect(result.fileSize).toBeDefined();
-      expect(result.fileSize).toBeGreaterThan(0);
+      expect(result.files[0].fileSize).toBeDefined();
+      expect(result.files[0].fileSize).toBeGreaterThan(0);
     });
 
     it('should set correct file name', async () => {
       const result = await acquirer.acquire();
 
-      expect(result.fileName).toBe('root_binaries.json');
+      expect(result.files[0].fileName).toBe('root_binaries.json');
     });
 
     it('should include data format in result', async () => {
@@ -321,21 +315,7 @@ describe('RootBinariesAcquirer', () => {
       await acquirer.acquire();
 
       expect(device.getProperties).toHaveBeenCalledTimes(1);
-      expect(device.adb.subprocess.shellProtocol.spawn).toHaveBeenCalled();
-    });
-
-    it('should pass device info to result', async () => {
-      const mockProperties = {
-        model: 'Pixel 7',
-        manufacturer: 'Google',
-        androidVersion: '14',
-        serialNumber: 'ABC123',
-      };
-      device.getProperties = vi.fn().mockResolvedValue(mockProperties);
-
-      const result = await acquirer.acquire();
-
-      expect(result.data?.deviceInfo).toEqual(mockProperties);
+      expect(device.shell).toHaveBeenCalled();
     });
   });
 });

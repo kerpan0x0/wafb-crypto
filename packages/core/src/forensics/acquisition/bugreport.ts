@@ -4,10 +4,12 @@ import {
   BugreportCommand,
   BugreportzCommand,
   ReadFileCommand,
-} from '../../adb/commands';
-import type { ADBDevice } from '../../adb';
+} from '../../commands';
+import type { BugreportStream } from '../../commands/bugreportCommand';
+import type { Device } from '../../adb';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
 
 export interface BugreportConfig extends AcquisitionConfig {
   preferZip?: boolean;
@@ -18,10 +20,10 @@ export class BugreportAcquirer extends Acquirer {
   private cleanupPerformed: boolean = false;
 
   constructor(
-    device: ADBDevice,
-    private bugreportConfig: BugreportConfig = {}
+    device: Device,
+    protected config: BugreportConfig = {}
   ) {
-    super(device, bugreportConfig, 'bugreport');
+    super(device, config, 'bugreport');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -62,62 +64,94 @@ export class BugreportAcquirer extends Acquirer {
         'running'
       );
 
-      const bugreportOut = await this.generateBugreport(useZip);
-      bugreportPath = this.parseBugreportPath(bugreportOut);
+      const bugreportResult = await this.generateBugreport(useZip);
+      useZip = bugreportResult.usedZip;
 
-      // Step 4: Download file
-      this.notifyProgress(
-        onProgress,
-        70,
-        `Downloading ${useZip ? 'zip' : 'text'} file from device...`,
-        'running'
-      );
+      let acquisitionFile: AcquisitionFile;
 
-      const bugreportData = await new ReadFileCommand(this.device.adb).exec({
-        path: bugreportPath,
-      });
+      if (bugreportResult.usedZip) {
+        // bugreportz: file is on device storage, download it
+        bugreportPath = this.parseBugreportPath(bugreportResult.output);
 
-      this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
+        this.notifyProgress(onProgress, 70, 'Downloading bugreport zip from device...', 'running');
 
-      // Step 5: Create blob and trigger download
-      const blob = new Blob([bugreportData.buffer as ArrayBuffer], {
-        type: useZip ? 'application/zip' : 'text/plain',
-      });
+        const bugreportData = await new ReadFileCommand(this.device).exec({
+          path: bugreportPath,
+        });
 
-      const fileName = this.generateFileName('bugreport', useZip ? 'zip' : 'txt');
+        this.notifyProgress(onProgress, 90, 'Preparing download...', 'running');
 
-      // Step 6: Cleanup
-      await this.performCleanup(bugreportPath, useZip);
+        const fileName = this.generateFileName('bugreport', 'zip');
+
+        if (this.config.computeHash) {
+          const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+          bytesToStream(bugreportData).pipeTo(writable).catch(err => {
+            this.logger.error('Bugreport hash pipe error', err);
+          });
+          acquisitionFile = {
+            stream: readable,
+            hashPromise,
+            fileName,
+            mimeType: 'application/zip',
+            fileSize: bugreportData.length,
+            description: 'System bugreport archive',
+          };
+        } else {
+          acquisitionFile = {
+            stream: bytesToStream(bugreportData),
+            fileName,
+            mimeType: 'application/zip',
+            fileSize: bugreportData.length,
+            description: 'System bugreport archive',
+          };
+        }
+
+        // Cleanup the file left on the device
+        await this.performCleanup(bugreportPath, true);
+      } else {
+        // Legacy bugreport: stdout stream — pipe directly into the ZIP writer,
+        // no temporary file on the device, no ReadFileCommand needed.
+        this.notifyProgress(onProgress, 70, 'Streaming bugreport output into archive...', 'running');
+
+        const fileName = this.generateFileName('bugreport', 'txt');
+
+        acquisitionFile = {
+          stream: bugreportResult.stream.stream,
+          fileName,
+          mimeType: 'text/plain',
+          fileSize: 0,
+          description: 'System bugreport (legacy text format)',
+        };
+
+        // Wire up exit logging (non-blocking)
+        bugreportResult.stream.exited.then(code => {
+          if (code !== 0) this.logger.warn(`bugreport exited with code ${code}`);
+          else this.logger.info('bugreport stream completed');
+        }).catch(() => {/* ignore */});
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      this.notifyProgress(onProgress, 100, 'Bugreport downloaded successfully!', 'completed');
+      this.notifyProgress(onProgress, 100, 'Bugreport acquisition completed!', 'completed');
 
       // Step 7: Build result
       const result: AcquisitionResult = {
         success: true,
         type: 'bugreport',
-        fileName,
-        fileSize: bugreportData.length,
+        files: [acquisitionFile],
         startTime,
         endTime,
         duration,
         data: {
           format: useZip ? 'zip' : 'text',
-          deviceInfo: deviceInfo,
           cleanupPerformed: this.cleanupPerformed,
         },
-        blob,
       };
 
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(bugreportData);
-      }
-
       this.logger.info('Bugreport acquisition completed', {
-        fileName,
-        fileSize: bugreportData.length,
+        fileName: acquisitionFile.fileName,
+        streaming: !bugreportResult.usedZip,
         duration,
       });
 
@@ -150,7 +184,7 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private async performCleanup(bugreportPath: string, useZip: boolean): Promise<void> {
-    if (this.bugreportConfig.cleanupAfter === false) {
+    if (this.config.cleanupAfter === false) {
       this.logger.warn('Cleanup disabled by configuration - file remains on device');
       this.cleanupPerformed = false;
       return;
@@ -160,7 +194,7 @@ export class BugreportAcquirer extends Acquirer {
       if (!useZip || bugreportPath.startsWith('/sdcard/')) {
         this.logger.info('Attempting cleanup of bugreport file', { path: bugreportPath });
 
-        await new DeleteFileCommand(this.device.adb).exec({ path: bugreportPath });
+        await new DeleteFileCommand(this.device).exec({ path: bugreportPath });
 
         this.cleanupPerformed = true;
         this.logger.info('Cleaned up bugreport file from device');
@@ -178,29 +212,41 @@ export class BugreportAcquirer extends Acquirer {
   }
 
   private async checkBugreportzSupport(): Promise<boolean> {
-    if (this.bugreportConfig.preferZip === false) {
+    if (this.config.preferZip === false) {
       return false;
     }
 
-    return '' !== (await new WhichCommand(this.device.adb).exec({ command: 'bugreportz' }));
+    try {
+      const path = await new WhichCommand(this.device).exec({ binary: 'bugreportz' });
+      return path.startsWith('/');
+    } catch (error) {
+      this.logger.warn('Failed to check bugreportz support, falling back to legacy bugreport', error);
+      return false;
+    }
   }
 
-  private async generateBugreport(useZip: boolean): Promise<string> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const bugreportPath = `/sdcard/bugreport-${timestamp}.txt`;
-
+  private async generateBugreport(useZip: boolean): Promise<
+    | { usedZip: true; output: string }
+    | { usedZip: false; stream: BugreportStream }
+  > {
     if (useZip) {
-      return await new BugreportzCommand(this.device.adb).exec({
-        timeout: this.config.timeout || 180000,
-        idleTimeout: 180000
-      });
-    } else {
-      return await new BugreportCommand(this.device.adb).exec({
-        outputPath: bugreportPath,
-        timeout: this.config.timeout || 180000,
-        idleTimeout: 180000
-      });
+      try {
+        const output = await new BugreportzCommand(this.device).exec({
+          timeout: this.config.timeout || 180000,
+          idleTimeout: 180000,
+          throwOnError: true,
+        });
+        return { usedZip: true, output };
+      } catch (error) {
+        this.logger.warn('bugreportz failed, falling back to legacy text bugreport', error);
+        // fall through to streaming legacy format
+      }
     }
+
+    // Legacy `bugreport` writes to stdout — stream directly into the ZIP,
+    // no temporary file on the device needed.
+    const stream = await new BugreportCommand(this.device).exec();
+    return { usedZip: false, stream };
   }
 
   public wasCleanupPerformed(): boolean {

@@ -1,7 +1,8 @@
-import type { ADBDevice } from '../../adb';
+import type { Device } from '../../adb';
 import { Acquirer } from './acquirer';
-import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult } from '.';
-import { PsCommand } from '../../adb/commands';
+import type { AcquisitionConfig, AcquisitionProgress, AcquisitionResult, AcquisitionFile } from '.';
+import { PsCommand } from '../../commands';
+import { bytesToStream, hashingPassthrough } from '../../utils/stream-helpers';
 
 export interface ProcessConfig extends AcquisitionConfig {
   includeThreads?: boolean;
@@ -53,10 +54,10 @@ export interface ProcessData {
  */
 export class ProcessAcquirer extends Acquirer {
   constructor(
-    device: ADBDevice,
-    private processConfig: ProcessConfig = {}
+    device: Device,
+    protected config: ProcessConfig = {}
   ) {
-    super(device, processConfig, 'process');
+    super(device, config, 'process');
   }
 
   async acquire(onProgress?: (progress: AcquisitionProgress) => void): Promise<AcquisitionResult> {
@@ -105,8 +106,16 @@ export class ProcessAcquirer extends Acquirer {
       const jsonData = JSON.stringify(processData, null, 2);
       const jsonBytes = new TextEncoder().encode(jsonData);
 
-      const blob = new Blob([jsonBytes], { type: 'application/json' });
       const fileName = this.generateFileName('processes', 'json');
+
+      let file: AcquisitionFile;
+      if (this.config.computeHash) {
+        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
+        bytesToStream(jsonBytes).pipeTo(writable).catch(err => this.logger.error('Hash pipe error', err));
+        file = { fileName, fileSize: jsonBytes.length, stream: readable, hashPromise, description: 'Running processes', mimeType: 'application/json' };
+      } else {
+        file = { fileName, fileSize: jsonBytes.length, stream: bytesToStream(jsonBytes), description: 'Running processes', mimeType: 'application/json' };
+      }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -117,8 +126,7 @@ export class ProcessAcquirer extends Acquirer {
       const result: AcquisitionResult = {
         success: true,
         type: 'process',
-        fileName,
-        fileSize: jsonBytes.length,
+        files: [file],
         startTime,
         endTime,
         duration,
@@ -126,14 +134,8 @@ export class ProcessAcquirer extends Acquirer {
           totalProcesses: processes.length,
           systemProcesses: systemCount,
           userProcesses: userCount,
-          deviceInfo,
         },
-        blob,
       };
-
-      if (this.config.computeHash) {
-        result.hash = await this.computeHash(jsonBytes);
-      }
 
       this.logger.info('Process acquisition completed', {
         fileName,
@@ -173,12 +175,12 @@ export class ProcessAcquirer extends Acquirer {
     // Build command options
     const options: any = {
       all: true,
-      selinux: this.processConfig.includeSELinuxContext !== false,
-      threads: this.processConfig.includeThreads || false,
+      selinux: this.config.includeSELinuxContext !== false,
+      threads: this.config.includeThreads || false,
     };
 
     // Execute command - get RAW output
-    const rawOutput = await new PsCommand(this.device.adb).exec(options);
+    const rawOutput = await new PsCommand(this.device).exec(options);
 
     // Parse output HERE (TODO: move to ProcessAdapter)
     return this.parseProcessOutput(rawOutput);
@@ -237,7 +239,7 @@ export class ProcessAcquirer extends Acquirer {
     let selinuxContext: string | undefined;
 
     // Check if first field is SELinux context
-    if (this.processConfig.includeSELinuxContext !== false && parts[0].includes(':')) {
+    if (this.config.includeSELinuxContext !== false && parts[0].includes(':')) {
       selinuxContext = parts[0];
       offset = 1;
     }
