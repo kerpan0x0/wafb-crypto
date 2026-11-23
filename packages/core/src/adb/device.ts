@@ -51,8 +51,8 @@ export class Device {
    * Spawns a shell command and returns a streaming result.
    * Use for large outputs that should not be buffered in memory.
    */
-  spawn(cmd: string, idleTimeout?: number): Promise<SpawnResult> {
-    return new Shell(this.adb, cmd).spawn(idleTimeout);
+  spawn(cmd: string, idleTimeout?: number, signal?: AbortSignal): Promise<SpawnResult> {
+    return new Shell(this.adb, cmd).spawn(idleTimeout, signal);
   }
 
   sync(): Promise<AdbSync> {

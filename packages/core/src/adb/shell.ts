@@ -1,8 +1,8 @@
 import type { Adb } from '@yume-chan/adb';
 import { ADBCommandError } from '../utils/errors';
 import { Logger } from '../utils/logger';
-import { ShellOptions, ShellResult } from '.'
-import { wrapWithIdleTimeout } from '../utils/stream-helpers';
+import type { ShellOptions, ShellResult, SpawnResult } from '.';
+import { monitorSource } from '../utils/source-monitor';
 
 /** @internal */
 export class Shell {
@@ -44,11 +44,20 @@ export class Shell {
    * Spawns the command and returns the raw stdout stream without buffering.
    * Use this for large binary outputs (e.g. `bu backup`) where you want to
    * pipe stdout directly to a file writer.
+   *
+   * The stdout stream is wrapped by {@link monitorSource}: an idle period
+   * without an exit from the remote process is reported as an error, not as
+   * end-of-stream, and `outcome` classifies how the source ended. Cancelling
+   * the stream (or aborting `signal`) kills the remote process.
+   *
+   * stderr is drained concurrently — on the shell protocol both channels are
+   * multiplexed on one socket, so leaving stderr unread can stall stdout. Only
+   * a bounded tail is kept, for diagnostics.
    */
-  async spawn(idleTimeout: number = 5000): Promise<{
-    stdout: ReadableStream<Uint8Array>;
-    exited: Promise<number>;
-  }> {
+  async spawn(
+    idleTimeout: number = 5000,
+    signal?: AbortSignal
+  ): Promise<SpawnResult> {
     if (!this.adb.subprocess.shellProtocol) {
       throw new ADBCommandError('Shell protocol not available');
     }
@@ -58,13 +67,50 @@ export class Shell {
     const exitedPromise: Promise<number> =
       (shellSocket as any).exited ?? Promise.resolve(0);
 
+    const stderrTail = this.drainStderr((shellSocket as any).stderr);
+
+    const { stream, outcome } = monitorSource(
+      (shellSocket.stdout as any) as ReadableStream<Uint8Array>,
+      {
+        idleTimeoutMs: idleTimeout,
+        exited: exitedPromise,
+        signal,
+        onStop: async () => {
+          const kill = (shellSocket as any).kill;
+          if (typeof kill === 'function') await kill.call(shellSocket);
+        },
+      }
+    );
+
     return {
-      stdout: wrapWithIdleTimeout(
-        (shellSocket.stdout as any) as ReadableStream<Uint8Array>,
-        idleTimeout
-      ),
+      stdout: stream,
       exited: exitedPromise,
+      outcome,
+      stderrTail,
     };
+  }
+
+  /** Reads stderr to completion, keeping only the last `maxBytes` bytes. */
+  private async drainStderr(stream: any, maxBytes = 2048): Promise<string> {
+    if (!stream || typeof stream.getReader !== 'function') return '';
+    const reader = stream.getReader();
+    let tail = new Uint8Array(0);
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        const merged = new Uint8Array(tail.length + value.length);
+        merged.set(tail);
+        merged.set(value, tail.length);
+        tail = merged.length > maxBytes ? merged.slice(merged.length - maxBytes) : merged;
+      }
+    } catch {
+      /* transport closed — keep what we have */
+    } finally {
+      try { reader.releaseLock(); } catch { /* ignore */ }
+    }
+    return new TextDecoder().decode(tail);
   }
 
   // ---------------------------------------------------------------------------

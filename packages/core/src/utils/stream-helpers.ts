@@ -1,3 +1,5 @@
+import { monitorSource } from './source-monitor';
+
 /**
  * Legge un ReadableStream e ritorna il contenuto come stringa
  * Nota: Usiamo 'any' per il parametro readable per evitare conflitti tra 
@@ -101,36 +103,23 @@ export async function retry<T>(
 }
 
 /**
- * Wraps a ReadableStream with an idle timeout: if no chunk arrives within
- * `ms` milliseconds the stream is closed gracefully.
+ * Wraps a ReadableStream with an idle timeout.
  *
- * Used internally by ShellCommand.spawn() so devices that never send EOF
- * do not stall consumers like the ZIP writer indefinitely.
+ * Since the protected-acquisition extension this is a thin adapter over
+ * {@link monitorSource}: when no chunk arrives within `ms` milliseconds the
+ * returned stream **errors** with `SourceIdleTimeoutError` (unless `exited`
+ * has already settled, in which case the silence is a drained stream and the
+ * wrapper closes normally). WAFB 0.3.1 closed the stream regularly in both
+ * cases, so a stalled source was indistinguishable from a finished one.
+ *
+ * Prefer `monitorSource` directly when the end cause is needed.
  */
 export function wrapWithIdleTimeout(
   source: ReadableStream<Uint8Array>,
-  ms: number
+  ms: number,
+  exited?: Promise<number>
 ): ReadableStream<Uint8Array> {
-  const reader = source.getReader();
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      let idleTimer: ReturnType<typeof setTimeout> | undefined;
-      const idlePromise = new Promise<{ done: true; value: undefined }>(resolve => {
-        idleTimer = setTimeout(() => resolve({ done: true, value: undefined }), ms);
-      });
-      const { done, value } = await Promise.race([reader.read(), idlePromise]);
-      if (idleTimer !== undefined) clearTimeout(idleTimer);
-      if (done) {
-        reader.releaseLock();
-        controller.close();
-      } else if (value) {
-        controller.enqueue(value);
-      }
-    },
-    cancel() {
-      reader.releaseLock();
-    },
-  });
+  return monitorSource(source, { idleTimeoutMs: ms, exited }).stream;
 }
 
 // ============================================================================
@@ -208,17 +197,21 @@ export async function hashingPassthrough(
       `Supported: ${Object.keys(HASH_WASM_FACTORIES).join(', ')}`
     );
   }
- 
+
   // Initialise the hasher once — this loads the WASM binary.
   const hasher = await factory();
- 
+
+  let settled = false;
   let resolveHash!: (hex: string) => void;
   let rejectHash!: (err: unknown) => void;
   const hashPromise = new Promise<string>((resolve, reject) => {
-    resolveHash = resolve;
-    rejectHash = reject;
+    resolveHash = hex => { if (!settled) { settled = true; resolve(hex); } };
+    rejectHash = err => { if (!settled) { settled = true; reject(err); } };
   });
- 
+  // A rejected digest must never surface as an unhandled rejection just
+  // because nobody awaited it yet; callers still observe the rejection.
+  hashPromise.catch(() => {});
+
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       // O(1) memory: update the hasher in-place, forward the chunk as-is.
@@ -226,18 +219,94 @@ export async function hashingPassthrough(
       controller.enqueue(chunk);
     },
     flush() {
-      // Called when the writable side closes normally.
+      // Called only when the writable side closes normally.
       resolveHash(hasher.digest('hex'));
     },
   });
- 
-  // If the writable side is aborted, reject the hash promise.
-  (transform.writable as any).closed?.catch((err: unknown) => rejectHash(err));
-   
+
+  // WAFB 0.3.1 observed `(transform.writable as any).closed`, a property that
+  // WritableStream does not have: on abort the digest promise stayed pending
+  // forever. The standard contract exposes `closed` on the *writer*, so the
+  // writable side is fronted by a forwarding WritableStream that owns the
+  // inner writer and settles the digest on every path:
+  //   - close           -> flush() resolves it;
+  //   - abort(reason)   -> rejected with the reason;
+  //   - readable cancel -> inner writer errors -> rejected.
+  const inner = transform.writable.getWriter();
+  inner.closed.catch(err => rejectHash(err ?? new Error('Hashing stream errored')));
+
+  const writable = new WritableStream<Uint8Array>({
+    async write(chunk) {
+      try {
+        await inner.ready;
+        await inner.write(chunk);
+      } catch (err) {
+        rejectHash(err);
+        throw err;
+      }
+    },
+    async close() {
+      await inner.close();
+    },
+    async abort(reason) {
+      rejectHash(reason ?? new Error('Hashing stream aborted'));
+      await inner.abort(reason).catch(() => {});
+    },
+  });
+
   return {
-    writable: transform.writable,
+    writable,
     readable: transform.readable,
     hashPromise,
+  };
+}
+
+// ============================================================================
+// RECHUNK (bounded element size)
+// ============================================================================
+
+/**
+ * Splits chunks larger than `maxBytes` into consecutive views of at most
+ * `maxBytes` bytes, preserving order. No bytes are copied, added or removed,
+ * so digests and decrypted output are unaffected; the point is to keep the
+ * cost of each downstream transformation (and each queued element) bounded
+ * even when a transport delivers very large chunks.
+ */
+export function rechunk(maxBytes: number): TransformStream<Uint8Array, Uint8Array> {
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+    throw new RangeError(`rechunk: maxBytes must be a positive integer, got ${maxBytes}`);
+  }
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      if (chunk.byteLength <= maxBytes) {
+        if (chunk.byteLength > 0) controller.enqueue(chunk);
+        return;
+      }
+      for (let off = 0; off < chunk.byteLength; off += maxBytes) {
+        controller.enqueue(chunk.subarray(off, Math.min(off + maxBytes, chunk.byteLength)));
+      }
+    },
+  });
+}
+
+/**
+ * Pass-through that counts bytes and reports them. Used to expose "bytes
+ * acquired", "bytes encrypted" and "bytes written" as distinct quantities.
+ */
+export function byteCounter(onBytes?: (total: number) => void): {
+  transform: TransformStream<Uint8Array, Uint8Array>;
+  total: () => number;
+} {
+  let total = 0;
+  return {
+    transform: new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        onBytes?.(total);
+        controller.enqueue(chunk);
+      },
+    }),
+    total: () => total,
   };
 }
 
