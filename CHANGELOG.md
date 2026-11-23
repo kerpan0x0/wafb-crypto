@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — protected acquisition (thesis extension)
+
+### Added
+- **Protected delivery**: per-artefact age (X25519) encryption in streaming, private
+  encrypted manifest, minimal public descriptor, opaque entry names.
+- **Recipient verification**: invite in URL fragment, full key ID
+  (`wafb-recipient-v1`) compared out of band; mismatch blocks the start.
+- **SessionCoordinator**: one state machine for wizard and advanced page;
+  completion as V = S ∧ H ∧ E ∧ W; cancellation reaching the device process.
+- **ZIP64** writer and reader; archive SHA-256 as delivery reference.
+- **Analyst page**: key generation, self-test, invite, verification, extraction.
+- Benchmarks (`bench/`) and headless UI smoke test.
+
+### Fixed
+- Digest promise stayed pending forever on abort (`writable.closed` does not exist).
+- Idle timeout closed streams as regular EOF: stalled sources looked complete.
+- Streamed acquirers reported `completed` when only the stream was ready.
+- Errors during ZIP writing were logged and the session continued on a corrupt archive.
+- stderr of spawned commands was never drained.
+- Core `build` emitted incomplete declarations after the first build (stale tsbuildinfo).
+
+### Changed
+- Legacy (unencrypted) mode is explicit, acknowledged and never a fallback.
+- `Device.spawn()` accepts an AbortSignal and returns `outcome` and `stderrTail`.
+
+---
+
 ## [0.3.0] - 2026-04-03
 
 ### 🚀 Added
