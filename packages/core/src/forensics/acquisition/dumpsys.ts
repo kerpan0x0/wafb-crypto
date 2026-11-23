@@ -43,50 +43,41 @@ export class DumpsysAcquirer extends Acquirer {
       const fileName = this.generateFileName('dumpsys', 'txt');
       let file: AcquisitionFile;
 
+      // Streamed: stdout goes straight to the consumer; no full buffering.
+      this.notifyProgress(onProgress, 90, 'Streaming dumpsys output...', 'running');
+      const { stream: rawStream, outcome } = await new DumpsysStreamCommand(this.device).exec({ signal: this.config.signal });
+
       if (this.config.computeHash) {
-        // Hash mode: stream through hashingPassthrough so CRC is computed
-        // incrementally — O(1) memory, no buffering of the full output.
-        this.notifyProgress(onProgress, 90, 'Streaming dumpsys output with hash...', 'running');
-
-        const { stream: rawStream } = await new DumpsysStreamCommand(this.device).exec();
-        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
-
-        rawStream.pipeTo(writable).catch(err => {
-          this.logger.error('Dumpsys stream pipe error', err);
-        });
-
+        const h = await hashingPassthrough('sha-256');
         file = {
           fileName,
           fileSize: 0,
-          stream: readable,
-          hashPromise,
+          sizeUnknown: true,
+          // pipeThrough: source errors reach the consumer and reject the digest.
+          stream: rawStream.pipeThrough({ writable: h.writable, readable: h.readable }),
+          hashPromise: h.hashPromise,
+          outcome,
           description: 'Dumpsys output',
           mimeType: 'text/plain',
         };
-
-        this.logger.info('Dumpsys stream (with hash) ready, handing off to ZIP writer', { fileName });
       } else {
-        // Streaming mode (default): pipe stdout directly into the ZIP writer
-        // without buffering in memory.
-        this.notifyProgress(onProgress, 90, 'Streaming dumpsys output into archive...', 'running');
-
-        const { stream: dumpsysStream } = await new DumpsysStreamCommand(this.device).exec();
-
         file = {
           fileName,
           fileSize: 0,
-          stream: dumpsysStream,
+          sizeUnknown: true,
+          stream: rawStream,
+          outcome,
           description: 'Dumpsys output',
           mimeType: 'text/plain',
         };
-
-        this.logger.info('Dumpsys stream ready, handing off to ZIP writer', { fileName });
       }
+      this.logger.info('Dumpsys stream ready, handing off to consumer', { fileName });
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      this.notifyProgress(onProgress, 100, 'Dumpsys acquisition completed!', 'completed');
+      // Only the stream is ready: completion is decided by the consumer.
+      this.notifyProgress(onProgress, 95, 'Dumpsys stream ready — data is being transferred...', 'running');
 
       return {
         success: true,

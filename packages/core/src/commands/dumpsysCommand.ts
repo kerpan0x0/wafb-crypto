@@ -36,6 +36,8 @@ export interface DumpsysStream {
   stream: ReadableStream<Uint8Array>;
   /** Resolves with the process exit code when the command finishes. */
   exited: Promise<number>;
+  /** How the stdout source ended, with exit code. Always settles. */
+  outcome?: Promise<import('../utils/source-monitor').SourceOutcome>;
 }
 
 export class DumpsysCommand implements DeviceCommand<string> {
@@ -101,9 +103,9 @@ export class DumpsysStreamCommand implements DeviceCommand<DumpsysStream> {
     this.logger = new Logger('DumpsysStreamCommand');
   }
 
-  async exec(): Promise<DumpsysStream> {
+  async exec(options: ShellOptions & { signal?: AbortSignal } = {}): Promise<DumpsysStream> {
     this.logger.debug('Executing dumpsys stream command');
-    const { stdout, exited } = await this.device.spawn('dumpsys');
-    return { stream: stdout, exited };
+    const { stdout, exited, outcome } = await this.device.spawn('dumpsys', undefined, options.signal);
+    return { stream: stdout, exited, outcome };
   }
 }

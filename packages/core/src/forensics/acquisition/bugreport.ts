@@ -68,6 +68,7 @@ export class BugreportAcquirer extends Acquirer {
       useZip = bugreportResult.usedZip;
 
       let acquisitionFile: AcquisitionFile;
+      let streamedOutput = false;
 
       if (bugreportResult.usedZip) {
         // bugreportz: file is on device storage, download it
@@ -117,23 +118,25 @@ export class BugreportAcquirer extends Acquirer {
 
         acquisitionFile = {
           stream: bugreportResult.stream.stream,
+          outcome: bugreportResult.stream.outcome,
           fileName,
           mimeType: 'text/plain',
           fileSize: 0,
+          sizeUnknown: true,
           description: 'System bugreport (legacy text format)',
         };
-
-        // Wire up exit logging (non-blocking)
-        bugreportResult.stream.exited.then(code => {
-          if (code !== 0) this.logger.warn(`bugreport exited with code ${code}`);
-          else this.logger.info('bugreport stream completed');
-        }).catch(() => {/* ignore */});
+        streamedOutput = true;
       }
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      this.notifyProgress(onProgress, 100, 'Bugreport acquisition completed!', 'completed');
+      if (streamedOutput) {
+        // Only the stream is ready: completion is decided by the consumer.
+        this.notifyProgress(onProgress, 80, 'Bugreport stream ready — data is being transferred...', 'running');
+      } else {
+        this.notifyProgress(onProgress, 100, 'Bugreport acquisition completed!', 'completed');
+      }
 
       // Step 7: Build result
       const result: AcquisitionResult = {
@@ -245,7 +248,7 @@ export class BugreportAcquirer extends Acquirer {
 
     // Legacy `bugreport` writes to stdout — stream directly into the ZIP,
     // no temporary file on the device needed.
-    const stream = await new BugreportCommand(this.device).exec();
+    const stream = await new BugreportCommand(this.device).exec({ signal: this.config.signal });
     return { usedZip: false, stream };
   }
 

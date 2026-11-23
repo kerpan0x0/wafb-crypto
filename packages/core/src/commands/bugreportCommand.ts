@@ -13,14 +13,16 @@ export interface BugreportStream {
   stream: ReadableStream<Uint8Array>;
   /** Resolves with the process exit code when the command finishes. */
   exited: Promise<number>;
+  /** How the stdout source ended, with exit code. Always settles. */
+  outcome?: Promise<import('../utils/source-monitor').SourceOutcome>;
 }
 
 export class BugreportCommand implements DeviceCommand<BugreportStream> {
   constructor(private device: Device) { }
 
-  async exec(options: ShellOptions = {}): Promise<BugreportStream> {
-    const { stdout, exited } = await this.device.spawn('bugreport', options.idleTimeout);
-    return { stream: stdout, exited };
+  async exec(options: ShellOptions & { signal?: AbortSignal } = {}): Promise<BugreportStream> {
+    const { stdout, exited, outcome } = await this.device.spawn('bugreport', options.idleTimeout, options.signal);
+    return { stream: stdout, exited, outcome };
   }
 }
 

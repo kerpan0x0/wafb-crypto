@@ -2,14 +2,20 @@ import { DeviceCommand } from '.';
 import { Device, ShellOptions } from '../adb';
 import { ADBCommandError } from '../utils/errors';
 
-export interface BackupOptions extends ShellOptions { 
-  type: string; 
+import type { SourceOutcome } from '../utils/source-monitor';
+
+export interface BackupOptions extends ShellOptions {
+  type: string;
   buPath: string;
+  /** Session abort signal: cancelling kills `bu` on the device. */
+  signal?: AbortSignal;
 }
 
 export interface BackupStream {
   stream: ReadableStream<Uint8Array>;
   exited: Promise<number>;
+  /** How the stdout source ended (EOF/idle/cancel/error) plus exit code. */
+  outcome?: Promise<SourceOutcome>;
 }
 
 /**
@@ -35,9 +41,9 @@ export class BackupCommand implements DeviceCommand<BackupStream> {
     // bu backup requires user confirmation on the device (password dialog).
     // Use a 5-minute idle timeout so the stream is not closed before the
     // user has a chance to interact with the prompt.
-    const { stdout, exited } = await this.device.spawn(cmd, 300000);
+    const { stdout, exited, outcome } = await this.device.spawn(cmd, 300000, options.signal);
 
-    return { stream: stdout, exited };
+    return { stream: stdout, exited, outcome };
   }
 
   private buildCommand(buPath: string, type: string): string {

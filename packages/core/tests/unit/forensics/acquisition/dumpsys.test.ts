@@ -91,7 +91,8 @@ describe('DumpsysAcquirer', () => {
 
     it('should call device.spawn with dumpsys command (default streaming)', async () => {
       await acquirer.acquire();
-      expect(device.spawn).toHaveBeenCalledWith('dumpsys');
+      // Third argument: the session abort signal (undefined when not provided).
+      expect(device.spawn).toHaveBeenCalledWith('dumpsys', undefined, undefined);
     });
 
     it('should return stream (not blob) in default mode', async () => {
@@ -116,7 +117,10 @@ describe('DumpsysAcquirer', () => {
       expect(progressValues).toContain(10);
       expect(progressValues).toContain(20);
       expect(progressValues).toContain(30);
-      expect(progressValues).toContain(100);
+      // Protected-acquisition contract: returning the stream is not completion,
+      // so the acquirer never reports 100 % / 'completed' for streamed output.
+      expect(progressValues).not.toContain(100);
+      expect(getProgressHistory().some(p => p.status === 'completed')).toBe(false);
     });
 
     it('should include descriptive messages', async () => {
