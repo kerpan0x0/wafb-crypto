@@ -1,710 +1,289 @@
-import { useState, useEffect, useRef } from 'react';
-import { ADBConnection, Device, ACQUISITION_TYPES, Logger, StreamingZipWriter } from '@wafb/core';
+/**
+ * Advanced acquisition page.
+ *
+ * Same SessionCoordinator, same state machine and same definition of
+ * "complete" as the wizard (RF10). It adds: free module selection (changes
+ * against an invitation are recorded), manual entry of a recipient, and an
+ * explicit, acknowledged legacy (unencrypted) mode. It cannot bypass the
+ * recipient verification of the protected mode, and legacy mode is never an
+ * automatic fallback.
+ */
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  MountAcquirer,
-  EnvAcquirer,
-  BugreportAcquirer,
-  LogcatAcquirer,
-  PackagesAcquirer,
-  RootBinariesAcquirer,
-  SELinuxAcquirer,
-  SettingsAcquirer,
-  ProcessAcquirer,
-  FileAcquirer,
-  SystemInfoAcquirer,
-  ServicesAcquirer,
-  LogAcquirer,
-  TmpAcquirer,
-  DumpsysAcquirer,
-  BackupAcquirer,
+  ACQUISITION_TYPES,
+  ADBConnection,
+  Logger,
+  generateCaseRef,
+  recipientStateFromInput,
+} from '@wafb/core';
+import type {
+  AcquisitionType,
+  Device,
+  DeviceProperties,
+  ParsedInvite,
+  RecipientVerificationState,
+  SessionConfig,
 } from '@wafb/core';
 import { useAcquisitionStore, initializeAcquisitionTypes } from '../../stores/acquisitionStore';
-import type {
-  AcquisitionProgress,
-  AcquisitionType,
-  AcquisitionResult,
-  AcquisitionFile,
-  AcquisitionConfig,
-  BugreportConfig,
-  LogcatConfig,
-  PackagesConfig,
-  SystemInfoConfig,
-  SELinuxConfig,
-  SettingsConfig,
-  ProcessConfig,
-  ServicesConfig,
-  LogConfig,
-  FileAcquisitionConfig,
-  DumpsysConfig,
-  BackupConfig,
-} from '@wafb/core';
+import { useSessionStore, type SaveTarget } from '../../stores/sessionStore';
+import { APP_VERSION } from '../../lib/constants';
+import { isModuleSupported } from '../../lib/moduleTasks';
+import { runPreflight, suggestedArchiveName } from '../../lib/platform';
+import { InvitePanel } from '../protection/InvitePanel';
+import { RecipientVerificationPanel } from '../protection/RecipientVerificationPanel';
+import { DestinationPicker, PreflightPanel, SessionProgress, SessionSummary } from '../protection/SessionPanels';
 
-// ============================================================================
-// TYPE DECLARATIONS FOR FILE SYSTEM ACCESS API
-// ============================================================================
+type Mode = 'protected' | 'legacy';
 
-declare global {
-  interface Window {
-    showSaveFilePicker?(options?: {
-      suggestedName?: string;
-      types?: Array<{
-        description: string;
-        accept: Record<string, string[]>;
-      }>;
-    }): Promise<FileSystemFileHandle>;
-  }
-
-  interface FileSystemFileHandle {
-    createWritable(): Promise<FileSystemWritableFileStream>;
-  }
-
-  interface FileSystemWritableFileStream extends WritableStream {
-    write(data: BufferSource): Promise<void>;
-    close(): Promise<void>;
-  }
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="bg-white rounded-lg shadow p-6 mb-6 space-y-3">
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
 }
 
 export function AcquisitionPage() {
-  const [device, setDevice] = useState<Device | null>(null);
   const { t } = useTranslation();
-  const [_connection, setConnection] = useState<ADBConnection | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const session = useSessionStore();
+  const { acquisitions, initializeAcquisitions, toggleAcquisition, selectAll, deselectAll, setSelection, getSelectedAcquisitions } =
+    useAcquisitionStore();
+
+  const [mode, setMode] = useState<Mode>('protected');
+  const [legacyAck, setLegacyAck] = useState(false);
+  const [invite, setInvite] = useState<ParsedInvite | null>(null);
+  const [manualKey, setManualKey] = useState('');
+  const [caseRef, setCaseRef] = useState(generateCaseRef);
+  const [recipientState, setRecipientState] = useState<RecipientVerificationState>({ status: 'absent' });
+  const [device, setDevice] = useState<Device | null>(null);
+  const [props, setProps] = useState<DeviceProperties | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const [target, setTarget] = useState<SaveTarget | null>(null);
+  const [preflight] = useState(runPreflight);
 
-  const {
-    acquisitions,
-    session,
-    deviceInfo,
-    initializeAcquisitions,
-    toggleAcquisition,
-    selectAll,
-    deselectAll,
-    startSession,
-    updateProgress,
-    completeAcquisition,
-    endSession,
-    cancelSession,
-    getSelectedAcquisitions,
-    getTotalProgress,
-    canStartSession,
-    isSessionActive,
-  } = useAcquisitionStore();
-
-  // Initialize acquisition types on mount
   useEffect(() => {
     Logger.setLogLevel('info');
     initializeAcquisitionTypes(ACQUISITION_TYPES);
   }, []);
 
-  // Connect to device
-  const handleConnect = async () => {
-    setIsConnecting(true);
+  const active = session.isActive();
+  const finished = session.result !== null;
+  const recipientConfirmed = recipientState.status === 'confirmed';
+  const selected = getSelectedAcquisitions();
+
+  function onInvite(inv: ParsedInvite | null) {
+    setInvite(inv);
+    setRecipientState(inv ? { status: 'unverified', recipient: inv.recipient } : { status: 'absent' });
+    if (inv) {
+      setCaseRef(inv.payload.caseRef);
+      if (device) setSelection(inv.payload.profile);
+    }
+  }
+
+  async function useManualKey() {
+    setInvite(null);
+    setRecipientState(await recipientStateFromInput(manualKey));
+  }
+
+  async function connect() {
+    setConnecting(true);
     setError(null);
-
     try {
-      const conn = new ADBConnection();
-      const dev = await conn.connect({ retryAttempts: 3, retryDelay: 1000 });
-
-      const props = await dev.getProperties();
-      const isRooted = await dev.isRooted();
-
-      setConnection(conn);
+      const dev = await new ADBConnection().connect({ retryAttempts: 3, retryDelay: 1000 });
+      const p = await dev.getProperties();
+      initializeAcquisitions(p, await dev.isRooted());
+      if (invite) setSelection(invite.payload.profile);
+      setProps(p);
       setDevice(dev);
-
-      initializeAcquisitions(props, isRooted);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect');
     } finally {
-      setIsConnecting(false);
+      setConnecting(false);
     }
-  };
+  }
 
-  // Disconnect device
-  const handleDisconnect = async () => {
-    if (device) {
+  async function disconnect() {
+    if (device && !active) {
       await device.disconnect();
       setDevice(null);
-      setConnection(null);
+      setProps(null);
     }
-  };
-
-  // Stop an in-progress acquisition session
-  const handleStopAcquisition = () => {
-    abortControllerRef.current?.abort();
-    cancelSession();
-  };
-
-  // Start acquisition session
-  const handleStartAcquisition = async () => {
-    if (!device) return;
-
-    // showSaveFilePicker must be called before any await — Chrome invalidates
-    // the user gesture context as soon as the call stack yields.
-    const now = new Date();
-    const folderName = `wafb-acquisition-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`;
-    let fileHandle: FileSystemFileHandle;
-    try {
-      fileHandle = await (window as any).showSaveFilePicker({
-        suggestedName: `${folderName}.zip`,
-        types: [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }],
-      });
-    } catch (error) {
-      if ((error as Error).name === 'AbortError') return;
-      throw error;
-    }
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    startSession();
-    const selected = getSelectedAcquisitions();
-    const results: AcquisitionResult[] = [];
-
-    // Open the ZIP writer BEFORE running acquisitions so that streams from
-    // long-running acquirers (e.g. backup) are piped to disk immediately
-    // while still live — not deferred until after all acquisitions finish.
-    const writable = await fileHandle.createWritable();
-    const zip = new StreamingZipWriter(writable);
-
-    for (const type of selected) {
-      if (controller.signal.aborted) break;
-
-      try {
-        const result = await executeAcquisition(type, device);
-        results.push(result);
-
-        if (controller.signal.aborted) break;
-
-        // Write this acquisition's files into the ZIP immediately.
-        // For stream-based files (backup) this consumes the live ADB stream
-        // before it is closed; for blob-based files it just buffers once.
-        if (result.success && result.files) {
-          for (const file of result.files) {
-            const hashPromise = file.hashPromise;
-            const originalName = file.fileName;
-            const filePath = `${folderName}/${file.fileName}`;
-            updateProgress(type, 50, `Saving ${file.fileName} to disk...`, 'running');
-
-            // Wrap stream with progress tracking before handing to ZIP writer.
-            // addAcquisitionFile handles stream consumption and awaits hashPromise
-            // (if present) to store the resolved hash on file.hash before we write
-            // the manifest.
-            await zip.addAcquisitionFile({
-              ...file,
-              fileName: filePath,
-              stream: trackStreamProgress(file.stream, bytes => {
-                // Pulse progress while streaming — we don't know total size upfront
-                const mb = (bytes / (1024 * 1024)).toFixed(1);
-                updateProgress(type, 70, `Saving ${file.fileName}: ${mb} MB written...`, 'running');
-              }),
-            });
-
-            if (hashPromise) {
-              file.hash = await hashPromise;
-            }
-
-            file.fileName = originalName;
-            updateProgress(type, 100, `${file.fileName} saved.`, 'completed');
-          }
-        }
-      } catch (err) {
-        console.error(`Failed to execute ${type}:`, err);
-      }
-    }
-
-    // Write manifest last (needs all results)
-    const manifest = createManifest(results);
-    await zip.addFile(
-      `${folderName}/manifest.json`,
-      new TextEncoder().encode(JSON.stringify(manifest, null, 2))
-    );
-
-    // finalize() writes central directory and closes the writable stream
-    await zip.finalize();
-    console.log(`✅ ZIP saved to disk: ${folderName}.zip`);
-
-    abortControllerRef.current = null;
-    endSession();
-  };
-
-  /**
-   * Wraps a ReadableStream with a byte-counting passthrough so the caller
-   * can track how much data has been written without buffering anything.
-   */
-  function trackStreamProgress(
-    source: ReadableStream<Uint8Array>,
-    onBytes: (totalBytes: number) => void
-  ): ReadableStream<Uint8Array> {
-    let total = 0;
-    return source.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          total += chunk.byteLength;
-          onBytes(total);
-          controller.enqueue(chunk);
-        },
-      })
-    );
   }
 
-  // Execute single acquisition
-  const executeAcquisition = async (
-    type: AcquisitionType,
-    device: Device
-  ): Promise<AcquisitionResult> => {
-    const acquirerConfig = {
-      bugreport: {
-        Class: BugreportAcquirer,
-        options: {
-          computeHash: true,
-          cleanupAfter: true,
-        } satisfies BugreportConfig,
-      },
-      logcat: {
-        Class: LogcatAcquirer,
-        options: {
-          buffer: 'all',
-          format: 'threadtime',
-          computeHash: true,
-        } satisfies LogcatConfig,
-      },
-      packages: {
-        Class: PackagesAcquirer,
-        options: {
-          includeSystem: true,
-          includeDetails: true,
-          downloadApks: true,
-          computeHash: true,
-        } satisfies PackagesConfig,
-      },
-      system_info: {
-        Class: SystemInfoAcquirer,
-        options: {
-          includeBattery: true,
-          includeNetwork: false,
-          includeStorage: true,
-          includeMemory: true,
-          includeSensors: true,
-          computeHash: true,
-        } satisfies SystemInfoConfig,
-      },
-      rootBinaries: {
-        Class: RootBinariesAcquirer,
-        options: {},
-      },
-      env: {
-        Class: EnvAcquirer,
-        options: {},
-      },
-      selinux: {
-        Class: SELinuxAcquirer,
-        options: {
-          includeContexts: true,
-          includeFileContexts: true,
-          includeDenials: true,
-          maxDenialLines: 100,
-        } satisfies SELinuxConfig,
-      },
-      mount: {
-        Class: MountAcquirer,
-        options: {},
-      },
-      settings: {
-        Class: SettingsAcquirer,
-        options: {
-          computeHash: true,
-        } satisfies SettingsConfig,
-      },
-      process: {
-        Class: ProcessAcquirer,
-        options: {
-          includeThreads: true,
-          includeSELinuxContext: true,
-        } satisfies ProcessConfig,
-      },
-      services: {
-        Class: ServicesAcquirer,
-        options: {
-          includeSystemServices: true,
-          includeUserServices: true,
-          includeServiceDetails: true,
-        } satisfies ServicesConfig,
-      },
-      logs: {
-        Class: LogAcquirer,
-        options: {
-          includeSystemLogs: true,
-          computeHash: true,
-        } satisfies LogConfig,
-      },
-      files: {
-        Class: FileAcquirer,
-        options: {
-          downloadFiles: false,
-          maxStatBatchSize: 30,
-          maxHashBatchSize: 15,
-          parallelScans: 3,
-          computeFileHashes: true,
-          hashAlgorithms: ['sha256'],
-          maxHashFileSize: 10 * 1024 * 1024,
-          excludeHashPaths: ['/system', '/vendor', '/product', '/apex', '/proc'],
-          hashMethod: 'auto',
-          timeout: 600000,
-        } satisfies FileAcquisitionConfig,
-      },
-      tmp: {
-        Class: TmpAcquirer,
-        options: {},
-      },
-      dumpsys: {
-        Class: DumpsysAcquirer,
-        options: {
-          computeHash: true,
-        } satisfies DumpsysConfig,
-      },
-      backup: {
-        Class: BackupAcquirer,
-        options: {
-          type: 'full',
-          computeHash: true,
-        } satisfies BackupConfig,
-      },
+  const canStart =
+    !!device && !!target && selected.length > 0 && preflight.ok &&
+    (mode === 'protected' ? recipientConfirmed && /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/.test(caseRef) : legacyAck);
+
+  async function start() {
+    if (!canStart || !device || !target) return;
+    const requested = selected;
+    const base = {
+      requested,
+      tool: { version: APP_VERSION, userAgent: navigator.userAgent },
+      device: props,
     };
-
-    const config = acquirerConfig[type as keyof typeof acquirerConfig];
-
-    if (config) {
-      // Istanziamo l'acquirer dinamicamente
-      const acquirer = new config.Class(device, config.options as AcquisitionConfig);
-
-      const result = await acquirer.acquire((progress: AcquisitionProgress) => {
-        updateProgress(type, progress.progress, progress.message, progress.status);
-      });
-
-      completeAcquisition(type, result);
-      return result;
-    } else {
-      // Gestione tipi non ancora implementati
-      updateProgress(type, 0, 'Not implemented yet', 'skipped');
-      const result: AcquisitionResult = {
-        success: false,
-        type,
-        startTime: new Date(),
-        endTime: new Date(),
-        duration: 0,
-        error: `Acquirer for ${type} not implemented`,
+    let config: SessionConfig;
+    if (mode === 'protected') {
+      if (recipientState.status !== 'confirmed') return;
+      const profile = invite?.payload.profile ?? [];
+      const added = invite ? requested.filter(m => !profile.includes(m)) : [];
+      const removed = invite ? profile.filter(m => !requested.includes(m)) : [];
+      config = {
+        ...base,
+        mode: 'protected',
+        profileSource: invite ? 'invite' : 'operator',
+        ...(added.length || removed.length ? { profileChange: { added, removed } } : {}),
+        recipient: recipientState.recipient,
+        recipientConfirmation: recipientState.confirmation,
+        caseRef,
       };
-      completeAcquisition(type, result);
-      return result;
+    } else {
+      config = {
+        ...base,
+        mode: 'legacy',
+        profileSource: 'operator',
+        folder: target.fileName.replace(/\.zip$/i, '') || 'wafb-acquisition',
+      };
     }
-  };
-
-  // ============================================================================
-  // ZIP CREATION: STREAMING DIRECTLY TO DISK
-  // ============================================================================
-
-  /**
-   * Create manifest with metadata (no blobs)
-   */
-  function createManifest(results: AcquisitionResult[]) {
-    return {
-      acquisitionDate: new Date().toISOString(),
-      deviceInfo: deviceInfo,
-      acquisitions: results.map(r => ({
-        type: r.type,
-        success: r.success,
-        files: r.files?.map((f: AcquisitionFile) => ({
-          fileName: f.fileName,
-          fileSize: f.fileSize,
-          description: f.description,
-          mimeType: f.mimeType,
-          hash: f.hash,
-        })),
-        duration: r.duration,
-        error: r.error,
-        data: r.data,
-      })),
-      summary: {
-        totalAcquisitions: results.length,
-        successfulAcquisitions: results.filter(r => r.success).length,
-        failedAcquisitions: results.filter(r => !r.success).length,
-        totalFiles: results.reduce((sum, r) => sum + (r.files?.length || 0), 0),
-        totalSize: results.reduce(
-          (sum, r) =>
-            sum + (r.files?.reduce((s: number, f: AcquisitionFile) => s + f.fileSize, 0) || 0),
-          0
-        ),
-      },
-    };
+    await session.start(config, device, target);
   }
 
-  // ============================================================================
-  // UI COMPONENT
-  // ============================================================================
+  function newSession() {
+    session.reset();
+    setTarget(null);
+  }
 
+  // ── during / after a session ─────────────────────────────────────────────
+  if (active) {
+    return (
+      <div className="bg-gray-50 p-8 h-full"><div className="max-w-4xl mx-auto">
+        <Section title={t('acquisition.progressTitle')}><SessionProgress /></Section>
+      </div></div>
+    );
+  }
+  if (finished && session.result) {
+    return (
+      <div className="bg-gray-50 p-8 h-full"><div className="max-w-4xl mx-auto">
+        <Section title={t('summary.title')}><SessionSummary result={session.result} onNew={newSession} /></Section>
+      </div></div>
+    );
+  }
+
+  // ── configuration ────────────────────────────────────────────────────────
   return (
     <div className="bg-gray-50 p-8 h-full">
-      <div className="max-w-6xl mx-auto">
-        {/* Device Connection */}
-        {!device ? (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <div className="mb-6">
-              <div className="text-6xl mb-4">📱</div>
-              <h2 className="text-2xl font-semibold mb-2">{t('connect.title')}</h2>
-              <p className="text-gray-600 mb-6">{t('connect.subtitle')}</p>
-            </div>
+      <div className="max-w-4xl mx-auto">
+        <Section title={t('preflight.title')}>
+          <PreflightPanel />
+        </Section>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-800">
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={handleConnect}
-              disabled={isConnecting}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold px-8 py-3 rounded-lg transition-colors"
-            >
-              {isConnecting ? t('connect.buttonConnecting') : t('connect.buttonConnect')}
-            </button>
-
-            <div className="mt-8 text-left bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-3">{t('connect.requirements')}</h3>
-              <ul className="space-y-2 text-sm text-gray-700">
-                <li>✓ {t('connect.req1')}</li>
-                <li>✓ {t('connect.req2')}</li>
-                <li>✓ {t('connect.req3')}</li>
-                <li>✓ {t('connect.req4')}</li>
-              </ul>
-            </div>
-
-            <div className="mt-4 text-left bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-3">{t('connect.usbGuideTitle')}</h3>
-              <ol className="space-y-1 text-sm text-gray-700 list-decimal list-inside">
-                <li>
-                  Open <strong>Settings</strong> on your Android device
-                </li>
-                <li>
-                  Go to <strong>About phone</strong> and tap <strong>Build number</strong> 7 times
-                </li>
-                <li>
-                  Go back to <strong>Settings → Developer options</strong>
-                </li>
-                <li>
-                  Enable <strong>USB debugging</strong>
-                </li>
-              </ol>
-              <a
-                href="https://developer.android.com/studio/debug/dev-options"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block mt-3 text-xs text-blue-600 underline hover:text-blue-800"
-              >
-                {t('connect.usbGuideLink')}
-              </a>
-            </div>
+        <Section title={t('advanced.mode')}>
+          <div className="flex flex-col sm:flex-row gap-3">
+            {(['protected', 'legacy'] as const).map(m => (
+              <label key={m} className={`flex-1 border-2 rounded p-3 cursor-pointer text-sm ${mode === m ? (m === 'legacy' ? 'border-red-500 bg-red-50' : 'border-blue-500 bg-blue-50') : 'border-gray-200'}`}>
+                <input type="radio" name="mode" className="mr-2" checked={mode === m} disabled={!!target} onChange={() => { setMode(m); setLegacyAck(false); }} />
+                {t(`advanced.${m}`)}
+              </label>
+            ))}
           </div>
-        ) : (
-          <>
-            {/* Device Info */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold mb-1">{t('device.title')}</h2>
-                  <div className="text-gray-600">
-                    <p>
-                      {deviceInfo?.manufacturer} {deviceInfo?.model}
-                    </p>
-                    <p className="text-sm">
-                      Android {deviceInfo?.androidVersion} • SDK {deviceInfo?.sdkVersion}
-                    </p>
-                  </div>
+          {mode === 'legacy' && (
+            <div className="border border-red-300 bg-red-50 rounded p-3 space-y-2">
+              <p className="text-sm text-red-900">{t('advanced.legacyWarning')}</p>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={legacyAck} onChange={e => setLegacyAck(e.target.checked)} />
+                {t('advanced.legacyAck')}
+              </label>
+            </div>
+          )}
+        </Section>
+
+        {mode === 'protected' && (
+          <Section title={t('invite.title')}>
+            {!recipientConfirmed && <InvitePanel invite={invite} onInvite={onInvite} />}
+            {!invite && !recipientConfirmed && (
+              <div className="border-t pt-3 space-y-2">
+                <p className="text-sm font-medium">{t('advanced.manualRecipient')}</p>
+                <label className="block text-xs text-gray-500" htmlFor="manual-key">{t('advanced.recipientLabel')}</label>
+                <input id="manual-key" value={manualKey} onChange={e => setManualKey(e.target.value)} spellCheck={false} autoComplete="off" className="w-full font-mono text-sm border border-gray-300 rounded p-2" />
+                <label className="block text-xs text-gray-500" htmlFor="case-ref">{t('advanced.caseRefLabel')}</label>
+                <div className="flex gap-2">
+                  <input id="case-ref" value={caseRef} onChange={e => setCaseRef(e.target.value)} spellCheck={false} className="flex-1 font-mono text-sm border border-gray-300 rounded p-2" />
+                  <button onClick={() => setCaseRef(generateCaseRef())} className="px-3 text-sm border rounded">{t('advanced.generate')}</button>
                 </div>
-                <button
-                  onClick={handleDisconnect}
-                  disabled={isSessionActive()}
-                  className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {t('device.disconnect')}
+                <button onClick={useManualKey} disabled={!manualKey.trim()} className="px-4 py-2 bg-blue-600 disabled:bg-gray-300 text-white text-sm font-semibold rounded">
+                  {t('advanced.use')}
                 </button>
-              </div>
-            </div>
-
-            {/* Acquisition Selection */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold">{t('acquisition.title')}</h2>
-                <div className="space-x-2">
-                  <button
-                    onClick={selectAll}
-                    disabled={isSessionActive()}
-                    className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
-                  >
-                    {t('acquisition.selectAll')}
-                  </button>
-                  <button
-                    onClick={deselectAll}
-                    disabled={isSessionActive()}
-                    className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 rounded disabled:opacity-50"
-                  >
-                    {t('acquisition.deselectAll')}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Array.from(acquisitions.values()).map(acq => (
-                  <div
-                    key={acq.type}
-                    onClick={() => !isSessionActive() && toggleAcquisition(acq.type)}
-                    className={`
-                      border-2 rounded-lg p-4 cursor-pointer transition-all
-                      ${acq.enabled ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}
-                      ${isSessionActive() ? 'opacity-60 cursor-not-allowed' : ''}
-                    `}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-2xl">{acq.metadata.icon}</span>
-                        <div>
-                          <h3 className="font-semibold">{acq.metadata.name}</h3>
-                          <p className="text-xs text-gray-500">{acq.metadata.category}</p>
-                        </div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={acq.enabled}
-                        onChange={() => { }}
-                        className="w-5 h-5"
-                        disabled={isSessionActive()}
-                      />
-                    </div>
-
-                    <p className="text-sm text-gray-600 mb-2">{acq.metadata.description}</p>
-
-                    {acq.metadata.requiresRoot && (
-                      <span className="inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                        {t('acquisition.requiresRoot')}
-                      </span>
-                    )}
-
-                    {/* Progress during acquisition */}
-                    {acq.status !== 'pending' && (
-                      <div className="mt-3">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-gray-600">{acq.message}</span>
-                          <span className="font-semibold">{acq.progress}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all ${acq.status === 'completed'
-                                ? 'bg-green-500'
-                                : acq.status === 'failed'
-                                  ? 'bg-red-500'
-                                  : acq.status === 'running'
-                                    ? 'bg-blue-500'
-                                    : 'bg-gray-400'
-                              }`}
-                            style={{ width: `${acq.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Start Button */}
-            {!session && (
-              <button
-                onClick={handleStartAcquisition}
-                disabled={!canStartSession()}
-                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-4 rounded-lg transition-colors text-lg"
-              >
-                {t('acquisition.startButton', { count: getSelectedAcquisitions().length })}
-              </button>
-            )}
-
-            {/* Session Progress */}
-            {session && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold">{t('acquisition.progressTitle')}</h2>
-                  {session.status === 'running' && (
-                    <button
-                      onClick={handleStopAcquisition}
-                      className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors"
-                    >
-                      ⏹ {t('acquisition.stopButton')}
-                    </button>
-                  )}
-                </div>
-
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>{t('acquisition.totalProgress')}</span>
-                    <span className="font-semibold">{getTotalProgress()}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className="bg-blue-600 h-3 rounded-full transition-all"
-                      style={{ width: `${getTotalProgress()}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {session.acquisitions.map(
-                    (acq: { type: AcquisitionType; status: string; progress: number }) => (
-                      <div key={acq.type} className="flex items-center justify-between text-sm">
-                        <span>{ACQUISITION_TYPES[acq.type].name}</span>
-                        <span
-                          className={`font-semibold ${acq.status === 'completed'
-                              ? 'text-green-600'
-                              : acq.status === 'failed'
-                                ? 'text-red-600'
-                                : acq.status === 'running'
-                                  ? 'text-blue-600'
-                                  : 'text-gray-500'
-                            }`}
-                        >
-                          {acq.status === 'completed'
-                            ? t('acquisition.statusDone')
-                            : acq.status === 'failed'
-                              ? t('acquisition.statusFailed')
-                              : acq.status === 'running'
-                                ? `${acq.progress}%`
-                                : t('acquisition.statusPending')}
-                        </span>
-                      </div>
-                    )
-                  )}
-                </div>
-
-                {session.status !== 'running' && (
-                  <div className="mt-6 text-center">
-                    <p className="text-lg font-semibold mb-2">
-                      {session.status === 'completed'
-                        ? t('acquisition.completed')
-                        : session.status === 'failed'
-                          ? t('acquisition.completedWithErrors')
-                          : t('acquisition.cancelled')}
-                    </p>
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      {t('acquisition.startNew')}
-                    </button>
-                  </div>
+                {recipientState.status === 'invalid' && (
+                  <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{t(`recipientErrors.${recipientState.code}`)}</p>
                 )}
               </div>
             )}
-          </>
+            {(recipientState.status === 'unverified' || recipientState.status === 'confirmed') && (
+              <div className="border-t pt-3">
+                <h3 className="font-semibold mb-2">{t('verify.title')}</h3>
+                <RecipientVerificationPanel recipient={recipientState.recipient} state={recipientState} onState={setRecipientState} />
+              </div>
+            )}
+          </Section>
         )}
+
+        <Section title={t('device.title')}>
+          {props ? (
+            <div className="flex items-center justify-between">
+              <p className="text-sm">📱 {props.manufacturer} {props.model} · Android {props.androidVersion} · SDK {props.sdkVersion}</p>
+              <button onClick={disconnect} className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded">{t('device.disconnect')}</button>
+            </div>
+          ) : (
+            <button onClick={connect} disabled={connecting || (mode === 'protected' && !recipientConfirmed)} className="px-6 py-2 bg-blue-600 disabled:bg-gray-300 text-white font-semibold rounded">
+              {connecting ? t('connect.buttonConnecting') : t('connect.buttonConnect')}
+            </button>
+          )}
+          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          <p className="text-xs text-gray-500">{t('verify.notAdb')}</p>
+        </Section>
+
+        {device && (
+          <Section title={t('acquisition.title')}>
+            <div className="flex gap-2 justify-end">
+              <button onClick={selectAll} className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded">{t('acquisition.selectAll')}</button>
+              <button onClick={deselectAll} className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 rounded">{t('acquisition.deselectAll')}</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {Array.from(acquisitions.values()).map(acq => (
+                <label key={acq.type} className={`border-2 rounded p-3 cursor-pointer text-sm ${acq.enabled ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                  <div className="flex items-start justify-between">
+                    <span className="font-semibold">{acq.metadata.icon} {acq.metadata.name}</span>
+                    <input type="checkbox" checked={acq.enabled} onChange={() => toggleAcquisition(acq.type)} />
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">{acq.metadata.description}</p>
+                  {!isModuleSupported(acq.type) && <p className="text-xs text-amber-700">{t('scope.unsupported')}</p>}
+                  {invite && !invite.payload.profile.includes(acq.type as AcquisitionType) && acq.enabled && (
+                    <p className="text-xs text-amber-700">+ {t('scope.added')}</p>
+                  )}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-gray-600">{t('scope.personalData')}</p>
+          </Section>
+        )}
+
+        {device && (
+          <Section title={t('destination.title')}>
+            <DestinationPicker
+              suggestedName={suggestedArchiveName(mode === 'protected' ? 'wafb-protected' : 'wafb-legacy', mode === 'protected' ? caseRef : null)}
+              target={target}
+              onTarget={setTarget}
+              disabled={mode === 'protected' ? !recipientConfirmed : !legacyAck}
+            />
+          </Section>
+        )}
+
+        <button onClick={start} disabled={!canStart} className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-4 rounded-lg text-lg">
+          {t('advanced.start')} ({selected.length})
+        </button>
       </div>
     </div>
   );

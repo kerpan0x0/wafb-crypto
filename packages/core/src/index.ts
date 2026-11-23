@@ -225,3 +225,17 @@ export type {
   SessionOutcome,
   ProtectionMode,
 } from './protection/manifest';
+
+export { readZipDirectory, entryStream, isSafeEntryName, ZipFormatError } from './utils/zip-reader';
+export type { ZipReaderEntry } from './utils/zip-reader';
+export { verifyArchive, extractVerifiedArtifact, safeFileName } from './protection/verify';
+export type {
+  VerificationReport,
+  VerifyOptions,
+  CheckResult,
+  CheckId,
+  CheckStatus,
+  ArtifactVerification,
+  Verdict,
+} from './protection/verify';
+export { generateX25519Identity, identityToRecipient } from 'age-encryption';

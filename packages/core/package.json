@@ -37,7 +37,7 @@
   ],
   "scripts": {
     "dev": "tsup --watch",
-    "build": "tsup && tsc --project tsconfig.build.json",
+    "build": "node -e \"require('fs').rmSync('tsconfig.build.tsbuildinfo',{force:true})\" && tsup && tsc --project tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
