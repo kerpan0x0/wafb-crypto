@@ -62,3 +62,18 @@ export function infoZipTest(archive: string): { status: number; summary: string 
   const text = `${r.stdout?.toString() ?? ''}${r.stderr?.toString() ?? ''}`.trim();
   return { status: r.status ?? -1, summary: text.split('\n').slice(-1)[0] ?? '' };
 }
+
+/** Extracts one entry with Python's zipfile (independent of the writer). */
+export function pythonZipRead(archive: string, entry: string): Buffer {
+  return execFileSync(
+    'python3',
+    ['-I', '-c', 'import sys,zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))', archive, entry],
+    { maxBuffer: 512 * 1024 * 1024 }
+  );
+}
+
+/** Decrypts with the reference `age` CLI. Returns null if age refuses the file. */
+export function ageDecrypt(identityFile: string, ciphertext: Uint8Array): Buffer | null {
+  const r = spawnSync('age', ['-d', '-i', identityFile], { input: ciphertext, maxBuffer: 512 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout : null;
+}

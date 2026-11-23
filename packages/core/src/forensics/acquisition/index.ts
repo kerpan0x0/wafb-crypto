@@ -1,4 +1,5 @@
 import type { DeviceProperties } from '../../adb';
+import type { SourceOutcome } from '../../utils/source-monitor';
 
 // ============================================================================
 // TYPES
@@ -33,6 +34,12 @@ export interface AcquisitionConfig {
   timeout?: number;
   computeHash?: boolean;
   options?: Record<string, unknown>;
+  /**
+   * Abort signal owned by the session coordinator. Acquirers that start
+   * long-running device processes (e.g. backup) pass it to the transport so
+   * that cancellation reaches the remote process.
+   */
+  signal?: AbortSignal;
 }
 
 export interface AcquisitionProgress {
@@ -42,12 +49,27 @@ export interface AcquisitionProgress {
   deviceInfo?: DeviceProperties;
 }
 
+/**
+ * Contract between an acquirer and its consumer.
+ *
+ * Returning a file means the consumer may START reading `stream`; it does not
+ * certify that the source will end correctly. When the acquirer can observe
+ * how the source ends (exit code, idle timeout, disconnection) it exposes that
+ * deferred result as `outcome`. Consumers must not declare the artefact
+ * complete before `outcome` (if present) has settled acceptably.
+ */
 export interface AcquisitionFile {
   fileName: string;
+  /** Size in bytes if known in advance. Meaningful only when `sizeUnknown` is not true. */
   fileSize: number;
+  /** True when the size cannot be known before the stream is consumed (e.g. backup). */
+  sizeUnknown?: boolean;
   stream: ReadableStream<Uint8Array>;
   hash?: string;
+  /** SHA-256 of the bytes of `stream`, computed by hashingPassthrough on the same stream. */
   hashPromise?: Promise<string>;
+  /** Deferred outcome of the device source. Always settles; never rejects. */
+  outcome?: Promise<SourceOutcome>;
   description?: string;
   mimeType?: string;
 }

@@ -65,9 +65,20 @@ export class AgeStreamEncryptor {
     return tapCompletion(ct as ReadableStream<Uint8Array>);
   }
 
-  /** Encrypts an in-memory buffer (manifest). Same format, same recipient. */
+  /**
+   * Encrypts an in-memory buffer (manifest). Same format, same recipient.
+   *
+   * Deliberately routed through the streaming path: Typage's buffered API
+   * collects output with `new Response(stream).arrayBuffer()`, which silently
+   * produced the 23-byte string "[object ReadableStream]" under a non-native
+   * `Response` global (observed with happy-dom). Correctness of the manifest
+   * must not depend on that global.
+   */
   async encryptBytes(plaintext: Uint8Array): Promise<Uint8Array> {
-    return this.encrypter.encrypt(plaintext);
+    const e = await this.encryptStream(singleChunk(plaintext));
+    const out = await collectBytes(e.ciphertext);
+    await e.finalized;
+    return out;
   }
 }
 
@@ -137,7 +148,34 @@ export class AgeStreamDecryptor {
     return (await this.decrypter.decrypt(ciphertext)) as ReadableStream<Uint8Array>;
   }
 
+  /** Buffered decryption via the streaming path (see encryptBytes). */
   async decryptBytes(ciphertext: Uint8Array): Promise<Uint8Array> {
-    return this.decrypter.decrypt(ciphertext);
+    return collectBytes(await this.decryptStream(singleChunk(ciphertext)));
   }
+}
+
+function singleChunk(b: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(c) {
+      if (b.byteLength > 0) c.enqueue(b);
+      c.close();
+    },
+  });
+}
+
+/** Reads a (small) stream to completion. Errors propagate. */
+export async function collectBytes(s: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  const r = s.getReader();
+  for (;;) {
+    const { done, value } = await r.read();
+    if (done) break;
+    parts.push(value);
+    n += value.byteLength;
+  }
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.byteLength; }
+  return out;
 }
