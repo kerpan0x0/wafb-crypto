@@ -38,3 +38,6 @@ pnpm-debug.log*
 
 .turbo
 *.timestamp-*.mjs
+
+# benchmark harness build
+packages/web/dist-bench/

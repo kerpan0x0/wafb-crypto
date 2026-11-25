@@ -1,0 +1,15 @@
+{
+ "mode": "protected",
+ "totalBytes": 4563402752,
+ "chunkBytes": 65536,
+ "entries": 1,
+ "verify": true,
+ "ms": 135228.09999999963,
+ "outputBytes": 4564521240,
+ "heapPeak": 92389651,
+ "heapStart": 3014346,
+ "state": "completed",
+ "verifyMs": 64578.59999999963,
+ "verdict": "verified-complete",
+ "throughputMiBs": 32.182660260700345
+}

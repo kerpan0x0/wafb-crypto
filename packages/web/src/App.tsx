@@ -3,15 +3,20 @@ import { useTranslation } from 'react-i18next';
 import { AcquisitionPage } from './components/acquisition/AcquisitionPage';
 import { WizzardAcquisitionPage } from './components/acquisition/WizzardAcquisitionPage';
 import { Layout } from './components/layout/Layout';
-import { useAcquisitionStore } from './stores/acquisitionStore';
+import { AnalystPage } from './components/analyst/AnalystPage';
+import { useSessionStore } from './stores/sessionStore';
 
-type ActiveTab = 'standard' | 'wizard';
+type ActiveTab = 'standard' | 'wizard' | 'analyst';
+
+function initialTab(): ActiveTab {
+  // `#analyst` opens the analyst page; an invitation fragment opens the wizard.
+  return window.location.hash === '#analyst' ? 'analyst' : 'wizard';
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('wizard');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const { t } = useTranslation();
-  const session = useAcquisitionStore((s: { session: { status: string } | null }) => s.session);
-  const sessionActive = session !== null && session.status === 'running';
+  const sessionActive = useSessionStore(s => s.state !== 'idle' && !['completed', 'partial', 'failed', 'cancelled'].includes(s.state));
 
   return (
     <Layout>
@@ -42,10 +47,24 @@ function App() {
           >
             ⚙️ {t('tabs.standard')}
           </button>
+          <button
+            onClick={() => !sessionActive && setActiveTab('analyst')}
+            disabled={sessionActive}
+            title={sessionActive ? t('acquisition.tabDisabledDuringAcquisition') : undefined}
+            className={`ml-auto px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'analyst'
+                ? 'border-purple-600 text-purple-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } ${sessionActive ? 'opacity-40 cursor-not-allowed' : ''}`}
+          >
+            🔑 {t('tabs.analyst')}
+          </button>
         </div>
       </div>
 
-      {activeTab === 'wizard' ? <WizzardAcquisitionPage /> : <AcquisitionPage />}
+      {activeTab === 'wizard' && <WizzardAcquisitionPage />}
+      {activeTab === 'standard' && <AcquisitionPage />}
+      {activeTab === 'analyst' && <AnalystPage />}
     </Layout>
   );
 }

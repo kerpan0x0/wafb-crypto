@@ -66,49 +66,53 @@ export class BackupAcquirer extends Acquirer {
       const { backupType, timeout } = this.resolveBackupParams(config.type);
       this.logger.info(`Backup type: ${backupType}, buPath: ${buPath}`);
 
-      const { stream, exited } = await new BackupCommand(this.device).exec({
+      const { stream, outcome } = await new BackupCommand(this.device).exec({
         type: backupType,
         buPath,
         timeout,
+        signal: this.config.signal,
       });
 
-      // Wire up exit logging (non-blocking — the stream is the primary signal)
-      exited.then(code => {
-        if (code !== 0) {
-          this.logger.warn(`bu backup exited with code ${code}`);
+      // The exit code is no longer only logged: it is part of the deferred
+      // `outcome`, which the consumer must await before declaring the
+      // artefact complete.
+      outcome?.then(o => {
+        if (o.cause !== 'eof' || (o.exitCode !== null && o.exitCode !== 0)) {
+          this.logger.warn(`bu backup ended: ${o.cause}, exit code ${o.exitCode ?? 'n/a'}`);
         } else {
-          this.logger.info('bu backup exited cleanly');
+          this.logger.info('bu backup ended regularly');
         }
-      }).catch(() => {/* ignore */});
-
-      this.notifyProgress(onProgress, 30, 'Backup streaming in progress — confirm on device if prompted...', 'running');
+      });
 
       // ── Step 5: Return stream in AcquisitionFile ──────────────────────────
-      // fileSize is unknown until the stream is consumed; set to 0.
-      // The ZIP writer will record the real size via the data descriptor.
+      // Size is unknown until the stream is consumed: `sizeUnknown` marks it
+      // explicitly instead of overloading fileSize = 0.
       const fileName = this.generateFileName('backup', 'ab');
 
       let acquisitionFile: AcquisitionFile;
 
       if (this.config.computeHash) {
-        const { writable, readable, hashPromise } = await hashingPassthrough('sha-256');
-        stream.pipeTo(writable).catch(err => {
-          this.logger.error('Backup stream pipe error', err);
-        });
+        const h = await hashingPassthrough('sha-256');
         acquisitionFile = {
-          stream: readable,
-          hashPromise,
+          // pipeThrough: errors propagate to the consumer and reject the digest,
+          // instead of being only logged (0.3.1 used pipeTo(...).catch(log)).
+          stream: stream.pipeThrough({ writable: h.writable, readable: h.readable }),
+          hashPromise: h.hashPromise,
+          outcome,
           fileName,
           mimeType: 'application/vnd.android.backup',
           fileSize: 0,
+          sizeUnknown: true,
           description: 'Android backup',
         };
       } else {
         acquisitionFile = {
           stream,
+          outcome,
           fileName,
           mimeType: 'application/vnd.android.backup',
           fileSize: 0,
+          sizeUnknown: true,
           description: 'Android backup',
         };
       }
@@ -116,10 +120,11 @@ export class BackupAcquirer extends Acquirer {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      // Report 40% — the stream is ready but not yet consumed (ZIP writing
-      // happens in the caller after this returns).  The caller will update
-      // progress to 100% once the stream has been fully written to disk.
-      this.notifyProgress(onProgress, 40, 'Backup stream ready, writing to ZIP...', 'running');
+      // `success: true` here means "the stream is available for reading",
+      // NOT "the backup was acquired". Status stays 'running': completion is
+      // decided by the consumer once source outcome, digest, encryption and
+      // write have all concluded.
+      this.notifyProgress(onProgress, 40, 'Backup stream ready — data is being transferred...', 'running');
 
       return {
         success: true,

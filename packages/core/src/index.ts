@@ -112,3 +112,130 @@ export { StreamingZipWriter } from './utils/streaming-zip'
 // ============================================================================
 
 export type { Adb } from '@yume-chan/adb';
+
+// ============================================================================
+// Protected acquisition (thesis extension)
+// ============================================================================
+
+export {
+  monitorSource,
+  evaluateSourceOutcome,
+} from './utils/source-monitor';
+export type {
+  SourceOutcome,
+  SourceEndCause,
+  SourceVerdict,
+  MonitoredSource,
+} from './utils/source-monitor';
+
+export { hashingPassthrough, rechunk, byteCounter, bytesToStream } from './utils/stream-helpers';
+export type { ZipEntryInfo, ZipWriterState } from './utils/streaming-zip';
+
+export {
+  SourceIdleTimeoutError,
+  AcquisitionAbortedError,
+  isAbortError,
+} from './utils/errors';
+
+export {
+  validateRecipient,
+  checkRecipientShape,
+  canonicaliseRecipient,
+  computeKeyId,
+  formatKeyId,
+  keyIdMatches,
+  recipientStateFromInput,
+  confirmRecipient,
+  RecipientError,
+  KeyIdMismatchError,
+  KEY_ID_DOMAIN,
+  RECIPIENT_TYPE,
+} from './protection/recipient';
+export type {
+  ValidatedRecipient,
+  RecipientErrorCode,
+  RecipientVerificationState,
+  RecipientConfirmation,
+  VerificationMethod,
+} from './protection/recipient';
+
+export {
+  createInvite,
+  parseInvite,
+  inviteFromHash,
+  inviteUrl,
+  generateCaseRef,
+  InviteError,
+  INVITE_VERSION,
+} from './protection/invite';
+export type { InvitePayload, ParsedInvite, InviteErrorCode } from './protection/invite';
+
+export {
+  AgeStreamEncryptor,
+  AgeStreamDecryptor,
+  agePayloadSize,
+  collectBytes,
+  AGE_STREAM_CHUNK,
+} from './protection/age-stream';
+export type { EncryptedStream } from './protection/age-stream';
+
+export {
+  SessionCoordinator,
+  InvalidTransitionError,
+  TERMINAL_STATES,
+} from './protection/session';
+export type {
+  SessionConfig,
+  ProtectedSessionConfig,
+  LegacySessionConfig,
+  SessionState,
+  ModuleTask,
+  ModuleContext,
+  ModuleUpdate,
+  ArtifactProgress,
+  SessionLogEntry,
+  SessionEvents,
+  SessionResult,
+  SessionDeps,
+} from './protection/session';
+
+export {
+  buildDescriptor,
+  formatBlock,
+  formatBlocksEqual,
+  artifactId,
+  DESCRIPTOR_ENTRY,
+  PROTECTED_MANIFEST_ENTRY,
+  LEGACY_MANIFEST_ENTRY,
+  MANIFEST_SCHEMA,
+  MANIFEST_SCHEMA_VERSION,
+  ARCHIVE_FORMAT,
+  RULES_VERSION,
+} from './protection/manifest';
+export type {
+  ManifestV1,
+  ArchiveDescriptor,
+  FormatBlock,
+  ArtifactRecord,
+  ArtifactStatus,
+  ArtifactVerdict,
+  ModuleRecord,
+  ModuleStatus,
+  ErrorRecord,
+  SessionOutcome,
+  ProtectionMode,
+} from './protection/manifest';
+
+export { readZipDirectory, entryStream, isSafeEntryName, ZipFormatError } from './utils/zip-reader';
+export type { ZipReaderEntry } from './utils/zip-reader';
+export { verifyArchive, extractVerifiedArtifact, safeFileName } from './protection/verify';
+export type {
+  VerificationReport,
+  VerifyOptions,
+  CheckResult,
+  CheckId,
+  CheckStatus,
+  ArtifactVerification,
+  Verdict,
+} from './protection/verify';
+export { generateX25519Identity, identityToRecipient } from 'age-encryption';

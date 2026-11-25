@@ -50,7 +50,7 @@ describe('BugreportCommand', () => {
       expect(result.stream).toBeInstanceOf(ReadableStream);
       // idleTimeout is used internally by ShellCommand.spawn() via wrapWithIdleTimeout
       // and is NOT forwarded as a second arg to shellProtocol.spawn
-      expect(device.spawn).toHaveBeenCalledWith('bugreport', undefined);
+      expect(device.spawn).toHaveBeenCalledWith('bugreport', undefined, undefined);
     });
 
     it('should spawn bugreport without shell redirect', async () => {
@@ -109,7 +109,7 @@ describe('BugreportCommand', () => {
 
       // idleTimeout is handled internally by ShellCommand.spawn() via wrapWithIdleTimeout
       // and is NOT forwarded as a second arg to shellProtocol.spawn
-      expect(device.spawn).toHaveBeenCalledWith('bugreport', undefined);
+      expect(device.spawn).toHaveBeenCalledWith('bugreport', undefined, undefined);
       expect(result.stream).toBeInstanceOf(ReadableStream);
     });
 

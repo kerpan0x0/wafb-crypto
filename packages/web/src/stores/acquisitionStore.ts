@@ -40,6 +40,8 @@ interface AcquisitionStore {
   toggleAcquisition: (type: AcquisitionType) => void;
   selectAll: () => void;
   deselectAll: () => void;
+  /** Selects exactly the given modules (e.g. the profile of an invitation). */
+  setSelection: (types: readonly AcquisitionType[]) => void;
   startSession: () => void;
   updateProgress: (
     type: AcquisitionType,
@@ -118,6 +120,14 @@ export const useAcquisitionStore = create<AcquisitionStore>((set, get) => ({
       if (acq.status === 'pending') {
         acq.enabled = false;
       }
+    });
+    set({ acquisitions: new Map(acquisitions) });
+  },
+
+  setSelection: (types: readonly AcquisitionType[]) => {
+    const { acquisitions } = get();
+    acquisitions.forEach(acq => {
+      if (acq.status === 'pending') acq.enabled = types.includes(acq.type);
     });
     set({ acquisitions: new Map(acquisitions) });
   },

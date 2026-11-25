@@ -1,7 +1,7 @@
 import { Smartphone } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { APP_NAME } from '../../lib/constants';
-import { useAcquisitionStore } from '../../stores/acquisitionStore';
+import { useSessionStore } from '../../stores/sessionStore';
 
 const LANGUAGES = [
   { code: 'en', label: 'EN', flag: '🇬🇧' },
@@ -10,8 +10,7 @@ const LANGUAGES = [
 
 export function Header() {
   const { t, i18n } = useTranslation();
-  const session = useAcquisitionStore((s: { session: { status: string } | null }) => s.session);
-  const sessionActive = session !== null && session.status === 'running';
+  const sessionActive = useSessionStore(s => s.state !== 'idle' && !['completed', 'partial', 'failed', 'cancelled'].includes(s.state));
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     if (sessionActive) return;

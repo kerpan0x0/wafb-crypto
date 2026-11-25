@@ -37,7 +37,7 @@
   ],
   "scripts": {
     "dev": "tsup --watch",
-    "build": "tsup && tsc --project tsconfig.build.json",
+    "build": "node -e \"require('fs').rmSync('tsconfig.build.tsbuildinfo',{force:true})\" && tsup && tsc --project tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
@@ -51,7 +51,8 @@
     "@yume-chan/adb": "^2.5.1",
     "@yume-chan/adb-credential-web": "^2.1.0",
     "@yume-chan/adb-daemon-webusb": "^2.1.0",
-    "@yume-chan/stream-extra": "^2.1.0"
+    "@yume-chan/stream-extra": "^2.1.0",
+    "age-encryption": "0.3.1"
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",
